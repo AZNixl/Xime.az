@@ -9,9 +9,13 @@ import android.os.Looper
 import android.util.Log
 import android.view.KeyEvent
 import android.view.View
+import android.os.Bundle
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputContentInfo
+import android.view.inputmethod.InlineSuggestionsRequest
+import android.view.inputmethod.InlineSuggestionsResponse
+import androidx.annotation.RequiresApi
 import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.compose.foundation.background
@@ -178,6 +182,10 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     private var clipboardCollectorJob: kotlinx.coroutines.Job? = null
     
     private val feedbackManager = FeedbackManager(this)
+    
+    private val inlineSuggestionManager = if (Build.VERSION.SDK_INT >= 30) {
+        InlineSuggestionManager()
+    } else null
     
     private fun loadDarkModePreference() {
         val isLandscape = resources.configuration.screenWidthDp > resources.configuration.screenHeightDp
@@ -772,8 +780,9 @@ onVoiceModeChange = { enabled ->
                                         }
                                     }
                                 },
-                                isCalculatorMode = calculatorEngine.isActive()
-                                )
+                                 inlineSuggestions = inlineSuggestionManager?.suggestions.orEmpty(),
+                                 isCalculatorMode = calculatorEngine.isActive()
+                                 )
                          }
                      }
                      }
@@ -932,10 +941,50 @@ onVoiceModeChange = { enabled ->
         currentInputConnection?.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
     }
     
+    @RequiresApi(34)
+    override fun onCreateInlineSuggestionsRequest(uiExtras: Bundle): InlineSuggestionsRequest? {
+        Log.d(TAG, "onCreateInlineSuggestionsRequest(Bundle) called")
+        val result = inlineSuggestionManager?.onCreateInlineSuggestionsRequest(uiExtras)
+        Log.d(TAG, "onCreateInlineSuggestionsRequest: returning ${if (result != null) "request" else "null"}")
+        return result
+    }
+
+    @RequiresApi(34)
+    override fun onInlineSuggestionsResponse(response: InlineSuggestionsResponse): Boolean {
+        Log.d(TAG, "onInlineSuggestionsResponse: received ${response.inlineSuggestions.size} suggestions")
+        return inlineSuggestionManager?.onInlineSuggestionsResponse(response) ?: false
+    }
+
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
         loadDarkModePreference()
+
+        // Debug: probe InputMethodService inline suggestion infrastructure
+        if (Build.VERSION.SDK_INT >= 34) {
+            val im = getSystemService(INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
+            Log.d(TAG, "onStartInput: hasAutofillId=${attribute?.autofillId != null}")
+
+            try {
+                // Probe all fields for the Binder implementation
+                val fields = android.inputmethodservice.InputMethodService::class.java.declaredFields
+                val fieldNames = fields.map { it.name }
+                Log.d(TAG, "onStartInput: InputMethodService fields: ${fieldNames.sorted()}")
+
+                for (field in fields) {
+                    field.isAccessible = true
+                    val value = field.get(this)
+                    if (value != null && value.toString().contains("Binder") ||
+                        value != null && value.javaClass.name.contains("InputMethodImpl")) {
+                        Log.d(TAG, "onStartInput: field=${field.name}, type=${value.javaClass.name}")
+                        val methods = value.javaClass.declaredMethods.map { it.name }.filter { it.contains("Inline", ignoreCase = true) || it.contains("inline", ignoreCase = true) || it.contains("Binder", ignoreCase = true) || it.contains("InputMethod", ignoreCase = true) }
+                        Log.d(TAG, "onStartInput: relevant methods: ${methods.sorted()}")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.d(TAG, "onStartInput: full probe failed: ${e.message}")
+            }
+        }
 
         predictionManager.clearCommittedText()
         Log.d(TAG, "onStartInput: cleared lastCommittedText")
@@ -1119,6 +1168,7 @@ onVoiceModeChange = { enabled ->
         super.onFinishInput()
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
         clearInputState()
+        inlineSuggestionManager?.clear()
         recentClipboardItemsState.value = emptyList()
     }
     

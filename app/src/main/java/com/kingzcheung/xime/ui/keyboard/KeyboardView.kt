@@ -129,6 +129,7 @@ fun KeyboardView(
     onUpdateToolbarButtons: ((List<String>) -> Unit)? = null,
     modifier: Modifier = Modifier,
     onKeyboardModeChange: ((Boolean) -> Unit)? = null,
+    inlineSuggestions: List<*> = listOf<Any>(),
     isCalculatorMode: Boolean = false,
 ) {
     var isShifted by remember { mutableStateOf(false) }
@@ -222,6 +223,7 @@ fun KeyboardView(
                     accentColor = accentColor,
                     isDarkTheme = isDarkTheme
                 ),
+                inlineSuggestions = inlineSuggestions,
                 callbacks = CandidateBarCallbacks(
                     onCandidateSelect = onCandidateSelect,
                     onLogoClick = { currentRoute = KeyboardRoute.Menu },

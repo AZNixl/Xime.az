@@ -80,6 +80,7 @@ fun CandidateBar(
     toolbarActions: List<ToolbarAction> = emptyList(),
     visuals: CandidateBarVisuals,
     callbacks: CandidateBarCallbacks,
+    inlineSuggestions: List<*> = listOf<Any>(),
     @SuppressLint("ModifierParameter") modifier: Modifier = Modifier,
 ) {
     val configuration = LocalConfiguration.current
@@ -290,6 +291,27 @@ fun CandidateBar(
                     }
                     else -> {}
                 }
+            }
+
+            if (inlineSuggestions.isNotEmpty()) {
+                inlineSuggestions.forEachIndexed { index, suggestion ->
+                    InlineSuggestionView(
+                        suggestion = suggestion,
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .width(80.dp),
+                    )
+                    if (index < inlineSuggestions.lastIndex) {
+                        InlineSuggestionDivider(color = visuals.dividerColor)
+                    }
+                }
+                Box(
+                    modifier = Modifier
+                        .width(1.dp)
+                        .fillMaxHeight()
+                        .padding(vertical = 6.dp)
+                        .background(visuals.dividerColor),
+                )
             }
 
             LazyRow(
