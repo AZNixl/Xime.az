@@ -1,4 +1,4 @@
-package com.kingzcheung.xime.ui.keyboard
+﻿package com.kingzcheung.xime.ui.keyboard
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -98,8 +98,8 @@ fun KeyButton(
     val view = LocalView.current
     val currentOnClick by rememberUpdatedState(onClick)
     val currentOnLongClick by rememberUpdatedState(onLongClick)
-    val swipeUpThreshold = with(density) { (-30).dp.toPx() }
-    val swipeDownThreshold = with(density) { 30.dp.toPx() }
+    val swipeUpThreshold = with(density) { (-50).dp.toPx() }
+    val swipeDownThreshold = with(density) { 50.dp.toPx() }
     val bubbleShowThresholdUp = swipeUpThreshold * 0.3f
     val bubbleShowThresholdDown = swipeDownThreshold * 0.3f
 
@@ -159,7 +159,7 @@ fun KeyButton(
                         dragOffsetY += dragAmount.y
                         
                         if (dragOffsetY < 0) {
-                            if (abs(dragOffsetY) > abs(dragOffsetX) * 2f) {
+                            if (abs(dragOffsetY) > abs(dragOffsetX) * 1.1f) {
                                 val shouldShowBubble = dragOffsetY < bubbleShowThresholdUp && swipeText != null
                                 if (shouldShowBubble != isSwiping) {
                                     isSwiping = shouldShowBubble
@@ -173,7 +173,7 @@ fun KeyButton(
                                 }
                             }
                         } else if (dragOffsetY > 0) {
-                            if (dragOffsetY > abs(dragOffsetX) * 2f) {
+                            if (dragOffsetY > abs(dragOffsetX) * 1.1f) {
                                 val shouldShowBubble = dragOffsetY > bubbleShowThresholdDown && swipeDownText != null
                                 if (shouldShowBubble != isSwipeDown) {
                                     isSwipeDown = shouldShowBubble
@@ -226,7 +226,7 @@ fun KeyButton(
                     )
                 }
             }
-            .padding(horizontal = 2.dp, vertical = 2.dp)
+            .padding(horizontal = 2.dp, vertical = 4.25.dp)
             .then(shadowModifier)
             .clip(shadowShape)
             .background(
@@ -270,8 +270,10 @@ fun SwipeableKeyButton(
     isHighlighted: Boolean = false,
     swipeText: String? = null,
     swipeDownText: String? = null,
-    /** 下滑文本显示在按键上（气泡为空，用于 display:key�? */
+    /** 下滑文本显示在按键上（气泡为空，用于 display:key） */
     swipeDownKeyLabel: String? = null,
+    /** 上滑文本显示在按键上（气泡则为空，用于 display:bubble） */
+    swipeUpKeyLabel: String? = null,
     onSwipe: ((String) -> Unit)? = null,
     onSwipeDown: ((String) -> Unit)? = null,
     onSwipeStateChange: ((SwipeState, Rect) -> Unit)? = null,
@@ -307,8 +309,8 @@ fun SwipeableKeyButton(
     val view = LocalView.current
     
     val density = LocalDensity.current
-    val swipeUpThreshold = with(density) { (-30).dp.toPx() }
-    val swipeDownThreshold = with(density) { 30.dp.toPx() }
+    val swipeUpThreshold = with(density) { (-50).dp.toPx() }
+    val swipeDownThreshold = with(density) { 50.dp.toPx() }
     val bubbleShowThresholdUp = swipeUpThreshold * 0.3f
     val bubbleShowThresholdDown = swipeDownThreshold * 0.3f
 
@@ -357,7 +359,7 @@ fun SwipeableKeyButton(
                         dragOffsetY += dragAmount.y
                         
                         if (dragOffsetY < 0) {
-                            if (abs(dragOffsetY) > abs(dragOffsetX) * 2f) {
+                            if (abs(dragOffsetY) > abs(dragOffsetX) * 1.1f) {
                                 val shouldShowBubble = dragOffsetY < bubbleShowThresholdUp && currentSwipeText != null
                                 if (shouldShowBubble != isSwiping) {
                                     isSwiping = shouldShowBubble
@@ -373,7 +375,7 @@ fun SwipeableKeyButton(
                                 }
                             }
                         } else if (dragOffsetY > 0) {
-                            if (dragOffsetY > abs(dragOffsetX) * 2f) {
+                            if (dragOffsetY > abs(dragOffsetX) * 1.1f) {
                                 val shouldShowBubble = dragOffsetY > bubbleShowThresholdDown && currentSwipeDownText != null
                                 if (shouldShowBubble != isSwipeDown) {
                                     isSwipeDown = shouldShowBubble
@@ -503,7 +505,7 @@ fun SwipeableKeyButton(
             .onGloballyPositioned { coordinates ->
                 buttonBounds = coordinates.boundsInRoot()
             }
-            .padding(horizontal = 2.dp, vertical = 2.dp)
+            .padding(horizontal = 2.dp, vertical = 4.25.dp)
             .then(shadowModifier)
             .clip(shadowShape)
             .background(
@@ -522,8 +524,9 @@ fun SwipeableKeyButton(
             maxLines = 1
         )
         
-        if (!swipeText.isNullOrEmpty()) {
-            val displayText = if (swipeText.length <= 2) swipeText else swipeText.take(2)
+        if (!(swipeUpKeyLabel ?: swipeText).isNullOrEmpty()) {
+            val keyLabel = (swipeUpKeyLabel ?: swipeText)!!
+            val displayText = if (keyLabel.length <= 2) keyLabel else keyLabel.take(2)
             Text(
                 text = displayText,
                 color = textColor.copy(alpha = 0.6f),
@@ -638,7 +641,7 @@ fun IconKeyButton(
                     }
                 )
             }
-            .padding(horizontal = 2.dp, vertical = 2.dp)
+            .padding(horizontal = 2.dp, vertical = 4.25.dp)
             .then(shadowModifier)
             .clip(shadowShape)
             .background(
@@ -710,15 +713,15 @@ fun SwipeableIconKeyButton(
     var buttonBounds by remember { mutableStateOf(Rect(0f, 0f, 0f, 0f)) }
     
     val density = LocalDensity.current
-    val swipeUpThreshold = with(density) { (-30).dp.toPx() }
-    val swipeDownThreshold = with(density) { 30.dp.toPx() }
-    val swipeLeftThreshold = with(density) { (-24).dp.toPx() }
+    val swipeUpThreshold = with(density) { (-50).dp.toPx() }
+    val swipeDownThreshold = with(density) { 50.dp.toPx() }
+    val swipeLeftThreshold = with(density) { (-50).dp.toPx() }
     val bubbleShowThresholdUp = swipeUpThreshold * 0.3f
     val bubbleShowThresholdDown = swipeDownThreshold * 0.3f
     
-    // 上滑清空/下滑撤回需要更大的滑动距离，防止误�?
-    val clearActionThreshold = with(density) { (-30).dp.toPx() }
-    val undoActionThreshold = with(density) { 30.dp.toPx() }
+    // 上滑清空/下滑撤回需要更大的滑动距离，防止误触
+    val clearActionThreshold = with(density) { (-50).dp.toPx() }
+    val undoActionThreshold = with(density) { 50.dp.toPx() }
     
     LaunchedEffect(isLongPress) {
         if (isLongPress && onLongClick != null) {
@@ -890,7 +893,7 @@ fun SwipeableIconKeyButton(
             .onGloballyPositioned { coordinates ->
                 buttonBounds = coordinates.boundsInRoot()
             }
-            .padding(horizontal = 2.dp, vertical = 2.dp)
+            .padding(horizontal = 2.dp, vertical = 4.25.dp)
             .then(shadowModifier)
             .clip(shadowShape)
             .background(

@@ -25,13 +25,14 @@ class InlineSuggestionManager {
     fun onCreateInlineSuggestionsRequest(uiExtras: Bundle): InlineSuggestionsRequest? {
         return try {
             val spec = InlinePresentationSpec.Builder(
-                Size(200, 80),
-                Size(400, 120),
+                Size(100, 40),
+                Size(300, 100),
             ).build()
             InlineSuggestionsRequest.Builder(listOf(spec))
-                .setMaxSuggestionCount(5)
+                .setMaxSuggestionCount(3)
                 .build()
         } catch (e: Throwable) {
+            Log.w("InlineSuggestionManager", "onCreateInlineSuggestionsRequest failed", e)
             null
         }
     }

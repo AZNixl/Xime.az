@@ -39,6 +39,7 @@ import androidx.compose.material.icons.twotone.EmojiEmotions
 import androidx.compose.material.icons.twotone.Keyboard
 import androidx.compose.material.icons.twotone.LightMode
 import androidx.compose.material.icons.twotone.Padding
+import androidx.compose.material.icons.twotone.PictureInPicture
 import androidx.compose.material.icons.twotone.Quickreply
 import androidx.compose.material.icons.twotone.Rotate90DegreesCcw
 import androidx.compose.material.icons.twotone.Settings
@@ -80,6 +81,8 @@ fun MenuBar(
     onSettings: () -> Unit,
     onSchemaList: () -> Unit,
     onToggleDarkMode: () -> Unit,
+    onFloatingModeToggle: (() -> Unit)? = null,
+    isFloatingMode: Boolean = false,
     onToolbarCustomize: () -> Unit = {},
     bottomPaddingDp: Int = 0,
     modifier: Modifier = Modifier
@@ -89,7 +92,7 @@ fun MenuBar(
     val textColor = if (isDarkTheme) Color(0xFFE8EAED) else Color(0xFF202124)
     val itemBgColor = if (isDarkTheme) Color(0xFF45474A) else Color.White
     val configuration = LocalConfiguration.current
-    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    val isLandscape = !isFloatingMode && configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
     
     val clipboardIcon = rememberVectorPainter(Icons.AutoMirrored.TwoTone.Assignment)
     val quickSendIcon = rememberVectorPainter(Icons.TwoTone.Quickreply)
@@ -111,12 +114,17 @@ fun MenuBar(
         else -> "跟随系统"
     }
 
-    val menuItems = remember(darkModeIcon, darkModeLabel) {
+    val floatingIcon = rememberVectorPainter(Icons.TwoTone.PictureInPicture)
+    val floatingLabel = if (isFloatingMode) "退出悬浮" else "悬浮模式"
+    val floatingAction = onFloatingModeToggle ?: {}
+
+    val menuItems = remember(darkModeIcon, darkModeLabel, isFloatingMode) {
         listOf(
             MenuItem(clipboardIcon, "剪贴板", onClipboard),
             MenuItem(quickSendIcon, "快捷发送", onQuickSend),
             MenuItem(keyboardResizeIcon, "键盘调节", onKeyboardResize),
             MenuItem(emojiIcon, "表情", onEmoji),
+            MenuItem(floatingIcon, floatingLabel, floatingAction),
             MenuItem(darkModeIcon, darkModeLabel, onToggleDarkMode),
             MenuItem(deployIcon, "部署方案", onReloadConfig),
             MenuItem(customizeIcon, "定制工具栏", onToolbarCustomize),

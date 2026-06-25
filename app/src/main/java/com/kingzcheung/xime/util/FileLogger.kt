@@ -29,6 +29,7 @@ object FileLogger {
     private val fileDateFormat = SimpleDateFormat("yyyyMMdd", Locale.getDefault())
     
     fun init(context: Context) {
+        if (isInitialized) return
         try {
             logsDir = File(context.filesDir, "logs")
             if (!logsDir!!.exists()) {

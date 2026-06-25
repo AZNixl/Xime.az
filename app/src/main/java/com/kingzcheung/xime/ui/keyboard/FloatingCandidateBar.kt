@@ -24,13 +24,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/**
- * 悬浮键盘样式的内联候选栏。
- * 连接蓝牙键盘时显示，支持拖拽移动。
- */
 @Composable
 fun FloatingCandidateBar(
     inputText: String,
+    preeditText: String,
     candidates: List<String>,
     candidateComments: List<String>,
     isComposing: Boolean,
@@ -51,7 +48,6 @@ fun FloatingCandidateBar(
             .then(dragModifier),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // 拖拽手柄
         Box(
             modifier = Modifier
                 .padding(bottom = 3.dp)
@@ -60,7 +56,6 @@ fun FloatingCandidateBar(
                 .clip(RoundedCornerShape(2.5.dp))
                 .background(Color(0xFF6B7280))
         )
-        // 自适应宽度的悬浮候选卡片
         Column(
             modifier = Modifier
                 .wrapContentWidth()
@@ -71,8 +66,9 @@ fun FloatingCandidateBar(
                 .padding(horizontal = 10.dp, vertical = 6.dp)
         ) {
             if (isComposing && inputText.isNotEmpty()) {
+                val displayText = if (preeditText.isNotEmpty()) preeditText else inputText
                 Text(
-                    text = inputText,
+                    text = displayText,
                     fontSize = 13.sp,
                     color = Color(0xFF4FC3F7),
                     fontWeight = FontWeight.Medium,

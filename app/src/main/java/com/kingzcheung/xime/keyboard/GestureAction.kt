@@ -122,6 +122,28 @@ enum class GestureAction(val value: String) {
         override fun execute(context: ActionExecutor, value: String) {
             context.repeatLastInput()
         }
+    },
+
+    /** 切换键盘路由/面板（如打开 emoji、符号面板）。
+     *  由 KeyboardView 拦截处理，[ActionExecutor] 层 no-op。 */
+    SWITCH_ROUTE("switch_route") {
+        override fun execute(context: ActionExecutor, value: String) { /* no-op, handled at UI layer */ }
+    },
+
+    /** 切换中/英文输入模式。
+     *  由 KeyboardView 拦截处理，发送 "ime_switch" 指令到服务层。 */
+    TOGGLE_ASCII("toggle_ascii") {
+        override fun execute(context: ActionExecutor, value: String) { /* no-op, handled at UI layer */ }
+    },
+
+    /** 删除/退格。由 UI 层拦截处理，调用 onKeyPress("delete")。 */
+    DELETE("delete") {
+        override fun execute(context: ActionExecutor, value: String) { /* no-op, handled at UI layer */ }
+    },
+
+    /** 切换符号键盘。由 UI 层拦截处理。 */
+    TOGGLE_SYMBOLS("toggle_symbols") {
+        override fun execute(context: ActionExecutor, value: String) { /* no-op, handled at UI layer */ }
     };
 
     /**

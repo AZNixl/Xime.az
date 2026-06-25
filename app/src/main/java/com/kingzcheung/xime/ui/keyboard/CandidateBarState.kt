@@ -8,6 +8,7 @@ sealed interface CandidateBarState {
         val candidates: List<String> = emptyList(),
         val comments: List<String> = emptyList(),
         val inputText: String = "",
+        val preeditText: String = "",
         val hasMore: Boolean = false,
         val associationCandidates: List<String> = emptyList(),
     ) : CandidateBarState
@@ -39,6 +40,7 @@ sealed interface CandidateBarState {
             candidates: List<String>,
             candidateComments: List<String>,
             inputText: String,
+            preeditText: String = "",
             isComposing: Boolean,
             associationCandidates: List<String>,
             isShowingRecentClipboard: Boolean,
@@ -58,7 +60,8 @@ sealed interface CandidateBarState {
                         candidates = candidates,
                         comments = candidateComments,
                         inputText = inputText,
-                        hasMore = hasNextPage,
+                        preeditText = preeditText,
+                        hasMore = hasCandidates && hasNextPage,
                         associationCandidates = associationCandidates,
                     )
                 !isComposing && !hasInput && hasAssociations && !hasCandidates ->
@@ -71,7 +74,8 @@ sealed interface CandidateBarState {
                         candidates = candidates,
                         comments = candidateComments,
                         inputText = inputText,
-                        hasMore = hasNextPage,
+                        preeditText = preeditText,
+                        hasMore = hasCandidates && hasNextPage,
                     )
                 else -> Idle
             }

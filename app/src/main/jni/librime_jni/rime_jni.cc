@@ -32,6 +32,7 @@ struct ProcessResult {
     bool processed;
     std::string committedText;
     std::string inputText;
+    std::string preeditText;
     std::vector<std::pair<std::string, std::string>> candidates;
     bool isAsciiMode;
     bool hasNextPage;
@@ -181,25 +182,30 @@ public:
             rime->free_commit(&commit);
         }
 
+    RIME_STRUCT(RimeContext, context);
+    if (rime->get_context(session_id_, &context)) {
         const char* input = rime->get_input(session_id_);
         result.inputText = input ? input : "";
-
-        RIME_STRUCT(RimeContext, context);
-        if (rime->get_context(session_id_, &context)) {
-            if (context.menu.num_candidates > 0) {
-                for (int i = 0; i < context.menu.num_candidates; ++i) {
-                    const char* text = context.menu.candidates[i].text;
-                    const char* comment = context.menu.candidates[i].comment;
-                    result.candidates.push_back(std::make_pair(
-                        text ? text : "",
-                        comment ? comment : ""
-                    ));
-                }
+        result.preeditText = context.composition.preedit ?
+            context.composition.preedit : "";
+        if (context.menu.num_candidates > 0) {
+            for (int i = 0; i < context.menu.num_candidates; ++i) {
+                const char* text = context.menu.candidates[i].text;
+                const char* comment = context.menu.candidates[i].comment;
+                result.candidates.push_back(std::make_pair(
+                    text ? text : "",
+                    comment ? comment : ""
+                ));
             }
-            result.hasNextPage = !context.menu.is_last_page;
-            result.hasPrevPage = context.menu.page_no > 0;
-            rime->free_context(&context);
         }
+        result.hasNextPage = !context.menu.is_last_page;
+        result.hasPrevPage = context.menu.page_no > 0;
+        rime->free_context(&context);
+    } else {
+        const char* input = rime->get_input(session_id_);
+        result.inputText = input ? input : "";
+        result.preeditText = "";
+    }
 
         RIME_STRUCT(RimeStatus, status);
         if (rime->get_status(session_id_, &status)) {
@@ -593,6 +599,25 @@ public:
         }
     }
 
+    void setOption(const char* option, Bool value) {
+        if (!rime || !session_id_) {
+            LOGE("setOption: rime or session not available");
+            return;
+        }
+        rime->set_option(session_id_, option, value);
+        LOGI("setOption: %s = %s", option, value ? "true" : "false");
+    }
+
+    Bool getOption(const char* option) {
+        if (!rime || !session_id_) {
+            LOGE("getOption: rime or session not available");
+            return false;
+        }
+        Bool result = rime->get_option(session_id_, option);
+        LOGD("getOption: %s = %s", option, result ? "true" : "false");
+        return result;
+    }
+
     void destroy() {
         if (rime) {
             if (session_id_) {
@@ -629,7 +654,7 @@ static void ensureJniCache(JNIEnv* env) {
         jclass cls = env->FindClass("com/kingzcheung/xime/rime/RimeProcessResult");
         gRimeProcessResultClass = (jclass)env->NewGlobalRef(cls);
         gRimeProcessResultCtor = env->GetMethodID(gRimeProcessResultClass, "<init>",
-            "(ZLjava/lang/String;Ljava/lang/String;[Lcom/kingzcheung/xime/rime/RimeCandidate;ZZZ)V");
+            "(ZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;[Lcom/kingzcheung/xime/rime/RimeCandidate;ZZZ)V");
         env->DeleteLocalRef(cls);
     }
 }
@@ -726,11 +751,13 @@ Java_com_kingzcheung_xime_rime_RimeEngine_nativeProcessKeyAndGetResult(
 
     jstring jCommitted = env->NewStringUTF(result.committedText.c_str());
     jstring jInput = env->NewStringUTF(result.inputText.c_str());
+    jstring jPreedit = env->NewStringUTF(result.preeditText.c_str());
 
     jobject jResult = env->NewObject(gRimeProcessResultClass, gRimeProcessResultCtor,
         result.processed ? JNI_TRUE : JNI_FALSE,
         jCommitted,
         jInput,
+        jPreedit,
         candidateArray,
         result.isAsciiMode ? JNI_TRUE : JNI_FALSE,
         result.hasNextPage ? JNI_TRUE : JNI_FALSE,
@@ -738,6 +765,7 @@ Java_com_kingzcheung_xime_rime_RimeEngine_nativeProcessKeyAndGetResult(
 
     env->DeleteLocalRef(jCommitted);
     env->DeleteLocalRef(jInput);
+    env->DeleteLocalRef(jPreedit);
     env->DeleteLocalRef(candidateArray);
 
     return jResult;
@@ -768,11 +796,13 @@ Java_com_kingzcheung_xime_rime_RimeEngine_nativeGetProcessResult(
 
     jstring jCommitted = env->NewStringUTF(result.committedText.c_str());
     jstring jInput = env->NewStringUTF(result.inputText.c_str());
+    jstring jPreedit = env->NewStringUTF(result.preeditText.c_str());
 
     jobject jResult = env->NewObject(gRimeProcessResultClass, gRimeProcessResultCtor,
         result.processed ? JNI_TRUE : JNI_FALSE,
         jCommitted,
         jInput,
+        jPreedit,
         candidateArray,
         result.isAsciiMode ? JNI_TRUE : JNI_FALSE,
         result.hasNextPage ? JNI_TRUE : JNI_FALSE,
@@ -780,6 +810,7 @@ Java_com_kingzcheung_xime_rime_RimeEngine_nativeGetProcessResult(
 
     env->DeleteLocalRef(jCommitted);
     env->DeleteLocalRef(jInput);
+    env->DeleteLocalRef(jPreedit);
     env->DeleteLocalRef(candidateArray);
 
     return jResult;
@@ -962,6 +993,34 @@ Java_com_kingzcheung_xime_rime_RimeEngine_nativeGetAvailableSchemas(
     }
     
     return result;
+}
+
+// 设置 Rime 选项
+JNIEXPORT void JNICALL
+Java_com_kingzcheung_xime_rime_RimeEngine_nativeSetOption(
+    JNIEnv* env,
+    jobject thiz,
+    jstring option,
+    jboolean value
+) {
+    const char* option_ptr = env->GetStringUTFChars(option, nullptr);
+    if (!option_ptr) return;
+    Rime::Instance().setOption(option_ptr, value == JNI_TRUE);
+    env->ReleaseStringUTFChars(option, option_ptr);
+}
+
+// 读取 Rime 选项
+JNIEXPORT jboolean JNICALL
+Java_com_kingzcheung_xime_rime_RimeEngine_nativeGetOption(
+    JNIEnv* env,
+    jobject thiz,
+    jstring option
+) {
+    const char* option_ptr = env->GetStringUTFChars(option, nullptr);
+    if (!option_ptr) return JNI_FALSE;
+    Bool result = Rime::Instance().getOption(option_ptr);
+    env->ReleaseStringUTFChars(option, option_ptr);
+    return result ? JNI_TRUE : JNI_FALSE;
 }
 
 // 销毁引擎

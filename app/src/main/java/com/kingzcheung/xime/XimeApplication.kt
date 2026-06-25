@@ -3,6 +3,7 @@ package com.kingzcheung.xime
 import android.app.Application
 import android.util.Log
 import com.kingzcheung.xime.plugin.ExtensionManager
+import com.kingzcheung.xime.util.FileLogger
 import com.kingzcheung.xime.plugin.core.runtime.PluginManager
 import com.kingzcheung.xime.rime.RimeConfigHelper
 import com.kingzcheung.xime.rime.RimeEngine
@@ -24,7 +25,18 @@ class XimeApplication : Application() {
     
     override fun onCreate() {
         super.onCreate()
-        
+
+        FileLogger.init(this)
+        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            try {
+                FileLogger.e("CrashHandler", "Uncaught exception on thread: ${thread.name}", throwable)
+                FileLogger.flush()
+            } catch (_: Exception) {
+            }
+            defaultHandler?.uncaughtException(thread, throwable)
+        }
+
         Log.d(TAG, "Initializing PluginManager...")
         PluginManager.initialize(this, HOST_PROVIDER_AUTHORITY) {
             Log.d(TAG, "PluginManager onSetup callback executing...")

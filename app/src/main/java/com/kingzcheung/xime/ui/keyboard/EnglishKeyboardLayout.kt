@@ -40,6 +40,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.kingzcheung.xime.keyboard.KeyboardDimensions
 import com.kingzcheung.xime.util.CharInfo
 
 /**
@@ -63,6 +64,7 @@ fun EnglishKeyboardLayout(
     modifier: Modifier = Modifier,
     onKeyPressDown: ((String) -> Unit)? = null,
 ) {
+    val suppressCursorMove = LocalSuppressCursorMove.current
     val row1 = listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p")
     val row2 = listOf("a", "s", "d", "f", "g", "h", "j", "k", "l")
     val row3 = listOf("z", "x", "c", "v", "b", "n", "m")
@@ -133,10 +135,11 @@ fun EnglishKeyboardLayout(
                     .fillMaxWidth()
                     .fillMaxHeight()
                     .background(keyboardBackgroundColor)
-                    .padding(vertical = 8.dp, horizontal = 4.dp)
+                    .padding(start = 4.dp, end = 4.dp, bottom = 8.dp)
             ) {
                 Column(
                     modifier = Modifier.fillMaxWidth().weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(KeyboardDimensions.RowSpacing),
                 ) {
                     // 第一行
                     Box(modifier = Modifier.weight(1f)) {
@@ -196,7 +199,7 @@ fun EnglishKeyboardLayout(
                         }
                     }
 
-                    // 第三行 — 对齐 KeyboardLayout 的权重 (1.2f)
+                    // 第三行 — 对齐 KeyboardLayout 的权重 (1.4f + 7f + 1.4f)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -209,32 +212,36 @@ fun EnglishKeyboardLayout(
                             onClick = { onKeyPress("shift") },
                             backgroundColor = specialKeyBackgroundColor,
                             iconColor = keyTextColor,
-                            modifier = Modifier.width(40.dp).fillMaxHeight(),
+                            modifier = Modifier.weight(1.4f).fillMaxHeight(),
                             isHighlighted = isShifted,
                             onPress = { onKeyPressDown?.invoke("shift") },
                             shadowEnabled = shadowEnabled,
                             shadowElevation = shadowElevation,
                             shadowShapeRadius = shadowShapeRadius,
                         )
-                        row3.forEach { key ->
-                            val swipeText = swipeSymbols[key]
-                            val longPressItems = listOfNotNull(key.lowercase(), swipeText, key.uppercase())
-                            SwipeableKeyButton(
-                                text = if (isShifted) key.uppercase() else key,
-                                onClick = { onKeyPress(if (isShifted) key.uppercase() else key) },
-                                backgroundColor = keyBackgroundColor,
-                                textColor = keyTextColor,
-                                modifier = Modifier.weight(1f),
-                                swipeText = swipeText,
-                                onSwipe = if (swipeText != null) onKeyPress else null,
-                                onPress = { onKeyPressDown?.invoke(key) },
-                                onSwipeStateChange = { state, bounds -> processSwipeState(state, bounds) },
-                                longPressItems = longPressItems,
-                                onLongPressSelect = { selected -> onKeyPress(selected) },
-                                shadowEnabled = shadowEnabled,
-                                shadowElevation = shadowElevation,
-                                shadowShapeRadius = shadowShapeRadius,
-                            )
+                        Row(
+                            modifier = Modifier.weight(7f).fillMaxHeight().background(keyboardBackgroundColor),
+                        ) {
+                            row3.forEach { key ->
+                                val swipeText = swipeSymbols[key]
+                                val longPressItems = listOfNotNull(key.lowercase(), swipeText, key.uppercase())
+                                SwipeableKeyButton(
+                                    text = if (isShifted) key.uppercase() else key,
+                                    onClick = { onKeyPress(if (isShifted) key.uppercase() else key) },
+                                    backgroundColor = keyBackgroundColor,
+                                    textColor = keyTextColor,
+                                    modifier = Modifier.weight(1f),
+                                    swipeText = swipeText,
+                                    onSwipe = if (swipeText != null) onKeyPress else null,
+                                    onPress = { onKeyPressDown?.invoke(key) },
+                                    onSwipeStateChange = { state, bounds -> processSwipeState(state, bounds) },
+                                    longPressItems = longPressItems,
+                                    onLongPressSelect = { selected -> onKeyPress(selected) },
+                                    shadowEnabled = shadowEnabled,
+                                    shadowElevation = shadowElevation,
+                                    shadowShapeRadius = shadowShapeRadius,
+                                )
+                            }
                         }
                         // 退格键 — 对齐 KeyboardLayout 功能：长按连续删除、上滑清空等
                         SwipeableIconKeyButton(
@@ -242,7 +249,7 @@ fun EnglishKeyboardLayout(
                             onClick = { onKeyPress("delete") },
                             backgroundColor = specialKeyBackgroundColor,
                             iconColor = keyTextColor,
-                            modifier = Modifier.width(48.dp).fillMaxHeight(),
+                            modifier = Modifier.weight(1.4f).fillMaxHeight(),
                             swipeText = "清空",
                             onSwipe = { onKeyPress("clear_composition") },
                             onLongClick = { onKeyPress("delete") },
@@ -251,6 +258,7 @@ fun EnglishKeyboardLayout(
                             swipeDownLabel = "下滑撤回",
                             onSwipeUp = { onKeyPress("clear_all") },
                             onSwipeDown = { onKeyPress("undo_clear") },
+                            onSwipeLeft = { suppressCursorMove.value = true; onKeyPress("clear_composition") },
                             onSwipeStateChange = { state, bounds -> processSwipeState(state, bounds) },
                             shadowEnabled = shadowEnabled,
                             shadowElevation = shadowElevation,

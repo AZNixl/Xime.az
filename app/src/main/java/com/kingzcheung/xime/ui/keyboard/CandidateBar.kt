@@ -69,6 +69,7 @@ data class CandidateBarCallbacks(
     val onBack: (() -> Unit)? = null,
     val onHideKeyboard: (() -> Unit)? = null,
     val onShowMoreCandidates: (() -> Unit)? = null,
+    val onClearAssociation: (() -> Unit)? = null,
     val onInputTextClick: (() -> Unit)? = null,
     val onAssociationSelect: ((Int) -> Unit)? = null
 )
@@ -82,9 +83,10 @@ fun CandidateBar(
     callbacks: CandidateBarCallbacks,
     inlineSuggestions: List<*> = listOf<Any>(),
     @SuppressLint("ModifierParameter") modifier: Modifier = Modifier,
+    isFloatingMode: Boolean = false,
 ) {
     val configuration = LocalConfiguration.current
-    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    val isLandscape = !isFloatingMode && configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
     val horizontalPadding = if (isLandscape) 50.dp else 8.dp
     val context = LocalContext.current
     val showComments = SettingsPreferences.showCandidateComments(context)
@@ -98,8 +100,9 @@ fun CandidateBar(
     val rowPaddingPx = with(density) { 16.dp.toPx() }
     val rightSidePx = with(density) {
         val moreBtn = if (callbacks.onShowMoreCandidates != null) 38.dp.toPx() else 0f
+        val clearBtn = if (callbacks.onClearAssociation != null) 38.dp.toPx() else 0f
         val hideBtn = if (callbacks.onHideKeyboard != null) 28.dp.toPx() else 0f
-        rowPaddingPx + moreBtn + hideBtn + 8.dp.toPx()
+        rowPaddingPx + maxOf(moreBtn, clearBtn) + hideBtn + 8.dp.toPx()
     }
 
     val displayCandidates: List<String>
@@ -148,9 +151,7 @@ fun CandidateBar(
                             result.add(c)
                         } else break
                     }
-                    if (result.isEmpty() && s.associationCandidates.isNotEmpty()) {
-                        listOf(s.associationCandidates.first())
-                    } else result
+                    result
                 }
             }
         }
@@ -188,15 +189,17 @@ fun CandidateBar(
 
     Column(
         modifier = modifier
-            .padding(vertical = 0.dp)
             .fillMaxWidth()
             .height(50.dp)
             .background(visuals.backgroundColor)
-            .padding(horizontal = horizontalPadding)
+            .padding(horizontal = horizontalPadding),
+        verticalArrangement = Arrangement.Center
     ) {
-        if (showInputTextRow) {
-            val inputText = (state as? CandidateBarState.ChineseCandidates)?.inputText ?: ""
-            val showInputText = inputText.isNotEmpty()
+        val displayText = (state as? CandidateBarState.ChineseCandidates)?.preeditText
+            ?: (state as? CandidateBarState.ChineseCandidates)?.inputText ?: ""
+        val showInputText = showInputTextRow && displayText.isNotEmpty()
+
+        if (showInputText) {
             val inputTextInteractionSource = remember { MutableInteractionSource() }
             val isInputTextPressed by inputTextInteractionSource.collectIsPressedAsState()
 
@@ -208,34 +211,31 @@ fun CandidateBar(
                 contentAlignment = Alignment.CenterStart,
 
             ) {
-                if (showInputText) {
-                    Text(
-                        text = inputText,
-                        color = visuals.textColor.copy(alpha = 0.8f),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Normal,
-                        lineHeight = 16.sp,
-                        maxLines = 1,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(
-                                if (isInputTextPressed && callbacks.onInputTextClick != null)
-                                    (if (visuals.isDarkTheme) Color.White.copy(alpha = 0.15f) else Color.Black.copy(
-                                        alpha = 0.1f
-                                    ))
-                                else
-                                    Color.Transparent
-                            )
-                            .padding(horizontal = 0.dp)
-                    )
-                }
+                Text(
+                    text = displayText,
+                    color = visuals.textColor.copy(alpha = 0.8f),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Normal,
+                    lineHeight = 16.sp,
+                    maxLines = 1,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(
+                            if (isInputTextPressed && callbacks.onInputTextClick != null)
+                                (if (visuals.isDarkTheme) Color.White.copy(alpha = 0.15f) else Color.Black.copy(
+                                    alpha = 0.1f
+                                ))
+                            else
+                                Color.Transparent
+                        )
+                        .padding(horizontal = 0.dp)
+                )
             }
         }
 
         Row(
             modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f).padding(top = 2.dp),
+                .fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (showLeftIcon) {
@@ -355,7 +355,7 @@ fun CandidateBar(
                             onClick = { callbacks.onAssociationSelect?.invoke(index) },
                             textColor = visuals.textColor,
                             comment = "",
-                            isSelected = index == 0 && displayCandidates.isEmpty(),
+                            isSelected = false,
                             accentColor = visuals.accentColor
                         )
                     }
@@ -447,6 +447,42 @@ fun CandidateBar(
                                 modifier = Modifier.size(24.dp)
                             )
                         }
+                    }
+                }
+                displayAssociation.isNotEmpty() && callbacks.onClearAssociation != null -> {
+                    val clearInteractionSource = remember { MutableInteractionSource() }
+                    val isClearPressed by clearInteractionSource.collectIsPressedAsState()
+
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Box(
+                        modifier = Modifier
+                            .width(1.dp)
+                            .height(28.dp)
+                            .background(visuals.dividerColor).padding(end = 1.dp)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .width(30.dp)
+                            .height(24.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(
+                                if (isClearPressed) (if (visuals.isDarkTheme) Color.White.copy(alpha = 0.15f) else Color.Black.copy(
+                                    alpha = 0.1f
+                                ))
+                                else Color.Transparent
+                            )
+                            .clickable(
+                                interactionSource = clearInteractionSource,
+                                indication = null,
+                                onClick = { callbacks.onClearAssociation() }
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "清空",
+                            color = if (isClearPressed) visuals.textColor.copy(alpha = 0.6f) else visuals.textColor,
+                            fontSize = 11.sp
+                        )
                     }
                 }
                 hasAnyMore && callbacks.onShowMoreCandidates != null -> {

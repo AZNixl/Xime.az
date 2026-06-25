@@ -9,12 +9,12 @@ import android.os.Looper
 import android.util.Log
 import android.view.KeyEvent
 import android.view.View
-import android.os.Bundle
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputContentInfo
 import android.view.inputmethod.InlineSuggestionsRequest
 import android.view.inputmethod.InlineSuggestionsResponse
+import android.os.Bundle
 import androidx.annotation.RequiresApi
 import android.widget.FrameLayout
 import android.widget.Toast
@@ -25,8 +25,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
@@ -35,6 +39,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -44,6 +49,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalDensity
 import com.kingzcheung.xime.ui.keyboard.LocalStretchFactor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -58,12 +64,19 @@ import androidx.lifecycle.LifecycleOwner
 import kotlinx.coroutines.asCoroutineDispatcher
 import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.setViewTreeLifecycleOwner
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModelStoreOwner
 import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.kingzcheung.xime.MainActivity
 import com.kingzcheung.xime.association.AssociationManager
+import com.kingzcheung.xime.keyboard.KeyboardRoute
+import com.kingzcheung.xime.ui.keyboard.KeyboardCallbacks
+import com.kingzcheung.xime.viewmodel.KeyboardUiState
+import com.kingzcheung.xime.viewmodel.KeyboardViewModel
 import com.kingzcheung.xime.association.AssociationService
 import com.kingzcheung.xime.clipboard.ClipboardManager
 import com.kingzcheung.xime.plugin.ExtensionManager
@@ -75,6 +88,7 @@ import com.kingzcheung.xime.settings.SchemaManager
 import com.kingzcheung.xime.settings.SettingsPreferences
 import com.kingzcheung.xime.ui.keyboard.KeyboardView
 import com.kingzcheung.xime.ui.theme.KeyboardThemes
+import kotlin.math.roundToInt
 import com.kingzcheung.xime.settings.KeysConfigHelper
 import com.kingzcheung.xime.ui.theme.XimeTheme
 import com.kingzcheung.xime.util.FileLogger
@@ -94,7 +108,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileInputStream
 
-class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateRegistryOwner, ActionExecutor {
+class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateRegistryOwner, ViewModelStoreOwner, ActionExecutor {
 
     companion object {
         private const val TAG = "XimeInputMethodService"
@@ -156,10 +170,22 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     
     private var isTrackingVoiceButtons = false
     private var voiceRecordingStarted = false
+    private var pendingVoiceAction: (() -> Unit)? = null
     private var lastClearedText: String = ""
     private var isChineseMode = true
+    private var currentEffectiveKeyboardHeight: Int = 0
     
     private val calculatorEngine = com.kingzcheung.xime.calculator.CalculatorEngine()
+
+    private val _viewModelStore = ViewModelStore()
+    override val viewModelStore: ViewModelStore get() = _viewModelStore
+
+    private val keyboardViewModel: KeyboardViewModel by lazy {
+        ViewModelProvider(
+            _viewModelStore,
+            androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory(applicationContext as android.app.Application)
+        ).get(KeyboardViewModel::class.java)
+    }
     
     private val predictionManager = PredictionManager(
         context = this,
@@ -175,7 +201,22 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         context = this,
         onStateChanged = { newState -> uiState.value = newState },
         getState = { uiState.value },
-        getInputConnection = { currentInputConnection }
+        getInputConnection = { currentInputConnection },
+        onVoiceComplete = {
+            val action = pendingVoiceAction
+            pendingVoiceAction = null
+            action?.invoke()
+
+            uiState.value = uiState.value.copy(
+                isVoiceMode = false,
+                voiceButtonState = VoiceButtonState(),
+                voiceRecognitionState = RecognitionState.IDLE,
+                voiceRecognizedText = "",
+                voiceAmplitude = 0f
+            )
+            isTrackingVoiceButtons = false
+            keyboardViewModel.setRoute(KeyboardRoute.Keyboard)
+        }
     )
     
     private var sharedPrefsListener: android.content.SharedPreferences.OnSharedPreferenceChangeListener? = null
@@ -183,23 +224,87 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     
     private val feedbackManager = FeedbackManager(this)
     
-    private val inlineSuggestionManager = if (Build.VERSION.SDK_INT >= 30) {
+    private val inlineSuggestionManager = if (Build.VERSION.SDK_INT >= 34) {
         InlineSuggestionManager()
     } else null
     
     private fun loadDarkModePreference() {
         val isLandscape = resources.configuration.screenWidthDp > resources.configuration.screenHeightDp
+        val isFloatingMode = SettingsPreferences.isFloatingMode(this, isLandscape)
+        SettingsPreferences.setFloatingMode(this, isFloatingMode, !isLandscape)
+        val loadedX = SettingsPreferences.getFloatingOffsetX(this, isLandscape)
+        val loadedY = SettingsPreferences.getFloatingOffsetY(this, isLandscape)
+        SettingsPreferences.setFloatingOffsetX(this, loadedX, !isLandscape)
+        SettingsPreferences.setFloatingOffsetY(this, loadedY, !isLandscape)
+        val screenW = resources.configuration.screenWidthDp
+        val screenH = resources.configuration.screenHeightDp
+        val portraitWidth = minOf(screenW, screenH)
+        val cardWidth = (portraitWidth * 0.85f).roundToInt()
+        val halfMargin = maxOf(0, (screenW - cardWidth) / 2)
+        val kbH = SettingsPreferences.getKeyboardHeightDp(this, isLandscape)
+        val cappedKbH = kbH.coerceAtMost((screenH * 8) / 10)
+        val cardH = (cappedKbH * 0.85f).roundToInt() + 18
+        val navBarDp = tryGetNavBarHeightDp()
+        val minY = if (isFloatingMode) navBarDp else 0
+        val effectiveH = if (isFloatingMode) screenH - tryGetStatusBarHeightDp() else screenH
+        val maxY = maxOf(minY, effectiveH - cardH - 20)
+        val clampedX = loadedX.coerceIn(-halfMargin, halfMargin)
+        val clampedY = loadedY.coerceIn(minY, maxY)
+        if (clampedX != loadedX || clampedY != loadedY) {
+            SettingsPreferences.setFloatingOffsetX(this, clampedX, isLandscape)
+            SettingsPreferences.setFloatingOffsetY(this, clampedY, isLandscape)
+        }
         uiState.value = uiState.value.copy(
             darkMode = SettingsPreferences.getDarkMode(this),
             themeId = SettingsPreferences.getKeyboardTheme(this),
-            showBottomButtons = SettingsPreferences.showBottomButtons(this),
             isSttEnabled = SettingsPreferences.isSttEnabled(this@XimeInputMethodService),
             keyboardHeightDp = SettingsPreferences.getKeyboardHeightDp(this, isLandscape),
             keyboardBottomPaddingDp = SettingsPreferences.getKeyboardBottomPaddingDp(this),
-            toolbarButtons = SettingsPreferences.getToolbarButtons(this)
+            toolbarButtons = SettingsPreferences.getToolbarButtons(this),
+            isFloatingMode = isFloatingMode,
+            floatingOffsetX = clampedX,
+            floatingOffsetY = clampedY,
         )
     }
     
+    private fun tryGetNavBarHeightDp(): Int {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val decorView = window.window?.decorView
+                if (decorView != null) {
+                    val insets = decorView.rootWindowInsets
+                    if (insets != null) {
+                        val px = insets.getInsetsIgnoringVisibility(
+                            android.view.WindowInsets.Type.navigationBars()
+                        ).bottom
+                        if (px > 0) return (px / resources.displayMetrics.density).roundToInt()
+                    }
+                }
+            }
+            val resId = resources.getIdentifier("navigation_bar_height", "dimen", "android")
+            if (resId > 0) (resources.getDimensionPixelSize(resId) / resources.displayMetrics.density).roundToInt() else 0
+        } catch (e: Exception) { 0 }
+    }
+
+    private fun tryGetStatusBarHeightDp(): Int {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val decorView = window.window?.decorView
+                if (decorView != null) {
+                    val insets = decorView.rootWindowInsets
+                    if (insets != null) {
+                        val px = insets.getInsetsIgnoringVisibility(
+                            android.view.WindowInsets.Type.statusBars()
+                        ).top
+                        if (px > 0) return (px / resources.displayMetrics.density).roundToInt()
+                    }
+                }
+            }
+            val resId = resources.getIdentifier("status_bar_height", "dimen", "android")
+            if (resId > 0) (resources.getDimensionPixelSize(resId) / resources.displayMetrics.density).roundToInt() else 0
+        } catch (e: Exception) { 0 }
+    }
+
     private fun registerSharedPrefsListener() {
         val prefs = SettingsPreferences.getPrefsPublic(this)
         sharedPrefsListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
@@ -207,6 +312,11 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                 "dark_mode", "keyboard_theme", "show_bottom_buttons", "keyboard_height_dp", "keyboard_bottom_padding_dp" -> {
                     loadDarkModePreference()
                     Log.d(TAG, "Settings changed: $key, updated UI state")
+                }
+                "floating_mode", "floating_mode_landscape" -> {
+                    loadDarkModePreference()
+                    applyFloatingWindowBackground()
+                    Log.d(TAG, "Floating mode changed: $key")
                 }
                 "stt_enabled" -> {
                     uiState.value = uiState.value.copy(isSttEnabled = SettingsPreferences.isSttEnabled(this@XimeInputMethodService))
@@ -499,8 +609,8 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             uiStateProvider = { uiState.value },
             onUiStateChanged = { newState -> uiState.value = newState },
             onPerformVibration = { feedbackManager.performVibration() },
-            onPerformUndo = { performUndo() },
-            onPerformSearch = { performSearch() },
+            onPerformUndo = { pendingVoiceAction = { performUndo() } },
+            onPerformSearch = { pendingVoiceAction = { performSearch() } },
             onStopRecognition = { voiceRecognitionHandler.stopRecognition() },
             isRecording = { voiceRecordingStarted },
             setRecording = { voiceRecordingStarted = it }
@@ -514,15 +624,30 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                 val state = uiState.value
                 val isDarkTheme = isDarkTheme()
                 val screenHeightDp = resources.configuration.screenHeightDp
-                val maxHeightDp = (screenHeightDp * 3) / 5
-                val isLandscape = resources.configuration.screenWidthDp > screenHeightDp
+                val windowVisibleHeightDp = screenHeightDp - tryGetStatusBarHeightDp()
+                val effectiveScreenH = if (state.isFloatingMode) windowVisibleHeightDp else screenHeightDp
+
+                val isLandscape = !state.isFloatingMode && resources.configuration.screenWidthDp > screenHeightDp
                 val orientationHeight = SettingsPreferences.getKeyboardHeightDp(this@XimeInputMethodService, isLandscape)
-                val displayHeight = minOf(orientationHeight, maxHeightDp)
+                val displayHeight = orientationHeight.coerceAtMost((screenHeightDp * 8) / 10)
                 val keyboardHeight = if (state.showKeyboardResize) {
-                    if (isLandscape) (screenHeightDp * 7) / 10 else maxHeightDp + 100
+                    if (isLandscape) (screenHeightDp * 7) / 10 else displayHeight.coerceAtLeast(screenHeightDp / 2)
                 } else {
                     displayHeight
                 }
+                val floatScale = if (state.isFloatingMode) 0.85f else 1f
+                val effectiveKeyboardHeight = (keyboardHeight * floatScale).toInt()
+                val floatingDragBarHeight = if (state.isFloatingMode) 18 else 0
+                val floatingCardContentHeight = effectiveKeyboardHeight + floatingDragBarHeight
+                Log.d(TAG, "ComposeHeight: showResize=${state.showKeyboardResize} orientHeight=$orientationHeight displayHeight=$displayHeight keyboardHeight=$keyboardHeight floatScale=$floatScale effectiveHeight=$effectiveKeyboardHeight isFloatingMode=${state.isFloatingMode} isLandscape=$isLandscape")
+                
+                val density = LocalDensity.current
+                val navBarPx = WindowInsets.navigationBars.getBottom(density)
+                val insetNavBarDp = with(density) { navBarPx.toDp() }
+                val actualNavBarDp = tryGetNavBarHeightDp().coerceAtLeast(if (insetNavBarDp > 0.dp) insetNavBarDp.value.toInt() else 0)
+                val navBarDp = actualNavBarDp.dp
+                val hasNavBar = navBarDp > 0.dp
+                val floatingMinY = actualNavBarDp
                 
                 XimeTheme(darkTheme = isDarkTheme, themeId = state.themeId) {
                     Box(
@@ -544,13 +669,24 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                             .height(
                                 if (state.isCompact) {
                                     if (cand.isComposing) 110.dp else 1.dp
-                                } else if (state.showKeyboardResize) (maxHeightDp + 100).dp
-                                else (keyboardHeight + state.keyboardBottomPaddingDp).dp
+                                } else if (state.isFloatingMode) effectiveScreenH.dp
+                                else if (state.showKeyboardResize) ((screenHeightDp * 7) / 10 + 100).dp
+                                else (keyboardHeight + state.keyboardBottomPaddingDp).dp + (if (hasNavBar) navBarDp else 0.dp)
                             )
                     ) {
+                        // Sync FrameLayout height with Compose content height
+                        val contentHeight = if (state.showKeyboardResize) state.resizePreviewHeightDp else floatingCardContentHeight
+                        val totalDp = if (state.isFloatingMode) effectiveScreenH
+                            else contentHeight + state.keyboardBottomPaddingDp + actualNavBarDp
+                        Log.d(TAG, "HeightSync: mode=${if (state.showKeyboardResize) "resize" else "normal"} height=$contentHeight navBarDp=${navBarDp.value} padding=${state.keyboardBottomPaddingDp} hasNavBar=$hasNavBar totalDp=$totalDp")
+                        SideEffect {
+                            keyboardContainer.updateHeight(totalDp)
+                            currentEffectiveKeyboardHeight = if (state.isFloatingMode) floatingCardContentHeight + 48 else effectiveKeyboardHeight
+                        }
                         if (state.isCompact && cand.isComposing) {
                             FloatingCandidateBar(
                                 inputText = cand.inputText,
+                                preeditText = cand.preeditText,
                                 candidates = cand.candidates,
                                 candidateComments = cand.candidateComments,
                                 isComposing = cand.isComposing,
@@ -558,301 +694,295 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                 onDrag = { dx, dy -> moveFloatingWindow(dx, dy) }
                             )
                         } else {
-                        Surface(
+                        val kbColors = KeysConfigHelper.getKeyboardColors()
+                        val longToColor: (Long) -> androidx.compose.ui.graphics.Color = { androidx.compose.ui.graphics.Color(0xFF000000 or it) }
+                        val keyboardBgColor = if (isDarkTheme) longToColor(kbColors.keyboardBgColorDark) else longToColor(kbColors.keyboardBgColor)
+                        Column(
                             modifier = Modifier
                                 .align(androidx.compose.ui.Alignment.BottomCenter)
                                 .fillMaxWidth()
-                                .padding(bottom = 0.dp)
-                                .height(if (state.showKeyboardResize) (state.resizePreviewHeightDp + state.resizePreviewBottomPaddingDp).dp else (keyboardHeight + state.keyboardBottomPaddingDp).dp),
-                            color = MaterialTheme.colorScheme.surface
+                            .then(if (!state.isFloatingMode) Modifier.background(keyboardBgColor) else Modifier)
+                    ) {
+                        Box(
+                            modifier = Modifier
+
+                                .fillMaxWidth()
+                                .height(if (state.showKeyboardResize) (state.resizePreviewHeightDp + state.keyboardBottomPaddingDp).dp else (floatingCardContentHeight + state.keyboardBottomPaddingDp).dp)
                         ) {
                         CompositionLocalProvider(LocalStretchFactor provides state.stretchFactor) {
-                            KeyboardView(
+                            val kbState = KeyboardUiState(
                                 candidates = cand.candidates,
+                                candidateComments = cand.candidateComments,
                                 inputText = cand.inputText,
+                                preeditText = cand.preeditText,
                                 isComposing = cand.isComposing,
+                                associationCandidates = if (cand.pendingEnglishText.isNotEmpty()) {
+                                    listOf(cand.pendingEnglishText) + cand.associationCandidates
+                                } else {
+                                    cand.associationCandidates
+                                },
+                                hasNextPage = cand.hasNextPage,
+                                hasPrevPage = cand.hasPrevPage,
                                 isAsciiMode = state.isAsciiMode,
                                 schemaName = state.schemaName,
                                 currentSchemaId = state.currentSchemaId,
                                 schemas = state.schemas,
                                 enterKeyText = state.enterKeyText,
-                            isDarkTheme = isDarkTheme,
-                            darkMode = state.darkMode,
-                            themeId = state.themeId,
-                            showBottomButtons = state.showBottomButtons,
-                            keyboardHeightDp = keyboardHeight,
-                            keyboardBottomPaddingDp = state.keyboardBottomPaddingDp,
-                             clipboardItems = clipboardItemsState.value,
-                             quickSendItems = quickSendItemsState.value,
-                             recentClipboardItems = recentClipboardItemsState.value,
-                            candidateComments = cand.candidateComments,
-                             isVoiceMode = state.isVoiceMode,
-                             isSttEnabled = state.isSttEnabled,
-                             voiceBottomActive = state.voiceButtonState.bottomActive,
-                            voiceLeftActive = state.voiceButtonState.leftActive,
-                            voiceRightActive = state.voiceButtonState.rightActive,
-                            voicePluginName = state.voicePluginName,
-                            voiceRecognitionState = state.voiceRecognitionState,
-                            voiceRecognizedText = state.voiceRecognizedText,
-                            voiceAmplitude = state.voiceAmplitude,
-                            uiStateProvider = { uiState.value },
-                            candidateStateProvider = { candidateState.value },
-                            onKeyPress = remember { { key: String, isShifted: Boolean ->
-                                handleKeyPress(key, isShifted)
-                            } },
-                            onKeyPressDown = remember { { key: String ->
-                                feedbackManager.performKeyPressDownEffect(key)
-                                if (key == "space" && uiState.value.isSttEnabled) {
-                                    voiceRecognitionHandler.startDelayedPreStart()
-                                }
-                            } },
-                            onCursorMove = remember { { direction: Int ->
-                                val ic = currentInputConnection
-                                if (ic != null) {
-                                    val textBefore = ic.getTextBeforeCursor(Int.MAX_VALUE, 0)
-                                    val textAfter = ic.getTextAfterCursor(Int.MAX_VALUE, 0)
-                                    val selStart = textBefore?.length ?: 0
-                                    val totalLen = selStart + (textAfter?.length ?: 0)
-                                    val newSel = (selStart + direction).coerceIn(0, totalLen)
-                                    ic.setSelection(newSel, newSel)
-                                }
-                            } },
-                            onGestureAction = remember { { action, value ->
-                                action.execute(this@XimeInputMethodService, value)
-                            } },
-                            onCandidateSelect = remember { { index: Int ->
-                                selectCandidate(index)
-                            } },
-                            onToggleDarkMode = remember { {
-                                toggleDarkMode()
-                            } },
-                            onClipboard = {
-                                Log.d(TAG, "Clipboard clicked")
-                            },
-                            onClipboardSelect = { text ->
-                                selectClipboardItem(text)
-                            },
-                            onCommitText = { text ->
-                                commitClipboardText(text)
-                            },
-                            onDeleteText = { count ->
-                                deleteClipboardChars(count)
-                            },
-                            onClipboardRemove = { id ->
-                                removeClipboardItem(id)
-                            },
-                            onClipboardSplitWords = { id ->
-                                splitClipboardWords(id)
-                            },
-                            onAddToQuickSend = { id ->
-                                addToQuickSend(id)
-                            },
-                            onAddQuickSendText = { text ->
-                                clipboardManager.addQuickSendItem(text)
-                            },
-                            onRemoveFromQuickSend = { id ->
-                                removeFromQuickSend(id)
-                            },
-                            onQuickSend = {
-                                Log.d(TAG, "QuickSend clicked")
-                            },
-                            onKeyboardResize = {
-                                val config = resources.configuration
-                                val isLandscape = config.screenWidthDp > config.screenHeightDp
-                                val currentHeight = SettingsPreferences.getKeyboardHeightDp(this@XimeInputMethodService, isLandscape)
-                                val currentPadding = uiState.value.keyboardBottomPaddingDp
-                                val maxHeightDp = (config.screenHeightDp * 3) / 5
-                                val displayHeight = minOf(currentHeight, maxHeightDp)
-                                uiState.value = uiState.value.copy(
-                                    showKeyboardResize = true,
-                                    keyboardHeightDp = currentHeight,
-                                    resizePreviewHeightDp = displayHeight,
-                                    resizePreviewBottomPaddingDp = currentPadding,
-                                    originalKeyboardHeightDp = displayHeight,
-                                    originalKeyboardBottomPaddingDp = currentPadding,
-                                    stretchFactor = ((displayHeight - 126f) / (SettingsPreferences.getDefaultKeyboardHeightDp() - 126f)).coerceAtLeast(0f)
-                                )
-                            },
-                            onReloadConfig = {
-                                reloadConfig()
-                            },
-                            onSettings = {
-                                openSettings()
-                            },
-                            onSwitchSchema = { schemaId ->
-                                switchSchema(schemaId)
-                            },
-                            onHideKeyboard = {
-                                hideKeyboard()
-                            },
-                            onSwitchKeyboard = {
-                                val imm = getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
-                                @Suppress("DEPRECATION")
-                                imm.showInputMethodPicker()
-                            },
-                            onToolbarEditingAction = { action ->
-                                handleToolbarEditingAction(action)
-                            },
-                            associationCandidates = if (cand.pendingEnglishText.isNotEmpty()) {
-                                listOf(cand.pendingEnglishText) + cand.associationCandidates
-                            } else {
-                                cand.associationCandidates
-                            },
-                            onAssociationSelect = { index ->
-                                val cs = candidateState.value
-                                val adjustedCandidates = if (cs.pendingEnglishText.isNotEmpty()) {
-                                    listOf(cs.pendingEnglishText) + cs.associationCandidates
-                                } else {
-                                    cs.associationCandidates
-                                }
-                                
-                                if (index >= 0 && index < adjustedCandidates.size) {
-                                    val text = adjustedCandidates[index]
-                                    val pendingEnglish = cs.pendingEnglishText
-                                    
-                                    if (pendingEnglish.isNotEmpty()) {
-                                        if (index == 0 && text == pendingEnglish) {
-                                            candidateState.value = candidateState.value.copy(
-                                                pendingEnglishText = "",
-                                                associationCandidates = emptyList()
-                                            )
-                                            Log.d(TAG, "Confirmed pending English: '$text'")
+                                isDarkTheme = isDarkTheme,
+                                darkMode = state.darkMode,
+                                themeId = state.themeId,
+                                keyboardHeightDp = effectiveKeyboardHeight,
+                                keyboardBottomPaddingDp = state.keyboardBottomPaddingDp,
+                                clipboardItems = clipboardItemsState.value,
+                                quickSendItems = quickSendItemsState.value,
+                                recentClipboardItems = recentClipboardItemsState.value,
+                                isVoiceMode = state.isVoiceMode,
+                                voiceBottomActive = state.voiceButtonState.bottomActive,
+                                voiceLeftActive = state.voiceButtonState.leftActive,
+                                voiceRightActive = state.voiceButtonState.rightActive,
+                                voicePluginName = state.voicePluginName,
+                                voiceRecognitionState = state.voiceRecognitionState,
+                                voiceRecognizedText = state.voiceRecognizedText,
+                                voiceAmplitude = state.voiceAmplitude,
+                                isSttEnabled = state.isSttEnabled,
+                                toolbarButtons = state.toolbarButtons,
+                                isCalculatorMode = calculatorEngine.isActive(),
+                                inputSessionId = state.inputSessionId,
+                                isShowingRecentClipboard = cand.isShowingRecentClipboard,
+                                isFloatingMode = state.isFloatingMode,
+                                floatingOffsetX = state.floatingOffsetX,
+                                floatingOffsetY = state.floatingOffsetY,
+                                floatingMinOffsetY = actualNavBarDp,
+                            )
+                            val callbacks = remember(actualNavBarDp) {
+                                KeyboardCallbacks(
+                                    onKeyPress = { key, isShifted ->
+                                        handleKeyPress(key, isShifted)
+                                    },
+                                    onKeyPressDown = { key ->
+                                        feedbackManager.performKeyPressDownEffect(key)
+                                        if (key == "space" && uiState.value.isSttEnabled) {
+                                            voiceRecognitionHandler.startDelayedPreStart()
+                                        }
+                                    },
+                                    onCandidateSelect = { index ->
+                                        selectCandidate(index)
+                                    },
+                                    onAssociationSelect = { index ->
+                                        val cs = candidateState.value
+                                        val adjustedCandidates = if (cs.pendingEnglishText.isNotEmpty()) {
+                                            listOf(cs.pendingEnglishText) + cs.associationCandidates
                                         } else {
-                                            currentInputConnection?.deleteSurroundingText(pendingEnglish.length, 0)
-                                            commitText(text)
-                                            candidateState.value = candidateState.value.copy(
-                                                pendingEnglishText = "",
-                                                associationCandidates = emptyList()
-                                            )
-                                            Log.d(TAG, "Replaced '$pendingEnglish' with association: '$text'")
+                                            cs.associationCandidates
                                         }
-                                    } else {
-                                        commitText(text)
-                                        updateUI()
-                                    }
-                                }
-                            },
-                            onPageDown = { pageDown() },
-                            onPageUp = { pageUp() },
-                            onCommitImage = { imagePath ->
-                                val success = commitImage(imagePath)
-                                if (!success) {
-                                    android.widget.Toast.makeText(
-                                        this@XimeInputMethodService,
-                                        "发送失败，已复制到剪贴板",
-                                        android.widget.Toast.LENGTH_SHORT
-                                    ).show()
-                                    clipboardManager.copyImageToSystemClipboard(imagePath)
-                                }
-                            },
-onVoiceModeChange = { enabled ->
-                                Log.d("VoiceButtons", "onVoiceModeChange called: enabled=$enabled")
-                                uiState.value = uiState.value.copy(
-                                    isVoiceMode = enabled,
-                                    voiceButtonState = if (enabled) VoiceButtonState(bottomActive = true) else VoiceButtonState(),
-                                    voiceRecognizedText = ""
+                                        if (index >= 0 && index < adjustedCandidates.size) {
+                                            val text = adjustedCandidates[index]
+                                            val pendingEnglish = cs.pendingEnglishText
+                                            if (pendingEnglish.isNotEmpty()) {
+                                                if (index == 0 && text == pendingEnglish) {
+                                                    candidateState.value = candidateState.value.copy(
+                                                        pendingEnglishText = "",
+                                                        associationCandidates = emptyList()
+                                                    )
+                                                    Log.d(TAG, "Confirmed pending English: '$text'")
+                                                } else {
+                                                    currentInputConnection?.deleteSurroundingText(pendingEnglish.length, 0)
+                                                    commitText(text)
+                                                    candidateState.value = candidateState.value.copy(
+                                                        pendingEnglishText = "",
+                                                        associationCandidates = emptyList()
+                                                    )
+                                                    Log.d(TAG, "Replaced '$pendingEnglish' with association: '$text'")
+                                                }
+                                            } else {
+                                                commitText(text)
+                                                updateUI()
+                                            }
+                                        }
+                                    },
+                                    onClearAssociation = {
+                                        candidateState.value = candidateState.value.copy(associationCandidates = emptyList())
+                                    },
+                                    onToggleDarkMode = { toggleDarkMode() },
+                                    onClipboard = { Log.d(TAG, "Clipboard clicked") },
+                                    onClipboardSelect = { text -> selectClipboardItem(text) },
+                                    onCommitText = { text -> commitClipboardText(text) },
+                                    onDeleteText = { count -> deleteClipboardChars(count) },
+                                    onQuickSend = { Log.d(TAG, "QuickSend clicked") },
+                                    onKeyboardResize = {
+                                        val config = resources.configuration
+                                        val isLandscape = config.screenWidthDp > config.screenHeightDp
+                                        val currentHeight = SettingsPreferences.getKeyboardHeightDp(this@XimeInputMethodService, isLandscape)
+                                        uiState.value = uiState.value.copy(
+                                            showKeyboardResize = true,
+                                            resizePreviewHeightDp = currentHeight,
+                                        )
+                                    },
+                                    onReloadConfig = { reloadConfig() },
+                                    onSettings = { openSettings() },
+                                    onSwitchSchema = { schemaId -> switchSchema(schemaId) },
+                                    onHideKeyboard = { hideKeyboard() },
+                                    onSwitchKeyboard = {
+                                        val imm = getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+                                        @Suppress("DEPRECATION")
+                                        imm.showInputMethodPicker()
+                                    },
+                                    onToolbarEditingAction = { action -> handleToolbarEditingAction(action) },
+                                    onCommitImage = { imagePath ->
+                                        val success = commitImage(imagePath)
+                                        if (!success) {
+                                            android.widget.Toast.makeText(
+                                                this@XimeInputMethodService,
+                                                "发送失败，已复制到剪贴板",
+                                                android.widget.Toast.LENGTH_SHORT
+                                            ).show()
+                                            clipboardManager.copyImageToSystemClipboard(imagePath)
+                                        }
+                                    },
+                                    onVoiceModeChange = { enabled ->
+                                        Log.d("VoiceButtons", "onVoiceModeChange called: enabled=$enabled")
+                                        uiState.value = uiState.value.copy(
+                                            isVoiceMode = enabled,
+                                            voiceButtonState = if (enabled) VoiceButtonState(bottomActive = true) else VoiceButtonState(),
+                                            voiceRecognizedText = ""
+                                        )
+                                        if (enabled) {
+                                            keyboardViewModel.setRoute(KeyboardRoute.Voice)
+                                            feedbackManager.performVibration()
+                                            isTrackingVoiceButtons = true
+                                            keyboardContainer.enableVoiceButtonTracking()
+                                            voiceRecordingStarted = true
+                                            voiceRecognitionHandler.startRecognition()
+                                            Log.d("VoiceButtons", "Speech recognition starting...")
+                                        } else {
+                                            keyboardViewModel.setRoute(KeyboardRoute.Keyboard)
+                                            isTrackingVoiceButtons = false
+                                        }
+                                    },
+                                    onPageDown = { pageDown() },
+                                    onPageUp = { pageUp() },
+                                    onCursorMove = { direction ->
+                                        val ic = currentInputConnection
+                                        if (ic != null) {
+                                            val textBefore = ic.getTextBeforeCursor(Int.MAX_VALUE, 0)
+                                            val textAfter = ic.getTextAfterCursor(Int.MAX_VALUE, 0)
+                                            val selStart = textBefore?.length ?: 0
+                                            val totalLen = selStart + (textAfter?.length ?: 0)
+                                            val newSel = (selStart + direction).coerceIn(0, totalLen)
+                                            ic.setSelection(newSel, newSel)
+                                        }
+                                    },
+                                    onGestureAction = { action, value ->
+                                        action.execute(this@XimeInputMethodService, value)
+                                    },
+                                    onUpdateToolbarButtons = { buttons ->
+                                        SettingsPreferences.setToolbarButtons(this@XimeInputMethodService, buttons)
+                                        uiState.value = uiState.value.copy(toolbarButtons = buttons)
+                                    },
+                                    onKeyboardModeChange = { chineseMode ->
+                                        if (isChineseMode != chineseMode) {
+                                            isChineseMode = chineseMode
+                                            if (!chineseMode) {
+                                                candidateState.value = candidateState.value.copy(associationCandidates = emptyList())
+                                            }
+                                        }
+                                    },
+                                    onDismissDeploying = { notifyDeploymentStatus(false, "") },
+                                    onFloatingModeChange = { enabled -> toggleFloatingMode(enabled, actualNavBarDp) },
+                                    onFloatingKeyboardDrag = { dx, dy ->
+                                        val s = uiState.value
+                                        val screenW = resources.configuration.screenWidthDp
+                                        val screenH = if (state.isFloatingMode) effectiveScreenH else resources.configuration.screenHeightDp
+                                        val portraitWidth = minOf(screenW, screenH)
+                                        val cardWidth = (portraitWidth * 0.85f).roundToInt()
+                                        val halfMargin = ((screenW - cardWidth) / 2f).roundToInt()
+                                        val cappedKeyboardHeight = s.keyboardHeightDp.coerceAtMost((screenH * 8) / 10)
+                                        val cardH = (cappedKeyboardHeight * 0.85f).roundToInt() + 18
+                                        val newX = (s.floatingOffsetX + dx).roundToInt().coerceIn(-halfMargin, halfMargin)
+                                        val newY_raw = (s.floatingOffsetY + dy).roundToInt()
+                                        val newY = newY_raw.coerceIn(floatingMinY, maxOf(floatingMinY, screenH - cardH - 20))
+                                        uiState.value = s.copy(
+                                            floatingOffsetX = newX,
+                                            floatingOffsetY = newY,
+                                        )
+                                    },
+                                    onFloatingKeyboardDragEnd = {
+                                        val s = uiState.value
+                                        val isLandscape = resources.configuration.screenWidthDp > resources.configuration.screenHeightDp
+                                        SettingsPreferences.setFloatingOffsetX(this@XimeInputMethodService, s.floatingOffsetX, isLandscape)
+                                        SettingsPreferences.setFloatingOffsetY(this@XimeInputMethodService, s.floatingOffsetY, isLandscape)
+                                    },
                                 )
-                                if (enabled) {
-                                    feedbackManager.performVibration()
-                                    isTrackingVoiceButtons = true
-                                    voiceRecordingStarted = true
-                                    voiceRecognitionHandler.startRecognition()
-                                    Log.d("VoiceButtons", "Speech recognition starting...")
-                                } else {
-                                    isTrackingVoiceButtons = false
-}
- },
-                               isDeploying = state.isDeploying,
-                               deploymentMessage = state.deploymentMessage,
-                               onDismissDeploying = {
-                                   notifyDeploymentStatus(false, "")
-                               },
-                               toolbarButtons = state.toolbarButtons,
-                               onUpdateToolbarButtons = { buttons ->
-                                   SettingsPreferences.setToolbarButtons(this@XimeInputMethodService, buttons)
-                                   uiState.value = uiState.value.copy(toolbarButtons = buttons)
-                               },
-                                onKeyboardModeChange = { chineseMode ->
-                                    if (isChineseMode != chineseMode) {
-                                        isChineseMode = chineseMode
-                                        if (!chineseMode) {
-                                            candidateState.value = candidateState.value.copy(associationCandidates = emptyList())
-                                        }
-                                    }
-                                },
-                                 inlineSuggestions = inlineSuggestionManager?.suggestions.orEmpty(),
-                                 isCalculatorMode = calculatorEngine.isActive()
-                                 )
-                         }
+                            }
+                            if (state.isFloatingMode && uiState.value.floatingOffsetY < floatingMinY) {
+                                uiState.value = uiState.value.copy(floatingOffsetY = floatingMinY)
+                            }
+                            KeyboardView(
+                                viewModel = keyboardViewModel,
+                                state = kbState,
+                                callbacks = callbacks,
+                                inlineSuggestions = inlineSuggestionManager?.suggestions.orEmpty(),
+                            )
+                           }
+                           if (state.showKeyboardResize) {
+                              KeyboardResizeOverlay(
+                                     initialHeightDp = state.resizePreviewHeightDp,
+                                     defaultHeightDp = SettingsPreferences.getDefaultKeyboardHeightDp(this@XimeInputMethodService, isLandscape),
+                                    maxContainerHeightDp = state.resizePreviewHeightDp + state.keyboardBottomPaddingDp,
+                                   currentBottomPaddingDp = state.keyboardBottomPaddingDp,
+                                  onHeightChange = { newHeight ->
+                                       uiState.value = uiState.value.copy(
+                                           resizePreviewHeightDp = newHeight
+                                       )
+                                   },
+                                  onBottomPaddingChange = { newPadding ->
+                                       uiState.value = uiState.value.copy(
+                                           keyboardBottomPaddingDp = newPadding
+                                       )
+                                   },
+                                  onReset = { defaultHeight ->
+                                       uiState.value = uiState.value.copy(
+                                           resizePreviewHeightDp = defaultHeight,
+                                           keyboardBottomPaddingDp = 0,
+                                           stretchFactor = 1f
+                                       )
+                                   },
+                                  onConfirm = { newHeight, newPadding ->
+                                       Log.d(TAG, "onConfirm: newHeight=$newHeight newPadding=$newPadding")
+                                       setKeyboardHeight(newHeight)
+                                       SettingsPreferences.setKeyboardBottomPaddingDp(this@XimeInputMethodService, newPadding)
+                                       uiState.value = uiState.value.copy(
+                                           showKeyboardResize = false,
+                                           keyboardHeightDp = newHeight,
+                                           keyboardBottomPaddingDp = newPadding,
+                                       )
+                                    },
+                                    onCancel = {
+                                        val restoreHeight = SettingsPreferences.getKeyboardHeightDp(this@XimeInputMethodService, isLandscape)
+                                        val restorePadding = SettingsPreferences.getKeyboardBottomPaddingDp(this@XimeInputMethodService)
+                                        uiState.value = uiState.value.copy(
+                                            showKeyboardResize = false,
+                                            keyboardHeightDp = restoreHeight,
+                                            keyboardBottomPaddingDp = restorePadding,
+                                        )
+                                    },
+                                    modifier = Modifier
+                                       .fillMaxSize()
+                              )
+                          }
+                           }
+                            if (!state.isFloatingMode && navBarDp > 0.dp) {
+                                Spacer(modifier = Modifier.fillMaxWidth().height(navBarDp))
+                            }
+                       }
+                       }
                      }
-                     }
-                         if (state.showKeyboardResize) {
-                            KeyboardResizeOverlay(
-                                initialHeightDp = state.resizePreviewHeightDp,
-                                initialBottomPaddingDp = state.resizePreviewBottomPaddingDp,
-                                defaultHeightDp = SettingsPreferences.getOrientationDefaultKeyboardHeightDp(this@XimeInputMethodService, isLandscape),
-                                 defaultBottomPaddingDp = SettingsPreferences.getDefaultKeyboardBottomPaddingDp(),
-                               maxContainerHeightDp = keyboardHeight,
-                              onHeightChange = { newHeight ->
-                                  uiState.value = uiState.value.copy(
-                                      resizePreviewHeightDp = newHeight
-                                  )
-                              },
-                              onBottomPaddingChange = { newPadding ->
-                                  uiState.value = uiState.value.copy(
-                                      resizePreviewBottomPaddingDp = newPadding,
-                                      keyboardBottomPaddingDp = newPadding
-                                  )
-                              },
-                              onStretchChange = { stretchFactor ->
-                                  uiState.value = uiState.value.copy(
-                                      stretchFactor = stretchFactor
-                                  )
-                              },
-                              onReset = { defaultHeight, defaultPadding ->
-                                  uiState.value = uiState.value.copy(
-                                      resizePreviewHeightDp = defaultHeight,
-                                      resizePreviewBottomPaddingDp = defaultPadding,
-                                      keyboardBottomPaddingDp = defaultPadding,
-                                      stretchFactor = 1f
-                                  )
-                              },
-                              onConfirm = { newHeight, newPadding ->
-                                  setKeyboardHeight(newHeight)
-                                  SettingsPreferences.setKeyboardBottomPaddingDp(this@XimeInputMethodService, newPadding)
-                                  uiState.value = uiState.value.copy(
-                                      showKeyboardResize = false,
-                                      keyboardHeightDp = newHeight,
-                                      keyboardBottomPaddingDp = newPadding
-                                  )
-                              },
-                              onCancel = {
-                                  val originalHeight = state.originalKeyboardHeightDp
-                                  val cancelStretchFactor = ((originalHeight - 126f) / (SettingsPreferences.getDefaultKeyboardHeightDp() - 126f)).coerceAtLeast(0f)
-                                  uiState.value = uiState.value.copy(
-                                      showKeyboardResize = false,
-                                      keyboardHeightDp = originalHeight,
-                                      keyboardBottomPaddingDp = state.originalKeyboardBottomPaddingDp,
-                                      resizePreviewHeightDp = originalHeight,
-                                      resizePreviewBottomPaddingDp = state.originalKeyboardBottomPaddingDp,
-                                      stretchFactor = cancelStretchFactor
-                                  )
-                              },
-                               modifier = Modifier
-                                   .align(androidx.compose.ui.Alignment.BottomCenter)
-                                   .fillMaxWidth()
-                          )
-                      }
-                    }
                 }
             }
         }
         
         keyboardContainer.addView(composeView)
-        
-        val initialHeightDp = SettingsPreferences.getKeyboardHeightDp(this)
-        keyboardContainer.updateHeight(initialHeightDp)
-        
+
         return keyboardContainer
     }
     
@@ -941,50 +1071,10 @@ onVoiceModeChange = { enabled ->
         currentInputConnection?.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
     }
     
-    @RequiresApi(34)
-    override fun onCreateInlineSuggestionsRequest(uiExtras: Bundle): InlineSuggestionsRequest? {
-        Log.d(TAG, "onCreateInlineSuggestionsRequest(Bundle) called")
-        val result = inlineSuggestionManager?.onCreateInlineSuggestionsRequest(uiExtras)
-        Log.d(TAG, "onCreateInlineSuggestionsRequest: returning ${if (result != null) "request" else "null"}")
-        return result
-    }
-
-    @RequiresApi(34)
-    override fun onInlineSuggestionsResponse(response: InlineSuggestionsResponse): Boolean {
-        Log.d(TAG, "onInlineSuggestionsResponse: received ${response.inlineSuggestions.size} suggestions")
-        return inlineSuggestionManager?.onInlineSuggestionsResponse(response) ?: false
-    }
-
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
         loadDarkModePreference()
-
-        // Debug: probe InputMethodService inline suggestion infrastructure
-        if (Build.VERSION.SDK_INT >= 34) {
-            val im = getSystemService(INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
-            Log.d(TAG, "onStartInput: hasAutofillId=${attribute?.autofillId != null}")
-
-            try {
-                // Probe all fields for the Binder implementation
-                val fields = android.inputmethodservice.InputMethodService::class.java.declaredFields
-                val fieldNames = fields.map { it.name }
-                Log.d(TAG, "onStartInput: InputMethodService fields: ${fieldNames.sorted()}")
-
-                for (field in fields) {
-                    field.isAccessible = true
-                    val value = field.get(this)
-                    if (value != null && value.toString().contains("Binder") ||
-                        value != null && value.javaClass.name.contains("InputMethodImpl")) {
-                        Log.d(TAG, "onStartInput: field=${field.name}, type=${value.javaClass.name}")
-                        val methods = value.javaClass.declaredMethods.map { it.name }.filter { it.contains("Inline", ignoreCase = true) || it.contains("inline", ignoreCase = true) || it.contains("Binder", ignoreCase = true) || it.contains("InputMethod", ignoreCase = true) }
-                        Log.d(TAG, "onStartInput: relevant methods: ${methods.sorted()}")
-                    }
-                }
-            } catch (e: Exception) {
-                Log.d(TAG, "onStartInput: full probe failed: ${e.message}")
-            }
-        }
 
         predictionManager.clearCommittedText()
         Log.d(TAG, "onStartInput: cleared lastCommittedText")
@@ -1106,6 +1196,25 @@ onVoiceModeChange = { enabled ->
         hasHardwareKeyboard = newConfig.keyboard != android.content.res.Configuration.KEYBOARD_NOKEYS
         super.onConfigurationChanged(newConfig)
         applyCompactMode()
+        loadDarkModePreference()
+        applyFloatingWindowBackground()
+    }
+
+    private fun applyFloatingWindowBackground() {
+        val enabled = uiState.value.isFloatingMode
+        try {
+            window.window?.let { win ->
+                if (enabled) {
+                    win.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+                    win.setDimAmount(0f)
+                } else {
+                    win.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.WHITE))
+                    win.setDimAmount(0.2f)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "applyFloatingWindowBackground failed", e)
+        }
     }
 
     private fun applyCompactMode() {
@@ -1166,9 +1275,9 @@ onVoiceModeChange = { enabled ->
 
     override fun onFinishInput() {
         super.onFinishInput()
+        inlineSuggestionManager?.clear()
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
         clearInputState()
-        inlineSuggestionManager?.clear()
         recentClipboardItemsState.value = emptyList()
     }
     
@@ -1200,6 +1309,7 @@ onVoiceModeChange = { enabled ->
             SettingsPreferences.getPrefsPublic(this).unregisterOnSharedPreferenceChangeListener(it)
         }
         RimeEngine.setDeploymentCallback { _, _ -> }
+        _viewModelStore.clear()
         feedbackManager.release()
         rimeEngine.destroy()
         voiceRecognitionHandler.release()
@@ -1280,6 +1390,7 @@ onVoiceModeChange = { enabled ->
         
         candidateState.value = candidateState.value.copy(
             inputText = result.inputText,
+            preeditText = result.preeditText,
             candidates = filteredTexts,
             candidateComments = filteredComments,
             isComposing = result.inputText.isNotEmpty(),
@@ -1559,33 +1670,44 @@ onVoiceModeChange = { enabled ->
                             )
                         }
                         Log.d(TAG, "Space: added space after pending English '$pendingEnglish'")
-                    } else if (candState.isComposing) {
-                        if (candState.candidates.isNotEmpty()) {
-                            selectCandidateAsync(0)
+                    } else if (rimeEngine.getInput().isNotEmpty()) {
+                        val candidates = rimeEngine.getCandidates()
+                        val textToCommit = if (candidates.isNotEmpty()) {
+                            candidates[0]
                         } else {
-                            val input = candState.inputText
-                            if (input.isNotEmpty()) {
-                                withContext(Dispatchers.Main) {
-                                    commitText(input)
-                                }
-                                rimeEngine.clearComposition()
-                                needsUIUpdate = true
-                            }
+                            rimeEngine.getInput()
                         }
-                    } else if (candState.associationCandidates.isNotEmpty()) {
-                        // 联想预测词模式：按空格选中第一个联想词
-                        val text = candState.associationCandidates[0]
                         withContext(Dispatchers.Main) {
-                            commitText(text)
+                            commitText(textToCommit)
                             candidateState.value = candidateState.value.copy(
-                                associationCandidates = emptyList()
+                                inputText = "",
+                                candidates = emptyList(),
+                                candidateComments = emptyList(),
+                                isComposing = false,
+                                hasNextPage = false,
+                                hasPrevPage = false,
+                                isShowingRecentClipboard = false
                             )
                         }
-                        updateUI()
+                        rimeEngine.clearComposition()
                     } else {
                         withContext(Dispatchers.Main) {
                             commitText(" ")
                         }
+                    }
+                }
+                "word_separator" -> {
+                    if (candState.isComposing || candState.inputText.isNotEmpty()) {
+                        val result = rimeEngine.processKeyAndGetResult(0x27, 0)
+                        if (result.processed) {
+                            uiEventChannel.trySend {
+                                updateUIWithResult(result)
+                            }
+                        } else {
+                            needsUIUpdate = true
+                        }
+                    } else {
+                        needsUIUpdate = true
                     }
                 }
                 "shift" -> {
@@ -1643,6 +1765,8 @@ onVoiceModeChange = { enabled ->
                         val char = if (isShifted) key.uppercase() else key
                         val keyCode = key.lowercase()[0].code
                         val mask = if (isShifted) KeyEvent.META_SHIFT_ON else 0
+                        val isLetter = key.matches(Regex("[a-zA-Z]"))
+                        val isShiftedChinese = isShifted && !state.isAsciiMode && isLetter
 
                         val t0 = System.nanoTime()
                         val processed = rimeEngine.processKey(keyCode, mask)
@@ -1652,14 +1776,21 @@ onVoiceModeChange = { enabled ->
                         }
                         if (processed) {
                             val result = rimeEngine.getProcessResult(processed)
-                            uiEventChannel.trySend {
-                                if (result.committedText.isNotEmpty()) commitText(result.committedText)
-                                updateUIWithResult(result)
-                                if (calculatorEngine.isActive()) updateCalculatorCandidates()
+                            if (isShiftedChinese && result.committedText != char) {
+                                rimeEngine.clearComposition()
+                                committedText = char
+                                needsUIUpdate = true
+                                Log.d(TAG, "Shift+letter in Chinese mode: Rime consumed key but didn't produce uppercase, committing '$char' directly")
+                            } else {
+                                uiEventChannel.trySend {
+                                    if (result.committedText.isNotEmpty()) commitText(result.committedText)
+                                    updateUIWithResult(result)
+                                    if (calculatorEngine.isActive()) updateCalculatorCandidates()
+                                }
                             }
                         } else {
                             val isAscii = state.isAsciiMode
-                            if (!candState.isComposing) {
+                            if (!candState.isComposing || isShiftedChinese) {
                                 if (isAscii) {
                                     val charToCommit = if (isShifted) char.uppercase() else char.lowercase()
                                     val currentPending = candState.pendingEnglishText
@@ -2105,6 +2236,83 @@ onVoiceModeChange = { enabled ->
         Toast.makeText(this, "键盘高度已调整", Toast.LENGTH_SHORT).show()
     }
 
+    private fun toggleFloatingMode(enabled: Boolean, navBarDp: Int = 0) {
+        val effectiveNavBarDp = navBarDp.coerceAtLeast(tryGetNavBarHeightDp())
+        Log.d(TAG, "toggleFloatingMode: $enabled navBarDp=$navBarDp effective=$effectiveNavBarDp")
+        val isLandscape = resources.configuration.screenWidthDp > resources.configuration.screenHeightDp
+        SettingsPreferences.setFloatingMode(this, enabled, isLandscape)
+        SettingsPreferences.setFloatingMode(this, enabled, !isLandscape)
+        val loadedX = SettingsPreferences.getFloatingOffsetX(this, isLandscape)
+        val loadedY = SettingsPreferences.getFloatingOffsetY(this, isLandscape)
+        val screenW = resources.configuration.screenWidthDp
+        val screenH = resources.configuration.screenHeightDp
+        val portraitWidth = minOf(screenW, screenH)
+        val cardWidth = (portraitWidth * 0.85f).roundToInt()
+        val halfMargin = maxOf(0, (screenW - cardWidth) / 2)
+        val cappedKbH = SettingsPreferences.getKeyboardHeightDp(this, isLandscape).coerceAtMost((screenH * 8) / 10)
+        val cardH = (cappedKbH * 0.85f).roundToInt() + 18
+        val effectiveH = if (enabled) screenH - tryGetStatusBarHeightDp() else screenH
+        val maxY = maxOf(effectiveNavBarDp, effectiveH - cardH - 20)
+        val clampedX = loadedX.coerceIn(-halfMargin, halfMargin)
+        val clampedY = loadedY.coerceIn(effectiveNavBarDp, maxY)
+        uiState.value = uiState.value.copy(
+            isFloatingMode = enabled,
+            floatingOffsetX = clampedX,
+            floatingOffsetY = clampedY,
+        )
+        window.window?.let { win ->
+            if (enabled) {
+                win.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+                win.setDimAmount(0f)
+            } else {
+                win.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.WHITE))
+                win.setDimAmount(0.2f)
+            }
+        }
+    }
+
+    @RequiresApi(34)
+    override fun onCreateInlineSuggestionsRequest(uiExtras: Bundle): InlineSuggestionsRequest? {
+        Log.d(TAG, "onCreateInlineSuggestionsRequest(Bundle) called")
+        val result = inlineSuggestionManager?.onCreateInlineSuggestionsRequest(uiExtras)
+        Log.d(TAG, "onCreateInlineSuggestionsRequest: returning ${if (result != null) "request" else "null"}")
+        return result
+    }
+
+    @RequiresApi(34)
+    override fun onInlineSuggestionsResponse(response: InlineSuggestionsResponse): Boolean {
+        Log.d(TAG, "onInlineSuggestionsResponse: received ${response.inlineSuggestions.size} suggestions")
+        return inlineSuggestionManager?.onInlineSuggestionsResponse(response) ?: false
+    }
+
+    override fun onComputeInsets(outInsets: Insets) {
+        val state = uiState.value
+        if (state.isFloatingMode) {
+            outInsets.apply {
+                contentTopInsets = resources.displayMetrics.heightPixels
+                visibleTopInsets = resources.displayMetrics.heightPixels
+                touchableInsets = Insets.TOUCHABLE_INSETS_REGION
+                val decor = window.window?.decorView ?: return
+                val loc = IntArray(2)
+                decor.getLocationOnScreen(loc)
+                val density = resources.displayMetrics.density
+                val cardWidthPx = (decor.width * 0.85f).toInt()
+                val leftPaddingPx = ((decor.width - cardWidthPx) / 2f).toInt()
+                val offsetXPx = (state.floatingOffsetX * density).toInt()
+                val cardHeightPx = (currentEffectiveKeyboardHeight * density).toInt()
+                val offsetYPx = (state.floatingOffsetY * density).toInt()
+                touchableRegion.set(
+                    loc[0] + leftPaddingPx + offsetXPx,
+                    loc[1] + decor.height - cardHeightPx - offsetYPx,
+                    loc[0] + leftPaddingPx + offsetXPx + cardWidthPx,
+                    loc[1] + decor.height - offsetYPx
+                )
+            }
+        } else {
+            super.onComputeInsets(outInsets)
+        }
+    }
+
     override fun commitText(text: String) {
         val t0 = System.nanoTime()
         currentInputConnection?.commitText(text, 1)
@@ -2249,23 +2457,4 @@ onVoiceModeChange = { enabled ->
         currentInputConnection?.deleteSurroundingText(count, 0)
     }
     
-    private fun removeClipboardItem(id: Long) {
-        clipboardManager.removeItem(id)
-    }
-    
-    private fun splitClipboardWords(id: Long) {
-        clipboardManager.splitItem(id)
-    }
-    
-    private fun clearClipboard() {
-        clipboardManager.clearAll()
-    }
-    
-    private fun addToQuickSend(id: Long) {
-        clipboardManager.addToQuickSend(id)
-    }
-    
-    private fun removeFromQuickSend(id: Long) {
-        clipboardManager.removeFromQuickSend(id)
-    }
 }

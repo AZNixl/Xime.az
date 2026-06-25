@@ -1,6 +1,7 @@
 package com.kingzcheung.xime.ui.keyboard
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -22,6 +23,7 @@ import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.Dp
+import com.kingzcheung.xime.keyboard.KeyboardDimensions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -55,6 +57,7 @@ fun CommonSymbolKeyboardLayout(
     val periodChar = if (isAsciiMode) "." else "。"
 
     val isDarkTheme = keyTextColor == Color(0xFFE8EAED)
+    val suppressCursorMove = LocalSuppressCursorMove.current
     var swipeState by remember { mutableStateOf(SwipeState()) }
     var keyboardBounds by remember { mutableStateOf(Rect(0f, 0f, 0f, 0f)) }
     var lastKeyBounds by remember { mutableStateOf(Rect(0f, 0f, 0f, 0f)) }
@@ -84,7 +87,8 @@ fun CommonSymbolKeyboardLayout(
             modifier = Modifier
                 .fillMaxWidth()
                 .fillMaxHeight()
-                .padding(vertical = 8.dp, horizontal = 4.dp),
+                .padding(start = 4.dp, end = 4.dp, bottom = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(KeyboardDimensions.RowSpacing),
         ) {
             Row(
                 modifier = Modifier
@@ -92,7 +96,7 @@ fun CommonSymbolKeyboardLayout(
                     .weight(1f),
             ) {
                 (0..9).forEach { n ->
-                    val digit = n.toString()
+                    val digit = ((n+1)%10).toString()
                     KeyButton(
                         text = digit,
                         onClick = { onKeyPress(digit) },
@@ -174,6 +178,7 @@ fun CommonSymbolKeyboardLayout(
                     swipeDownLabel = "下滑撤回",
                     onSwipeUp = { onKeyPress("clear_all") },
                     onSwipeDown = { onKeyPress("undo_clear") },
+                    onSwipeLeft = { suppressCursorMove.value = true; onKeyPress("clear_composition") },
                     onSwipeStateChange = { state, bounds ->
                         swipeState = state
                         lastKeyBounds = Rect(
@@ -207,7 +212,7 @@ fun CommonSymbolKeyboardLayout(
                     fontSize = 14.sp,
                 )
                 KeyButton(
-                    text = "数字",
+                    text = "123",
                     onClick = { onKeyPress("number") },
                     backgroundColor = specialKeyBackgroundColor,
                     textColor = keyTextColor,

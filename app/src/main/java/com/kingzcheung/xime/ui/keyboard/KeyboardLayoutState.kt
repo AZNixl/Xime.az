@@ -27,6 +27,9 @@ sealed class KeyboardLayoutState {
     /** 常用符号键盘（?123 进入的符号+数字混合键盘） */
     data object CommonSymbol : KeyboardLayoutState()
 
+    /** 笔画键盘（stroke schema 专用 T9 九宫格布局） */
+    data object Stroke : KeyboardLayoutState()
+
     /** 是否为全键盘类（Chinese / English） */
     val isFullKeyboard: Boolean get() = this is Chinese || this is English
 }
@@ -47,6 +50,9 @@ sealed class KeyboardLayoutAction {
 
     /** 从数字/符号/常用符号切回全键盘（中文或英文，取决于 isAsciiMode） */
     data object SwitchToFull : KeyboardLayoutAction()
+
+    /** 切换到笔画键盘 */
+    data object SwitchToStroke : KeyboardLayoutAction()
 }
 
 /**
@@ -64,6 +70,7 @@ fun KeyboardLayoutState.transition(
         KeyboardLayoutAction.SwitchToNumber -> KeyboardLayoutState.Number
         KeyboardLayoutAction.SwitchToSymbol -> KeyboardLayoutState.Symbol
         KeyboardLayoutAction.SwitchToCommonSymbol -> KeyboardLayoutState.CommonSymbol
+        KeyboardLayoutAction.SwitchToStroke -> KeyboardLayoutState.Stroke
         KeyboardLayoutAction.SwitchToFull -> when {
             isAsciiMode -> KeyboardLayoutState.English
             else -> KeyboardLayoutState.Chinese
@@ -76,7 +83,10 @@ fun KeyboardLayoutState.transition(
  */
 fun initialKeyboardLayoutState(
     isAsciiMode: Boolean,
+    schemaId: String = "",
 ): KeyboardLayoutState = when {
+    schemaId == "stroke" && !isAsciiMode -> KeyboardLayoutState.Stroke
     isAsciiMode -> KeyboardLayoutState.English
+    schemaId == "stroke" -> KeyboardLayoutState.Stroke
     else -> KeyboardLayoutState.Chinese
 }
