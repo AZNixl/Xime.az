@@ -1,7 +1,7 @@
 package com.kingzcheung.xime.service
 
-import android.os.Build
 import android.os.Bundle
+import android.text.style.TextAppearanceSpan
 import android.util.Log
 import android.util.Size
 import android.view.inputmethod.InlineSuggestion
@@ -24,10 +24,15 @@ class InlineSuggestionManager {
     @RequiresApi(34)
     fun onCreateInlineSuggestionsRequest(uiExtras: Bundle): InlineSuggestionsRequest? {
         return try {
+            val style = android.widget.inline.Style.Builder()
+                .setAttributes(
+                    TextAppearanceSpan("sans-serif-medium", android.graphics.Typeface.BOLD, 14)
+                )
+                .build()
             val spec = InlinePresentationSpec.Builder(
-                Size(100, 48),
-                Size(300, 80),
-            ).build()
+                Size(180, 56),
+                Size(500, 136),
+            ).setStyle(style).build()
             InlineSuggestionsRequest.Builder(listOf(spec))
                 .setMaxSuggestionCount(3)
                 .build()
