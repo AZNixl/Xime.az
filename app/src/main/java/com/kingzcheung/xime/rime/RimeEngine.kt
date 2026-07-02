@@ -7,6 +7,45 @@ data class RimeCandidate(
     val comment: String
 )
 
+/**
+ * 批量查询当前 composition 状态。
+ *
+ * 通过 JNI 一次性返回 input/preedit/commit/candidates/paging/ascii_mode，
+ * 避免 updateUI 中多次独立 JNI 调用带来的固定开销。
+ */
+data class RimeComposition(
+    val input: String,
+    val preedit: String,
+    val committedText: String,
+    val candidates: Array<RimeCandidate>,
+    val hasNextPage: Boolean,
+    val hasPrevPage: Boolean,
+    val isAsciiMode: Boolean
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is RimeComposition) return false
+        return input == other.input &&
+                preedit == other.preedit &&
+                committedText == other.committedText &&
+                candidates.contentEquals(other.candidates) &&
+                hasNextPage == other.hasNextPage &&
+                hasPrevPage == other.hasPrevPage &&
+                isAsciiMode == other.isAsciiMode
+    }
+
+    override fun hashCode(): Int {
+        var result = input.hashCode()
+        result = 31 * result + preedit.hashCode()
+        result = 31 * result + committedText.hashCode()
+        result = 31 * result + candidates.contentHashCode()
+        result = 31 * result + hasNextPage.hashCode()
+        result = 31 * result + hasPrevPage.hashCode()
+        result = 31 * result + isAsciiMode.hashCode()
+        return result
+    }
+}
+
 data class RimeProcessResult(
     val processed: Boolean,
     val committedText: String,
@@ -49,6 +88,9 @@ class RimeEngine {
         private const val TAG = "RimeEngine"
         private var instance: RimeEngine? = null
         private var deploymentCallback: ((Boolean, String) -> Unit)? = null
+
+        /** 全局 Rime 引擎锁 — 所有 native 调用必须通过此锁同步 */
+        val rimeLock = Any()
 
         init {
             System.loadLibrary("rime_jni")
@@ -112,44 +154,43 @@ class RimeEngine {
 
     fun ensureSession(timeoutMs: Long = 60000L): Boolean {
         if (!isInitialized) return false
+
+        // Quick check without lock — native calls are thread-safe reads
         if (nativeHasSession() && getAvailableSchemas().isNotEmpty()) return true
 
-        // 先等编译完成再创建 session（编译可能在后台进行）
+        // 等待编译完成（不持有 rimeLock，避免阻塞主线程 UI 操作）
         var waited = 0L
         while (nativeIsMaintaining() && waited < timeoutMs) {
             try {
-                Thread.sleep(100)
+                Thread.sleep(1000)
             } catch (_: InterruptedException) {
                 return false
             }
-            waited += 100
-            if (waited % 5000 == 0L) {
-                Log.d(TAG, "ensureSession: waiting for maintenance... (${waited / 1000}s)")
-            }
+            waited += 1000
+            Log.d(TAG, "ensureSession: waiting for maintenance... (${waited / 1000}s)")
         }
-        // 编译完成后尝试创建 session
-        waited = 0L
-        while (waited < timeoutMs) {
-            // 先创建 session（get_schema_list 需要 session 才能读取方案列表）
-            if (!nativeHasSession()) {
-                nativeCreateSession()
-            }
-            if (getAvailableSchemas().isNotEmpty()) {
-                Log.d(TAG, "ensureSession: schemas ready after ${waited}ms")
-                return true
-            }
-            try {
-                Thread.sleep(100)
-            } catch (_: InterruptedException) {
-                return false
-            }
-            waited += 100
-            if (waited % 5000 == 0L) {
+
+        synchronized(rimeLock) {
+            waited = 0L
+            while (waited < timeoutMs) {
+                if (!nativeHasSession()) {
+                    nativeCreateSession()
+                }
+                if (getAvailableSchemas().isNotEmpty()) {
+                    Log.d(TAG, "ensureSession: schemas ready after ${waited}ms")
+                    return true
+                }
+                try {
+                    Thread.sleep(1000)
+                } catch (_: InterruptedException) {
+                    return false
+                }
+                waited += 1000
                 Log.d(TAG, "ensureSession: waiting for schemas... (${waited / 1000}s)")
             }
+            Log.w(TAG, "ensureSession: schemas not available after ${timeoutMs}ms, deployment may still be running")
+            return false
         }
-        Log.w(TAG, "ensureSession: schemas not available after ${timeoutMs}ms")
-        return false
     }
 
     fun isMaintaining(): Boolean {
@@ -158,13 +199,17 @@ class RimeEngine {
 
     fun getCurrentSchema(): String {
         if (!nativeHasSession()) return ""
-        return nativeGetCurrentSchema() ?: ""
+        synchronized(rimeLock) {
+            return nativeGetCurrentSchema() ?: ""
+        }
     }
 
     fun processKey(keycode: Int, mask: Int): Boolean {
         if (!isInitialized) return false
-        if (!nativeHasSession() && !nativeCreateSession()) return false
-        return nativeProcessKey(keycode, mask)
+        synchronized(rimeLock) {
+            if (!nativeHasSession() && !nativeCreateSession()) return false
+            return nativeProcessKey(keycode, mask)
+        }
     }
 
     fun processKeyAndGetResult(keycode: Int, mask: Int): RimeProcessResult {
@@ -180,66 +225,124 @@ class RimeEngine {
     }
 
     fun getCandidates(): Array<String> {
-        if (!nativeHasSession()) return emptyArray()
-        return nativeGetCandidates() ?: emptyArray()
+        synchronized(rimeLock) {
+            if (!nativeHasSession()) return emptyArray()
+            return nativeGetCandidates() ?: emptyArray()
+        }
     }
 
     fun getCandidatesWithComments(): Array<RimeCandidate> {
-        if (!nativeHasSession()) return emptyArray()
-        val rawCandidates = nativeGetCandidatesWithComments() ?: emptyArray()
-        return rawCandidates.map { pair ->
-            RimeCandidate(
-                text = pair.getOrElse(0) { "" },
-                comment = pair.getOrElse(1) { "" }
-            )
-        }.toTypedArray()
+        synchronized(rimeLock) {
+            if (!nativeHasSession()) return emptyArray()
+            val rawCandidates = nativeGetCandidatesWithComments() ?: emptyArray()
+            return rawCandidates.map { pair ->
+                RimeCandidate(
+                    text = pair.getOrElse(0) { "" },
+                    comment = pair.getOrElse(1) { "" }
+                )
+            }.toTypedArray()
+        }
     }
 
     fun getInput(): String {
-        return nativeGetInput() ?: ""
+        synchronized(rimeLock) {
+            return nativeGetInput() ?: ""
+        }
+    }
+
+    /**
+     * 批量查询当前 composition 全部信息。
+     *
+     * 一次 JNI 调用返回 input、preedit、committedText、candidates、分页和 ascii_mode，
+     * 是 T9 路径 updateUI 的首选查询接口，可替代多次独立 JNI 调用。
+     */
+    fun getComposition(): RimeComposition {
+        if (!isInitialized) return RimeComposition("", "", "", emptyArray(), false, false, false)
+        synchronized(rimeLock) {
+            if (!nativeHasSession() && !nativeCreateSession())
+                return RimeComposition("", "", "", emptyArray(), false, false, false)
+            return nativeGetComposition()
+        }
     }
 
     fun selectCandidate(index: Int): Boolean {
-        if (!nativeHasSession()) return false
-        return nativeSelectCandidate(index)
+        synchronized(rimeLock) {
+            if (!nativeHasSession()) return false
+            return nativeSelectCandidate(index)
+        }
     }
 
     fun pageDown(): Boolean {
-        if (!nativeHasSession()) return false
-        return nativePageDown()
+        synchronized(rimeLock) {
+            if (!nativeHasSession()) return false
+            return nativePageDown()
+        }
     }
 
     fun pageUp(): Boolean {
-        if (!nativeHasSession()) return false
-        return nativePageUp()
+        synchronized(rimeLock) {
+            if (!nativeHasSession()) return false
+            return nativePageUp()
+        }
     }
 
     fun hasNextPage(): Boolean {
-        if (!nativeHasSession()) return false
-        return nativeHasNextPage()
+        synchronized(rimeLock) {
+            if (!nativeHasSession()) return false
+            return nativeHasNextPage()
+        }
     }
 
     fun hasPrevPage(): Boolean {
-        if (!nativeHasSession()) return false
-        return nativeHasPrevPage()
+        synchronized(rimeLock) {
+            if (!nativeHasSession()) return false
+            return nativeHasPrevPage()
+        }
     }
 
     fun commit(): String {
-        return nativeCommit() ?: ""
+        synchronized(rimeLock) {
+            return nativeCommit() ?: ""
+        }
     }
 
     fun clearComposition() {
-        nativeClearComposition()
+        if (!nativeHasSession()) return
+        synchronized(rimeLock) {
+            nativeClearComposition()
+        }
+    }
+
+    /**
+     * 设置 RIME 引擎的输入字符串。
+     *
+     * 一次 JNI 调用完成整个输入设置，替代逐字符 processKey。
+     * 调用后引擎会重新执行完整的处理管线（Speller → Segmentor → Translator）。
+     * 支持分隔符 '，如 setInput("ji'he") 会告知 RIME 音节边界。
+     *
+     * @param input 拼音或数字字符串，如 "zhongguo" 或 "54482"
+     * @return 是否设置成功
+     */
+    fun setInput(input: String): Boolean {
+        if (!isInitialized) return false
+        synchronized(rimeLock) {
+            if (!nativeHasSession() && !nativeCreateSession()) return false
+            return nativeSetInput(input)
+        }
     }
 
     fun toggleAsciiMode(): Boolean {
-        if (!nativeHasSession()) return false
-        return nativeToggleAsciiMode()
+        synchronized(rimeLock) {
+            if (!nativeHasSession()) return false
+            return nativeToggleAsciiMode()
+        }
     }
 
     fun isAsciiMode(): Boolean {
-        if (!nativeHasSession()) return false
-        return nativeIsAsciiMode()
+        synchronized(rimeLock) {
+            if (!nativeHasSession()) return false
+            return nativeIsAsciiMode()
+        }
     }
 
     fun setOption(option: String, value: Boolean) {
@@ -258,23 +361,32 @@ class RimeEngine {
     }
 
     fun switchSchema(schemaId: String): Boolean {
-        if (!nativeHasSession()) return false
-        return nativeSwitchSchema(schemaId)
+        synchronized(rimeLock) {
+            if (!nativeHasSession()) return false
+            return nativeSwitchSchema(schemaId)
+        }
     }
 
     fun startMaintenance(full: Boolean): Boolean {
         if (!isInitialized) return false
-        return nativeStartMaintenance(full)
+        synchronized(rimeLock) {
+            return nativeStartMaintenance(full)
+        }
     }
 
     fun deploy(): Boolean {
         if (!isInitialized) return false
-        return nativeDeploy()
+        synchronized(rimeLock) {
+            return nativeDeploy()
+        }
     }
 
     fun lookupText(text: String): String {
-        if (!isInitialized || text.isEmpty() || !nativeHasSession()) return ""
-        return nativeLookupText(text) ?: ""
+        if (!isInitialized || text.isEmpty()) return ""
+        synchronized(rimeLock) {
+            if (!nativeHasSession()) return ""
+            return nativeLookupText(text) ?: ""
+        }
     }
 
     fun getAvailableSchemas(): Array<String> {
@@ -283,9 +395,11 @@ class RimeEngine {
 
     fun destroy() {
         if (isInitialized) {
-            Log.d(TAG, "Destroying Rime engine")
-            nativeDestroy()
-            isInitialized = false
+            synchronized(rimeLock) {
+                Log.d(TAG, "Destroying Rime engine")
+                nativeDestroy()
+                isInitialized = false
+            }
         }
     }
 
@@ -301,6 +415,7 @@ class RimeEngine {
     private external fun nativeGetCandidates(): Array<String>?
     private external fun nativeGetCandidatesWithComments(): Array<Array<String>>?
     private external fun nativeGetInput(): String?
+    private external fun nativeGetComposition(): RimeComposition
     private external fun nativeSelectCandidate(index: Int): Boolean
     private external fun nativePageDown(): Boolean
     private external fun nativePageUp(): Boolean
@@ -308,6 +423,7 @@ class RimeEngine {
     private external fun nativeHasPrevPage(): Boolean
     private external fun nativeCommit(): String?
     private external fun nativeClearComposition()
+    private external fun nativeSetInput(input: String): Boolean
     private external fun nativeToggleAsciiMode(): Boolean
     private external fun nativeIsAsciiMode(): Boolean
     private external fun nativeSetOption(option: String, value: Boolean)

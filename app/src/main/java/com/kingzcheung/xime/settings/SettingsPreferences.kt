@@ -17,9 +17,11 @@ object SettingsPreferences {
     private const val KEY_VIBRATION_ENABLED = "vibration_enabled"
     private const val KEY_VIBRATION_INTENSITY = "vibration_intensity"
     private const val KEY_KEYBOARD_THEME = "keyboard_theme"
+    private const val KEY_GLASS_EFFECT = "glass_effect"
     
     private const val KEY_SMART_PREDICTION_ENABLED = "smart_prediction_enabled"
     private const val KEY_PREDICTION_MODEL_REPO = "prediction_model_repo"
+    private const val KEY_PREDICTION_SELECTED_MODEL = "prediction_selected_model"
     
     private const val KEY_STT_ENABLED = "stt_enabled"
     private const val KEY_STT_PROVIDER = "stt_provider"
@@ -36,6 +38,18 @@ object SettingsPreferences {
     const val KEY_SWIPE_UP_HINTS_ENABLED = "swipe_up_hints_enabled"
     const val KEY_SWIPE_DOWN_HINTS_ENABLED = "swipe_down_hints_enabled"
     const val KEY_SHOW_PRESS_BUBBLE = "show_press_bubble"
+
+    private const val KEY_MODE_CHANGE_TARGET = "mode_change_target"
+
+    fun getModeChangeTargetIsNumber(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_MODE_CHANGE_TARGET, false)
+    }
+
+    fun setModeChangeTargetIsNumber(context: Context, isNumber: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_MODE_CHANGE_TARGET, isNumber).apply()
+    }
+    
+    private const val KEY_LAYOUT_PREFIX = "layout_pref_"
     
     private const val KEY_KEYBOARD_HEIGHT_DP = "keyboard_height_dp"
     private const val KEY_KEYBOARD_HEIGHT_DP_LANDSCAPE = "keyboard_height_dp_landscape"
@@ -171,6 +185,14 @@ object SettingsPreferences {
     fun setKeyboardTheme(context: Context, themeId: String) {
         getPrefs(context).edit().putString(KEY_KEYBOARD_THEME, themeId).apply()
     }
+
+    fun isGlassEffectEnabled(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_GLASS_EFFECT, false)
+    }
+
+    fun setGlassEffectEnabled(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_GLASS_EFFECT, enabled).apply()
+    }
     
     fun isPluginEnabled(context: Context, pluginId: String): Boolean {
         val prefs = getPrefs(context)
@@ -203,6 +225,15 @@ object SettingsPreferences {
     
     fun setPredictionModelRepo(context: Context, repo: String) {
         getPrefs(context).edit().putString(KEY_PREDICTION_MODEL_REPO, repo).apply()
+    }
+    
+    fun getPredictionSelectedModel(context: Context): String {
+        return getPrefs(context).getString(KEY_PREDICTION_SELECTED_MODEL, "predictive-text-small")
+            ?: "predictive-text-small"
+    }
+    
+    fun setPredictionSelectedModel(context: Context, modelId: String) {
+        getPrefs(context).edit().putString(KEY_PREDICTION_SELECTED_MODEL, modelId).apply()
     }
     
     fun isSttEnabled(context: Context): Boolean {
@@ -275,6 +306,16 @@ object SettingsPreferences {
 
     fun setShowPressBubble(context: Context, show: Boolean) {
         getPrefs(context).edit().putBoolean(KEY_SHOW_PRESS_BUBBLE, show).apply()
+    }
+    
+    /** 获取方案偏好的键盘布局，默认全键盘 */
+    fun getLayoutPreference(context: Context, schemaId: String): String {
+        return getPrefs(context).getString("$KEY_LAYOUT_PREFIX$schemaId", "full") ?: "full"
+    }
+    
+    /** 保存方案偏好的键盘布局 */
+    fun setLayoutPreference(context: Context, schemaId: String, layout: String) {
+        getPrefs(context).edit().putString("$KEY_LAYOUT_PREFIX$schemaId", layout).apply()
     }
     
     fun getKeyboardHeightDp(context: Context): Int {

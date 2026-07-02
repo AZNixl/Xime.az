@@ -3,6 +3,7 @@
 
 #include <rime_api.h>
 #include <rime/setup.h>
+#include <rime/dict/reverse_lookup_dictionary.h>
 #include <jni.h>
 #include <android/log.h>
 #include <memory>
@@ -33,6 +34,16 @@ struct ProcessResult {
     std::string committedText;
     std::string inputText;
     std::string preeditText;
+    std::vector<std::pair<std::string, std::string>> candidates;
+    bool isAsciiMode;
+    bool hasNextPage;
+    bool hasPrevPage;
+};
+
+struct CompositionResult {
+    std::string input;
+    std::string preedit;
+    std::string committedText;
     std::vector<std::pair<std::string, std::string>> candidates;
     bool isAsciiMode;
     bool hasNextPage;
@@ -212,6 +223,67 @@ public:
             result.isAsciiMode = status.is_ascii_mode;
             rime->free_status(&status);
         }
+    }
+
+    bool setInput(const char* input) {
+        if (!rime || !session_id_) {
+            LOGE("setInput: rime or session not available");
+            return false;
+        }
+        if (!input || strlen(input) == 0) {
+            LOGD("setInput: empty input, clearing composition");
+            rime->clear_composition(session_id_);
+            return true;
+        }
+        LOGD("setInput: '%s'", input);
+        return rime->set_input(session_id_, input);
+    }
+
+    CompositionResult getComposition() {
+        CompositionResult result;
+        if (!rime || !session_id_) {
+            LOGE("getComposition: rime or session not available");
+            return result;
+        }
+
+        // 1. raw input
+        const char* input = rime->get_input(session_id_);
+        result.input = input ? input : "";
+
+        // 2. context: preedit + candidates + pagination
+        RIME_STRUCT(RimeContext, context);
+        if (rime->get_context(session_id_, &context)) {
+            if (context.composition.preedit) {
+                result.preedit = context.composition.preedit;
+            }
+            for (int i = 0; i < context.menu.num_candidates; ++i) {
+                const char* text = context.menu.candidates[i].text;
+                const char* comment = context.menu.candidates[i].comment;
+                result.candidates.push_back(std::make_pair(
+                    text ? text : "",
+                    comment ? comment : ""
+                ));
+            }
+            result.hasNextPage = !context.menu.is_last_page;
+            result.hasPrevPage = context.menu.page_no > 0;
+            rime->free_context(&context);
+        }
+
+        // 3. commit text（统一返回，避免调用方额外查询）
+        RIME_STRUCT(RimeCommit, commit);
+        if (rime->get_commit(session_id_, &commit)) {
+            result.committedText = commit.text ? commit.text : "";
+            rime->free_commit(&commit);
+        }
+
+        // 4. status: ascii mode
+        RIME_STRUCT(RimeStatus, status);
+        if (rime->get_status(session_id_, &status)) {
+            result.isAsciiMode = status.is_ascii_mode;
+            rime->free_status(&status);
+        }
+
+        return result;
     }
 
     const char* getInput() {
@@ -408,67 +480,58 @@ public:
     }
     
     // 查找词汇的编码
-    // 通过模拟输入文本来获取候选词和编码
+    // 使用 reverse_lookup_dictionary API 反查字符编码
     bool lookupText(const char* text, std::string& outCode) {
-        if (!rime || !session_id_ || !text) return false;
+        if (!rime || !text) return false;
+        LOGD("lookupText: word='%s'", text);
         
-        // 保存当前输入状态
-        std::string saved_input = getInput();
-        rime->clear_composition(session_id_);
+        auto* component = rime::ReverseLookupDictionary::Require("reverse_lookup_dictionary");
+        if (!component) { LOGD("lookupText: component not available"); return false; }
+        auto* rldc = dynamic_cast<rime::ReverseLookupDictionaryComponent*>(component);
+        if (!rldc) { LOGD("lookupText: not ReverseLookupDictionaryComponent"); return false; }
         
-        // 逐字符输入文本
-        const char* p = text;
-        while (*p) {
-            // 将字符转换为按键码（对于汉字，需要用特殊的处理）
-            // 这里假设 text 是已经commit的文本，我们直接查询
-            // 使用 rime_predict 或者其他方式
-            
-            // 尝试直接通过 session 查找
-            RIME_STRUCT(RimeContext, context);
-            
-            // 获取当前候选词
-            if (rime->get_context(session_id_, &context)) {
-                if (context.menu.num_candidates > 0) {
-                    // 遍历候选词查找匹配的文本
-                    for (int i = 0; i < context.menu.num_candidates; i++) {
-                        const char* candidate_text = context.menu.candidates[i].text;
-                        if (candidate_text && strcmp(candidate_text, text) == 0) {
-                            // 找到匹配的候选词，获取编码（从 comment 中）
-                            const char* comment = context.menu.candidates[i].comment;
-                            if (comment && strlen(comment) > 0) {
-                                outCode = comment;
-                                LOGD("lookupText: found code '%s' for '%s'", comment, text);
-                            }
-                            rime->free_context(&context);
-                            
-                            // 恢复之前的状态
-                            if (!saved_input.empty()) {
-                                for (char c : saved_input) {
-                                    rime->process_key(session_id_, c, 0);
-                                }
-                            }
-                            return true;
+        // 先查当前 schema 使用的字典
+        if (session_id_) {
+            char schema_id[256] = {0};
+            if (rime->get_current_schema(session_id_, schema_id, sizeof(schema_id))) {
+                RimeConfig config = {0};
+                if (rime->schema_open(schema_id, &config)) {
+                    const char* dict = rime->config_get_cstring(&config, "translator/dictionary");
+                    if (dict) {
+                        LOGD("lookupText: schema '%s' uses dict '%s'", schema_id, dict);
+                        auto d = rldc->Create(dict);
+                        if (d && d->Load()) {
+                            std::string r;
+                            if (d->ReverseLookup(text, &r)) { outCode = r; delete d; rime->config_close(&config); return true; }
                         }
+                        delete d;
                     }
+                    // 也查 reverse_lookup 字典
+                    const char* rev = rime->config_get_cstring(&config, "reverse_lookup/dictionary");
+                    if (rev) {
+                        LOGD("lookupText: schema '%s' reverse_lookup dict '%s'", schema_id, rev);
+                        auto d = rldc->Create(rev);
+                        if (d && d->Load()) {
+                            std::string r;
+                            if (d->ReverseLookup(text, &r)) { outCode = r; delete d; rime->config_close(&config); return true; }
+                        }
+                        delete d;
+                    }
+                    rime->config_close(&config);
                 }
-                rime->free_context(&context);
             }
-            
-            // 输入下一个字符
-            rime->process_key(session_id_, *p, 0);
-            p++;
         }
         
-        // 如果上面的方法不行，尝试另一种方式：
-        // 从候选词列表末尾开始查找（通常是用户词库）
-        // 这种情况可能是词库中没有的词
-        
-        // 恢复之前的状态
-        rime->clear_composition(session_id_);
-        if (!saved_input.empty()) {
-            for (char c : saved_input) {
-                rime->process_key(session_id_, c, 0);
+        // fallback: 依次尝试已知编码字典
+        const char* fallbacks[] = {"wubi86", "pinyin_simp", nullptr};
+        for (int i = 0; fallbacks[i]; i++) {
+            auto d = rldc->Create(fallbacks[i]);
+            if (!d) continue;
+            if (d->Load()) {
+                std::string r;
+                if (d->ReverseLookup(text, &r)) { outCode = r; delete d; return true; }
             }
+            delete d;
         }
         
         return false;
@@ -487,6 +550,16 @@ public:
             LOGI("Destroying old session before deployment");
             rime->destroy_session(session_id_);
             session_id_ = 0;
+        }
+        
+        // 删除 installation.yaml 以强制触发完整编译
+        // librime 的 RimeStartMaintenance 中 installation_update 任务在
+        // 检测到 installation.yaml 已存在且版本匹配时会返回 false，
+        // 导致不调度任何编译任务直接返回
+        std::string install_yaml(user_data_dir_ + "/installation.yaml");
+        if (access(install_yaml.c_str(), F_OK) == 0) {
+            LOGI("Removing existing installation.yaml to force full deployment");
+            remove(install_yaml.c_str());
         }
         
         rime->start_maintenance(true);
@@ -639,6 +712,8 @@ extern "C" {
 
 static jclass gRimeProcessResultClass = nullptr;
 static jmethodID gRimeProcessResultCtor = nullptr;
+static jclass gRimeCompositionClass = nullptr;
+static jmethodID gRimeCompositionCtor = nullptr;
 static jclass gRimeCandidateClass = nullptr;
 static jmethodID gRimeCandidateCtor = nullptr;
 
@@ -655,6 +730,13 @@ static void ensureJniCache(JNIEnv* env) {
         gRimeProcessResultClass = (jclass)env->NewGlobalRef(cls);
         gRimeProcessResultCtor = env->GetMethodID(gRimeProcessResultClass, "<init>",
             "(ZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;[Lcom/kingzcheung/xime/rime/RimeCandidate;ZZZ)V");
+        env->DeleteLocalRef(cls);
+    }
+    if (!gRimeCompositionClass) {
+        jclass cls = env->FindClass("com/kingzcheung/xime/rime/RimeComposition");
+        gRimeCompositionClass = (jclass)env->NewGlobalRef(cls);
+        gRimeCompositionCtor = env->GetMethodID(gRimeCompositionClass, "<init>",
+            "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[Lcom/kingzcheung/xime/rime/RimeCandidate;ZZZ)V");
         env->DeleteLocalRef(cls);
     }
 }
@@ -814,6 +896,68 @@ Java_com_kingzcheung_xime_rime_RimeEngine_nativeGetProcessResult(
     env->DeleteLocalRef(candidateArray);
 
     return jResult;
+}
+
+// 设置输入字符串（替代逐字符 processKey，减少 JNI 调用次数）
+JNIEXPORT jboolean JNICALL
+Java_com_kingzcheung_xime_rime_RimeEngine_nativeSetInput(
+    JNIEnv* env,
+    jobject thiz,
+    jstring input
+) {
+    const char* input_str = env->GetStringUTFChars(input, nullptr);
+    if (!input_str) {
+        LOGE("nativeSetInput: null input");
+        return JNI_FALSE;
+    }
+    bool result = Rime::Instance().setInput(input_str);
+    env->ReleaseStringUTFChars(input, input_str);
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
+// 一次性获取当前 composition 全部信息：input/preedit/commit/candidates/paging/ascii_mode
+// 将 updateUI 所需的多次 JNI 查询合并为一次，减少 JNI 往返开销。
+JNIEXPORT jobject JNICALL
+Java_com_kingzcheung_xime_rime_RimeEngine_nativeGetComposition(
+    JNIEnv* env,
+    jobject thiz
+) {
+    ensureJniCache(env);
+
+    CompositionResult result = Rime::Instance().getComposition();
+
+    jobjectArray candidateArray = env->NewObjectArray(
+        result.candidates.size(), gRimeCandidateClass, nullptr);
+
+    for (size_t i = 0; i < result.candidates.size(); ++i) {
+        jstring text = env->NewStringUTF(result.candidates[i].first.c_str());
+        jstring comment = env->NewStringUTF(result.candidates[i].second.c_str());
+        jobject candidate = env->NewObject(gRimeCandidateClass, gRimeCandidateCtor, text, comment);
+        env->SetObjectArrayElement(candidateArray, i, candidate);
+        env->DeleteLocalRef(text);
+        env->DeleteLocalRef(comment);
+        env->DeleteLocalRef(candidate);
+    }
+
+    jstring jInput = env->NewStringUTF(result.input.c_str());
+    jstring jPreedit = env->NewStringUTF(result.preedit.c_str());
+    jstring jCommitted = env->NewStringUTF(result.committedText.c_str());
+
+    jobject jComposition = env->NewObject(gRimeCompositionClass, gRimeCompositionCtor,
+        jInput,
+        jPreedit,
+        jCommitted,
+        candidateArray,
+        result.hasNextPage ? JNI_TRUE : JNI_FALSE,
+        result.hasPrevPage ? JNI_TRUE : JNI_FALSE,
+        result.isAsciiMode ? JNI_TRUE : JNI_FALSE);
+
+    env->DeleteLocalRef(jInput);
+    env->DeleteLocalRef(jPreedit);
+    env->DeleteLocalRef(jCommitted);
+    env->DeleteLocalRef(candidateArray);
+
+    return jComposition;
 }
 
 // 获取候选词列表

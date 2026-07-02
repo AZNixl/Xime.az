@@ -117,7 +117,6 @@ fun PluginsSettingsContent(
                     containerColor = MaterialTheme.colorScheme.background,
                     titleContentColor = MaterialTheme.colorScheme.onBackground
                 ),
-                windowInsets = WindowInsets(0.dp)
             )
         }
     ) { padding ->

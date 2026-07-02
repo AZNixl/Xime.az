@@ -18,6 +18,7 @@ switches:
   - name: extended_charset
     states: [ 常用, 扩展 ]
   - name: ascii_punct
+    reset: 0
     states: [ 。，, ．， ]
 
 engine:
@@ -75,6 +76,7 @@ reverse_lookup:
     - xform/([nl])v/$1ü/
     - xform/([nl])ue/$1üe/
     - xform/([jqxy])v/$1u/
+
 
 punctuator:
   import_preset: default

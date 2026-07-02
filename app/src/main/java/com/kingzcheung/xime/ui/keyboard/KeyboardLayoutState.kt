@@ -30,8 +30,11 @@ sealed class KeyboardLayoutState {
     /** 笔画键盘（stroke schema 专用 T9 九宫格布局） */
     data object Stroke : KeyboardLayoutState()
 
-    /** 是否为全键盘类（Chinese / English） */
-    val isFullKeyboard: Boolean get() = this is Chinese || this is English
+    /** 拼音九键键盘（t9_pinyin schema 专用 T9 九宫格布局） */
+    data object T9Pinyin : KeyboardLayoutState()
+
+    /** 是否为全键盘类（Chinese / English / T9Pinyin） */
+    val isFullKeyboard: Boolean get() = this is Chinese || this is English || this is T9Pinyin
 }
 
 /**
@@ -65,6 +68,7 @@ sealed class KeyboardLayoutAction {
 fun KeyboardLayoutState.transition(
     action: KeyboardLayoutAction,
     isAsciiMode: Boolean,
+    schemaId: String = "",
 ): KeyboardLayoutState {
     return when (action) {
         KeyboardLayoutAction.SwitchToNumber -> KeyboardLayoutState.Number
@@ -73,6 +77,7 @@ fun KeyboardLayoutState.transition(
         KeyboardLayoutAction.SwitchToStroke -> KeyboardLayoutState.Stroke
         KeyboardLayoutAction.SwitchToFull -> when {
             isAsciiMode -> KeyboardLayoutState.English
+            isT9Schema(schemaId) -> KeyboardLayoutState.T9Pinyin
             else -> KeyboardLayoutState.Chinese
         }
     }
@@ -85,8 +90,21 @@ fun initialKeyboardLayoutState(
     isAsciiMode: Boolean,
     schemaId: String = "",
 ): KeyboardLayoutState = when {
+    isT9Schema(schemaId) && !isAsciiMode -> KeyboardLayoutState.T9Pinyin
     schemaId == "stroke" && !isAsciiMode -> KeyboardLayoutState.Stroke
     isAsciiMode -> KeyboardLayoutState.English
     schemaId == "stroke" -> KeyboardLayoutState.Stroke
+    isT9Schema(schemaId) -> KeyboardLayoutState.T9Pinyin
     else -> KeyboardLayoutState.Chinese
+}
+
+/**
+ * 判断是否为九键（T9）方案。
+ *
+ * 支持精确匹配已知方案 ID，以及关键词匹配（schemaId 或方案名称包含 "t9"）。
+ */
+fun isT9Schema(schemaId: String, name: String = ""): Boolean {
+    val knownT9SchemaIds = setOf("t9_pinyin", "t9", "wanxiang_t9")
+    if (schemaId in knownT9SchemaIds) return true
+    return schemaId.lowercase().contains("t9") || name.lowercase().contains("t9")
 }

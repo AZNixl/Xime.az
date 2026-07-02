@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imeNestedScroll
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -84,7 +83,6 @@ fun FunAsrSettingsContent(
                     containerColor = MaterialTheme.colorScheme.background,
                     titleContentColor = MaterialTheme.colorScheme.onBackground
                 ),
-                windowInsets = WindowInsets(0.dp)
             )
         }
     ) { padding ->
@@ -93,7 +91,6 @@ fun FunAsrSettingsContent(
                 .fillMaxSize()
                 .consumeWindowInsets(padding)
                 .imePadding()
-                .imeNestedScroll()
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
             contentPadding = PaddingValues(top = 8.dp, bottom = padding.calculateBottomPadding() + 8.dp)

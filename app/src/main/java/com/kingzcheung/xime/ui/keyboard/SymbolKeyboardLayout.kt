@@ -120,7 +120,8 @@ fun SymbolKeyboardLayout(
                                 SymbolButton(
                                     symbol = symbol,
                                     onClick = { onSelect(symbol) },
-                                    modifier = Modifier.weight(1f)
+                                    modifier = Modifier.weight(1f),
+                                    textColor = textColor,
                                 )
                             }
                             repeat(columns - rowSymbols.size) {
@@ -178,7 +179,8 @@ fun SymbolKeyboardLayout(
 private fun SymbolButton(
     symbol: String,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    textColor: Color = Color.Unspecified,
 ) {
     Box(
         modifier = modifier
@@ -190,7 +192,8 @@ private fun SymbolButton(
         Text(
             text = symbol,
             fontSize = 16.sp,
-            textAlign = TextAlign.Center
+            textAlign = TextAlign.Center,
+            color = textColor,
         )
     }
 }

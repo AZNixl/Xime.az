@@ -36,6 +36,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kingzcheung.xime.settings.SchemaInfo
+import com.kingzcheung.xime.settings.SettingsPreferences
 
 @Composable
 fun SchemaListView(
@@ -54,6 +55,7 @@ fun SchemaListView(
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
     val columns = if (isLandscape) 8 else 4
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     Column(
         modifier = modifier
@@ -199,7 +201,9 @@ private fun SchemaGridItem(
     isSelected: Boolean,
     bgColor: Color,
     textColor: Color,
+    subTextColor: Color = textColor,
     accentColor: Color,
+    layoutHint: String? = null,
     onSelect: () -> Unit,
     modifier: Modifier = Modifier,
     isLandscape: Boolean = false
@@ -229,5 +233,14 @@ private fun SchemaGridItem(
             textAlign = TextAlign.Center,
             maxLines = 1
         )
+        if (layoutHint != null) {
+            Text(
+                text = layoutHint,
+                color = if (isSelected) accentColor.copy(alpha = 0.7f) else subTextColor,
+                fontSize = 8.sp,
+                textAlign = TextAlign.Center,
+                maxLines = 1
+            )
+        }
     }
 }

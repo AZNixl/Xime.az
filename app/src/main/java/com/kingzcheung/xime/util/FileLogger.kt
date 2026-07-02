@@ -38,6 +38,8 @@ object FileLogger {
             
             openLogFile()
             cleanOldLogs()
+            cleanRimeLogs(context)
+            cleanOrphanedLogs()
             
             running = true
             Thread({ flusherLoop() }, "log-flusher").also { it.isDaemon = true }.start()
@@ -184,6 +186,46 @@ object FileLogger {
         }
     }
     
+    private fun cleanOrphanedLogs() {
+        try {
+            logsDir?.let { dir ->
+                dir.listFiles()
+                    ?.filter { it.name.endsWith(".log") && !it.name.startsWith("kime_") }
+                    ?.forEach { file ->
+                        if (file.length() > MAX_LOG_SIZE) {
+                            file.delete()
+                            Log.d(TAG, "Deleted orphaned log: ${file.name}")
+                        }
+                    }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to clean orphaned logs", e)
+        }
+    }
+
+    private fun cleanRimeLogs(context: Context) {
+        try {
+            val rimeLogDir = File(File(context.filesDir, "rime"), "logs")
+            if (!rimeLogDir.exists()) return
+            rimeLogDir.listFiles()
+                ?.filter { it.isFile && it.name.endsWith(".log") }
+                ?.sortedByDescending { it.lastModified() }
+                ?.drop(MAX_LOG_FILES)
+                ?.forEach { file ->
+                    file.delete()
+                    Log.d(TAG, "Deleted rime log: ${file.name}")
+                }
+            rimeLogDir.listFiles()
+                ?.filter { it.isFile && it.name.endsWith(".log") && it.length() > MAX_LOG_SIZE }
+                ?.forEach { file ->
+                    file.delete()
+                    Log.d(TAG, "Deleted oversized rime log: ${file.name}")
+                }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to clean rime logs", e)
+        }
+    }
+
     fun flush() {
         writer?.flush()
     }

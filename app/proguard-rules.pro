@@ -3,6 +3,9 @@
 
 -optimizations !class/merging/*
 
+# Keep utility classes used by Application and services
+-keep class com.kingzcheung.xime.util.** { *; }
+
 # Keep Kotlin stdlib classes used by plugins via parent classloader
 # Plugins use compileOnly(plugin-core), so Kotlin stdlib resolves from host app.
 # R8 strips unused stdlib methods — these rules ensure plugins can call them.

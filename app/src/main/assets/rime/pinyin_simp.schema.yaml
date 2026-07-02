@@ -19,6 +19,7 @@ switches:
   - name: full_shape
     states: [ 半角, 全角 ]
   - name: ascii_punct
+    reset: 0
     states: [ 。，, ．， ]
 
 engine:
@@ -62,6 +63,8 @@ speller:
 
 translator:
   dictionary: pinyin_simp
+  packs:
+    - user_simp
   preedit_format:
     - xform/([nl])v/$1ü/
     - xform/([nl])ue/$1üe/

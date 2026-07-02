@@ -11,6 +11,7 @@ package com.kingzcheung.xime.keyboard
 @Deprecated("Use KeyboardLayoutState instead")
 enum class KeyboardMode {
     FULL,       // 全键盘（字母）
+    NINEKEY,    // 九宫格（T9）
     NUMBER,     // 九宫格数字键盘
     SYMBOL      // 符号键盘
 }

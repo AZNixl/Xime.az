@@ -1,6 +1,7 @@
 package com.kingzcheung.xime.association
 
 import android.content.Context
+import com.kingzcheung.xime.model.ModelRuntime
 import com.kingzcheung.xime.util.FileLogger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -25,6 +26,13 @@ object OnnxAssociationEngine {
             return true
         }
 
+        ModelRuntime.register(
+            id = "predictive_text",
+            loader = { initialize(context) },
+            releaser = { release() },
+            label = "智能联想模型"
+        )
+
         try {
             val modelDir = context.filesDir
             
@@ -42,7 +50,6 @@ object OnnxAssociationEngine {
 
             val vocabFile = File(modelDir, "vocab.json")
             val vocabText = vocabFile.readText()
-            FileLogger.d(TAG, "vocab.json content preview: ${vocabText.take(200)}")
 
             val vocabJson = JSONObject(vocabText)
             val vocabMap = when {
@@ -59,8 +66,6 @@ object OnnxAssociationEngine {
             vocab = vocabMap.keys().asSequence().associateWith { vocabMap.getInt(it) }
             id2word = vocab.entries.associate { it.value to it.key }
             FileLogger.i(TAG, "Vocabulary loaded: ${vocab.size} words")
-            
-            FileLogger.d(TAG, "id2word mapping check: id=308='${id2word[308]}', id=81='${id2word[81]}', id=9='${id2word[9]}', id=5='${id2word[5]}', id=11='${id2word[11]}'")
 
 
             val modelFile = File(modelDir, "model_int8_dynamic.onnx")
@@ -70,6 +75,7 @@ object OnnxAssociationEngine {
             if (success) {
                 isInitialized = true
                 FileLogger.i(TAG, "ONNX Runtime initialized successfully")
+                ModelRuntime.markLoaded("predictive_text")
                 return true
             } else {
                 FileLogger.e(TAG, "Failed to initialize ONNX Runtime - NativeOnnxEngine.initialize returned false")
@@ -82,8 +88,6 @@ object OnnxAssociationEngine {
     }
 
     suspend fun predict(inputText: String, topK: Int = 20): List<AssociationCandidate> = withContext(Dispatchers.Default) {
-        FileLogger.d(TAG, "predict called with inputText='$inputText', topK=$topK")
-        
         if (!isInitialized) {
             FileLogger.e(TAG, "Engine not initialized")
             return@withContext emptyList()
@@ -91,19 +95,12 @@ object OnnxAssociationEngine {
 
         try {
             val inputIds = encodeText(inputText)
-            FileLogger.d(TAG, "encodeText result: inputIds=$inputIds")
             if (inputIds.isEmpty()) {
-                FileLogger.d(TAG, "Empty input encoding for: '$inputText'")
                 return@withContext emptyList()
             }
 
-            FileLogger.d(TAG, "Predicting for: '$inputText', tokens: $inputIds")
-
             val inputIdsLong = inputIds.map { it.toLong() }.toLongArray()
             val scores = NativeOnnxEngine.predict(inputIdsLong, topK)
-            
-            FileLogger.d(TAG, "NativeOnnxEngine.predict returned ${scores.size} scores")
-            FileLogger.d(TAG, "Top 5 scores with id2word lookup: ${scores.take(5).map { (id, score) -> "id=$id -> '${id2word[id]}' (score=$score)" }}")
 
             val candidates = scores.mapNotNull { (id, score) ->
                 id2word[id]?.let { word ->
@@ -111,7 +108,6 @@ object OnnxAssociationEngine {
                 }
             }
 
-            FileLogger.d(TAG, "Predicted ${candidates.size} candidates: ${candidates.map { it.text }}")
             candidates
 
         } catch (e: Exception) {
@@ -137,11 +133,9 @@ object OnnxAssociationEngine {
         if (!isInitialized || warmupStarted) return
         warmupStarted = true
         warmupScope.launch {
-            FileLogger.d(TAG, "Starting warmup prediction...")
             val dummyIds = longArrayOf(1L, 9L)
             try {
                 NativeOnnxEngine.predict(dummyIds, 5)
-                FileLogger.d(TAG, "Warmup prediction completed")
             } catch (e: Exception) {
                 FileLogger.w(TAG, "Warmup prediction failed (non-fatal): ${e.message}")
             }
@@ -151,6 +145,7 @@ object OnnxAssociationEngine {
     fun release() {
         NativeOnnxEngine.release()
         isInitialized = false
+        ModelRuntime.markUnloaded("predictive_text")
         FileLogger.d(TAG, "ONNX Runtime released")
     }
 

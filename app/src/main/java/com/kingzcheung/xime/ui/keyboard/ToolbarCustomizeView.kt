@@ -33,6 +33,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,7 +46,6 @@ import com.kingzcheung.xime.keyboard.ToolbarButton
 fun ToolbarCustomizeView(
     toolbarButtons: List<String>,
     keyTextColor: Color,
-    keyBgColor: Color,
     backgroundColor: Color,
     accentColor: Color,
     onUpdateToolbarButtons: ((List<String>) -> Unit)?,
@@ -53,7 +53,13 @@ fun ToolbarCustomizeView(
     bottomPaddingDp: Int = 0,
     modifier: Modifier = Modifier
 ) {
-    val allButtons = ToolbarButton.entries
+    val allButtons = ToolbarButton.entries.filter { button ->
+        if (button == ToolbarButton.HANDWRITING_LOOKUP) {
+            val mf = java.io.File(LocalContext.current.filesDir, "ochwpro.onnx")
+            val cf = java.io.File(LocalContext.current.filesDir, "char_index.json")
+            mf.exists() && cf.exists()
+        } else true
+    }
     val originalButtons = remember { toolbarButtons }
     var enabledIds by remember(toolbarButtons) { mutableStateOf(toolbarButtons.toSet()) }
 

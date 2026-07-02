@@ -1,6 +1,7 @@
 package com.kingzcheung.xime.ui.settings
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -33,6 +34,7 @@ fun SettingsScreen(
                 onNavigateToPlugins = { navController.navigate(SettingsRoutes.Plugins) },
                 onNavigateToSmartPrediction = { navController.navigate(SettingsRoutes.SmartPrediction) },
                 onNavigateToSpeechToText = { navController.navigate(SettingsRoutes.SpeechToText) },
+                onNavigateToModelManagement = { navController.navigate(SettingsRoutes.ModelManagement) },
                 onNavigateToAbout = { navController.navigate(SettingsRoutes.About) },
                 onNavigateToWebDav = { navController.navigate(SettingsRoutes.WebDav) }
             )
@@ -106,13 +108,15 @@ fun SettingsScreen(
         }
         composable(SettingsRoutes.SmartPrediction) {
             SmartPredictionSettingsContent(
-                onBack = { navController.popBackStack() }
+                onBack = { navController.popBackStack() },
+                onNavigateToModelManagement = { navController.navigate(SettingsRoutes.ModelManagement) }
             )
         }
         composable(SettingsRoutes.SpeechToText) {
             SpeechToTextSettingsContent(
                 onBack = { navController.popBackStack() },
-                onNavigateToFunAsrSettings = { navController.navigate(SettingsRoutes.FunAsrSettings) }
+                onNavigateToFunAsrSettings = { navController.navigate(SettingsRoutes.FunAsrSettings) },
+                onNavigateToModelManagement = { navController.navigate(SettingsRoutes.ModelManagement) }
             )
         }
         composable(SettingsRoutes.FunAsrSettings) {
@@ -138,6 +142,11 @@ fun SettingsScreen(
                 onNavigateToLogViewer = { navController.navigate(SettingsRoutes.LogViewer) }
             )
         }
+        composable(SettingsRoutes.ModelManagement) {
+            ModelManagementContent(
+                onBack = { navController.popBackStack() }
+            )
+        }
         composable(SettingsRoutes.LogViewer) {
             LogViewerScreen(
                 onBack = { navController.popBackStack() }
@@ -152,6 +161,14 @@ fun SettingsScreen(
             LicensesContent(
                 onBack = { navController.popBackStack() }
             )
+        }
+    }
+
+    if (initialRoute != null) {
+        LaunchedEffect(initialRoute) {
+            when (initialRoute) {
+                "model_management" -> navController.navigate(SettingsRoutes.ModelManagement)
+            }
         }
     }
 }

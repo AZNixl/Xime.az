@@ -9,6 +9,7 @@ import android.os.Looper
 import android.util.Log
 import android.view.KeyEvent
 import android.view.View
+import android.view.inputmethod.CursorAnchorInfo
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputContentInfo
@@ -40,7 +41,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -55,9 +58,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kingzcheung.xime.ui.keyboard.KeyboardResizeOverlay
-import com.kingzcheung.xime.ui.keyboard.FloatingCandidateBar
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.pointer.pointerInput
+import com.kingzcheung.xime.ui.keyboard.HardwareKeyboardCandidateBar
 import androidx.core.content.FileProvider
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -73,8 +74,8 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.kingzcheung.xime.MainActivity
 import com.kingzcheung.xime.association.AssociationManager
-import com.kingzcheung.xime.keyboard.KeyboardRoute
 import com.kingzcheung.xime.ui.keyboard.KeyboardCallbacks
+import com.kingzcheung.xime.ui.keyboard.KeyboardLayoutState
 import com.kingzcheung.xime.viewmodel.KeyboardUiState
 import com.kingzcheung.xime.viewmodel.KeyboardViewModel
 import com.kingzcheung.xime.association.AssociationService
@@ -83,16 +84,20 @@ import com.kingzcheung.xime.plugin.ExtensionManager
 import com.kingzcheung.xime.speech.RecognitionState
 import com.kingzcheung.xime.rime.RimeConfigHelper
 import com.kingzcheung.xime.rime.RimeEngine
+import com.kingzcheung.xime.rime.T9InputController
 import com.kingzcheung.xime.settings.SchemaConfigHelper
 import com.kingzcheung.xime.settings.SchemaManager
 import com.kingzcheung.xime.settings.SettingsPreferences
 import com.kingzcheung.xime.ui.keyboard.KeyboardView
+import com.kingzcheung.xime.ui.keyboard.isT9Schema
 import com.kingzcheung.xime.ui.theme.KeyboardThemes
 import kotlin.math.roundToInt
 import com.kingzcheung.xime.settings.KeysConfigHelper
 import com.kingzcheung.xime.ui.theme.XimeTheme
 import com.kingzcheung.xime.util.FileLogger
+import com.kingzcheung.xime.util.PreeditMergeHelper
 import com.kingzcheung.xime.keyboard.ActionExecutor
+import com.kingzcheung.xime.keyboard.HANDWRITING_SCHEMA_ID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -112,10 +117,11 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
 
     companion object {
         private const val TAG = "XimeInputMethodService"
-        private const val KEY_PERF = "KeyPerf"
         private const val DARK_MODE_LIGHT = 0
         private const val DARK_MODE_DARK = 1
         private const val DARK_MODE_SYSTEM = 2
+        private const val HARDWARE_CANDIDATE_BAR_HEIGHT = 72
+
     }
 
     private val lifecycleRegistry = LifecycleRegistry(this)
@@ -144,12 +150,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     init {
         serviceScope.launch {
             keyJobs.consumeEach { job ->
-                val tBeforeJoin = System.nanoTime()
                 job.join()
-                val joinTime = (System.nanoTime() - tBeforeJoin) / 1_000_000
-                if (joinTime > 20) {
-                    FileLogger.d(KEY_PERF, "Channel join took ${joinTime}ms")
-                }
             }
         }
         serviceScope.launch(Dispatchers.Main) {
@@ -172,8 +173,14 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     private var voiceRecordingStarted = false
     private var pendingVoiceAction: (() -> Unit)? = null
     private var lastClearedText: String = ""
+    /** 累积的 partial commit 文本列表（多段选词场景下逐段追加） */
+    private val t9PartialCommitTexts = mutableListOf<String>()
+    /** 键盘回调引用，用于在 RIME selectCandidate 前同步通知 T9 控制器 */
+    private var keyboardCallbacks: KeyboardCallbacks? = null
     private var isChineseMode = true
     private var currentEffectiveKeyboardHeight: Int = 0
+    private var currentFloatingCardHeightDp: Int = 0
+    private var previousSchemaId: String = ""
     
     private val calculatorEngine = com.kingzcheung.xime.calculator.CalculatorEngine()
 
@@ -215,7 +222,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                 voiceAmplitude = 0f
             )
             isTrackingVoiceButtons = false
-            keyboardViewModel.setRoute(KeyboardRoute.Keyboard)
+            keyboardViewModel.switchMain(com.kingzcheung.xime.keyboard.MainType.FULL)
         }
     )
     
@@ -264,6 +271,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             isFloatingMode = isFloatingMode,
             floatingOffsetX = clampedX,
             floatingOffsetY = clampedY,
+            isGlassEffectEnabled = SettingsPreferences.isGlassEffectEnabled(this@XimeInputMethodService),
         )
     }
     
@@ -274,15 +282,32 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                 if (decorView != null) {
                     val insets = decorView.rootWindowInsets
                     if (insets != null) {
-                        val px = insets.getInsetsIgnoringVisibility(
+                        return (insets.getInsetsIgnoringVisibility(
+                            android.view.WindowInsets.Type.navigationBars()
+                        ).bottom / resources.displayMetrics.density).roundToInt()
+                    }
+                }
+            }
+            val resId = resources.getIdentifier("navigation_bar_height", "dimen", "android")
+            if (resId > 0) (resources.getDimensionPixelSize(resId) / resources.displayMetrics.density).roundToInt() else 0
+        } catch (e: Exception) { 0 }
+    }
+
+    private fun tryGetVisibleNavBarHeightDp(): Int {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val decorView = window.window?.decorView
+                if (decorView != null) {
+                    val insets = decorView.rootWindowInsets
+                    if (insets != null) {
+                        val px = insets.getInsets(
                             android.view.WindowInsets.Type.navigationBars()
                         ).bottom
                         if (px > 0) return (px / resources.displayMetrics.density).roundToInt()
                     }
                 }
             }
-            val resId = resources.getIdentifier("navigation_bar_height", "dimen", "android")
-            if (resId > 0) (resources.getDimensionPixelSize(resId) / resources.displayMetrics.density).roundToInt() else 0
+            0
         } catch (e: Exception) { 0 }
     }
 
@@ -507,6 +532,11 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                     Log.d(TAG, "initRimeEngine: currentSchema=$currentSchema, savedSchema=$savedSchema, availableSchemas=${availableSchemas.joinToString()}")
                     
                     when {
+                        savedSchema == HANDWRITING_SCHEMA_ID -> {
+                            // 手写方案：不要调 rimeEngine.switchSchema（Rime 没有手写引擎），
+                            // 也不要覆盖 savedSchema（由 onStartInput 恢复 UI）
+                            Log.d(TAG, "initRimeEngine: savedSchema is handwriting, keeping current Rime schema")
+                        }
                         savedSchema in availableSchemas -> {
                             // 即使 savedSchema == currentSchema 也要调用 switchSchema，
                             // 因为 nativeCreateSession 后 schema 的 processor/translator 等
@@ -613,7 +643,19 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             onPerformSearch = { pendingVoiceAction = { performSearch() } },
             onStopRecognition = { voiceRecognitionHandler.stopRecognition() },
             isRecording = { voiceRecordingStarted },
-            setRecording = { voiceRecordingStarted = it }
+            setRecording = { voiceRecordingStarted = it },
+            onVoiceDismiss = {
+                val action = pendingVoiceAction
+                pendingVoiceAction = null
+                action?.invoke()
+                uiState.value = uiState.value.copy(
+                    isVoiceMode = false,
+                    voiceButtonState = VoiceButtonState(),
+                    voiceRecognizedText = ""
+                )
+                keyboardViewModel.switchMain(com.kingzcheung.xime.keyboard.MainType.FULL)
+                isTrackingVoiceButtons = false
+            }
         )
         
         val composeView = ComposeView(this).apply {
@@ -622,16 +664,28 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             setContent {
                 val cand = candidateState.value
                 val state = uiState.value
+                val page by keyboardViewModel.page.collectAsState(com.kingzcheung.xime.keyboard.KeyboardPage.Main(com.kingzcheung.xime.keyboard.MainType.FULL))
+                val isHandwritingMode = (page as? com.kingzcheung.xime.keyboard.KeyboardPage.Main)?.type == com.kingzcheung.xime.keyboard.MainType.HANDWRITING
                 val isDarkTheme = isDarkTheme()
                 val screenHeightDp = resources.configuration.screenHeightDp
-                val windowVisibleHeightDp = screenHeightDp - tryGetStatusBarHeightDp()
-                val effectiveScreenH = if (state.isFloatingMode) windowVisibleHeightDp else screenHeightDp
+                val physicalScreenDp = (resources.displayMetrics.heightPixels / resources.displayMetrics.density).roundToInt()
+                val statusBarHeightDp = tryGetStatusBarHeightDp()
+                val navBarHeightDp = tryGetNavBarHeightDp()
+                val visibleNavBarHeightDp = tryGetVisibleNavBarHeightDp()
+                // 用物理屏幕高度减去状态栏，保证不同 Android 版本一致
+                val effectiveScreenH = if (state.isFloatingMode) physicalScreenDp - statusBarHeightDp else screenHeightDp
+                val windowVisibleHeightDp = effectiveScreenH
+                // 检测 config.screenHeightDp 是否已排除导航栏（非全屏 + 3按钮导航）
+                val navBarAlreadyExcluded = (physicalScreenDp - screenHeightDp) >= (navBarHeightDp + statusBarHeightDp - 3)
+                val floatingMinY = if (navBarAlreadyExcluded) 0 else visibleNavBarHeightDp
 
                 val isLandscape = !state.isFloatingMode && resources.configuration.screenWidthDp > screenHeightDp
                 val orientationHeight = SettingsPreferences.getKeyboardHeightDp(this@XimeInputMethodService, isLandscape)
                 val displayHeight = orientationHeight.coerceAtMost((screenHeightDp * 8) / 10)
                 val keyboardHeight = if (state.showKeyboardResize) {
                     if (isLandscape) (screenHeightDp * 7) / 10 else displayHeight.coerceAtLeast(screenHeightDp / 2)
+                } else if (isHandwritingMode) {
+                    screenHeightDp / 2
                 } else {
                     displayHeight
                 }
@@ -642,61 +696,59 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                 Log.d(TAG, "ComposeHeight: showResize=${state.showKeyboardResize} orientHeight=$orientationHeight displayHeight=$displayHeight keyboardHeight=$keyboardHeight floatScale=$floatScale effectiveHeight=$effectiveKeyboardHeight isFloatingMode=${state.isFloatingMode} isLandscape=$isLandscape")
                 
                 val density = LocalDensity.current
-                val navBarPx = WindowInsets.navigationBars.getBottom(density)
-                val insetNavBarDp = with(density) { navBarPx.toDp() }
-                val actualNavBarDp = tryGetNavBarHeightDp().coerceAtLeast(if (insetNavBarDp > 0.dp) insetNavBarDp.value.toInt() else 0)
-                val navBarDp = actualNavBarDp.dp
+                val navBarInsetPx = WindowInsets.navigationBars.getBottom(density)
+                val navBarInsetDp = if (navBarInsetPx > 0) {
+                    with(density) { navBarInsetPx.toDp().value.toInt() }
+                } else 0
+                val navBarDp = navBarInsetDp.dp
                 val hasNavBar = navBarDp > 0.dp
-                val floatingMinY = actualNavBarDp
-                
+
                 XimeTheme(darkTheme = isDarkTheme, themeId = state.themeId) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .onPreviewKeyEvent { keyEvent ->
-                                Log.d(TAG, "Compose keyEvent received")
-                                val native = keyEvent.nativeKeyEvent ?: return@onPreviewKeyEvent false
-                                if (native.action != KeyEvent.ACTION_DOWN) return@onPreviewKeyEvent false
-                                val key = keyCodeToKey(native.keyCode, native.isShiftPressed)
-                                if (key != null) {
-                                    Log.d(TAG, "Compose HW key: ${native.keyCode} -> $key")
-                                    handleKeyPress(key, native.isShiftPressed)
-                                    true
-                                } else {
-                                    false
-                                }
-                            }
                             .height(
-                                if (state.isCompact) {
-                                    if (cand.isComposing) 110.dp else 1.dp
-                                } else if (state.isFloatingMode) effectiveScreenH.dp
+                                if (state.isCompact || state.isFloatingMode) effectiveScreenH.dp
                                 else if (state.showKeyboardResize) ((screenHeightDp * 7) / 10 + 100).dp
                                 else (keyboardHeight + state.keyboardBottomPaddingDp).dp + (if (hasNavBar) navBarDp else 0.dp)
                             )
                     ) {
                         // Sync FrameLayout height with Compose content height
                         val contentHeight = if (state.showKeyboardResize) state.resizePreviewHeightDp else floatingCardContentHeight
-                        val totalDp = if (state.isFloatingMode) effectiveScreenH
-                            else contentHeight + state.keyboardBottomPaddingDp + actualNavBarDp
+                        val totalDp = if (state.isCompact || state.isFloatingMode) effectiveScreenH
+                            else contentHeight + state.keyboardBottomPaddingDp + navBarInsetDp
                         Log.d(TAG, "HeightSync: mode=${if (state.showKeyboardResize) "resize" else "normal"} height=$contentHeight navBarDp=${navBarDp.value} padding=${state.keyboardBottomPaddingDp} hasNavBar=$hasNavBar totalDp=$totalDp")
                         SideEffect {
                             keyboardContainer.updateHeight(totalDp)
-                            currentEffectiveKeyboardHeight = if (state.isFloatingMode) floatingCardContentHeight + 48 else effectiveKeyboardHeight
+                            currentEffectiveKeyboardHeight = if (state.isFloatingMode) keyboardHeight + floatingDragBarHeight + 50 + state.keyboardBottomPaddingDp
+                                else if (state.isCompact) HARDWARE_CANDIDATE_BAR_HEIGHT
+                                else effectiveKeyboardHeight
                         }
-                        if (state.isCompact && cand.isComposing) {
-                            FloatingCandidateBar(
+                        val kbColors = KeysConfigHelper.getKeyboardColors()
+                        val longToColor: (Long) -> androidx.compose.ui.graphics.Color = { if (it == 0L)  { androidx.compose.ui.graphics.Color(0xE61E1E1E) } else { androidx.compose.ui.graphics.Color(0xFF000000 or it) } }
+                        val isDark = isDarkTheme
+                        val cardBg = if (isDark) longToColor(kbColors.keyboardBgColorDark) else longToColor(kbColors.keyboardBgColor)
+                        val candidateTextCol = if (isDark) longToColor(kbColors.candidateTextColorDark) else longToColor(kbColors.candidateTextColor)
+                        val accentCol = com.kingzcheung.xime.ui.theme.KeyboardThemes.getAccentColor(state.themeId, isDark)
+                        if (state.isCompact && (cand.candidates.isNotEmpty() || cand.isShowingRecentClipboard || cand.inputText.isNotEmpty())) {
+                            HardwareKeyboardCandidateBar(
                                 inputText = cand.inputText,
                                 preeditText = cand.preeditText,
                                 candidates = cand.candidates,
-                                candidateComments = cand.candidateComments,
-                                isComposing = cand.isComposing,
-                                onCandidateSelect = { index -> selectCandidate(index) },
-                                onDrag = { dx, dy -> moveFloatingWindow(dx, dy) }
+                                hasNextPage = cand.hasNextPage,
+                                hasPrevPage = cand.hasPrevPage,
+                                cursorX = state.cursorX,
+                                cursorY = state.cursorY,
+                                cursorVisible = state.cursorVisible,
+                                highlightIndex = highlightIndex.intValue,
+                                cardBackgroundColor = cardBg,
+                                candidateTextColor = candidateTextCol,
+                                activeColor = accentCol,
                             )
+                        } else if (state.isCompact) {
+                            Box(modifier = Modifier.fillMaxSize())
                         } else {
-                        val kbColors = KeysConfigHelper.getKeyboardColors()
-                        val longToColor: (Long) -> androidx.compose.ui.graphics.Color = { androidx.compose.ui.graphics.Color(0xFF000000 or it) }
-                        val keyboardBgColor = if (isDarkTheme) longToColor(kbColors.keyboardBgColorDark) else longToColor(kbColors.keyboardBgColor)
+                        val keyboardBgColor = cardBg
                         Column(
                             modifier = Modifier
                                 .align(androidx.compose.ui.Alignment.BottomCenter)
@@ -750,25 +802,27 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                 inputSessionId = state.inputSessionId,
                                 isShowingRecentClipboard = cand.isShowingRecentClipboard,
                                 isFloatingMode = state.isFloatingMode,
+                                isHandwritingMode = isHandwritingMode,
                                 floatingOffsetX = state.floatingOffsetX,
                                 floatingOffsetY = state.floatingOffsetY,
-                                floatingMinOffsetY = actualNavBarDp,
+                                floatingMinOffsetY = floatingMinY,
+                                t9ResetSignal = state.t9ResetSignal,
+                                t9RightCandidateSelectedCount = state.t9RightCandidateSelectedCount,
+                                t9SelectedCandidatePinyin = state.t9SelectedCandidatePinyin,
                             )
-                            val callbacks = remember(actualNavBarDp) {
+                            val callbacks = remember(floatingMinY) {
                                 KeyboardCallbacks(
                                     onKeyPress = { key, isShifted ->
                                         handleKeyPress(key, isShifted)
                                     },
                                     onKeyPressDown = { key ->
                                         feedbackManager.performKeyPressDownEffect(key)
-                                        if (key == "space" && uiState.value.isSttEnabled) {
-                                            voiceRecognitionHandler.startDelayedPreStart()
-                                        }
                                     },
                                     onCandidateSelect = { index ->
                                         selectCandidate(index)
                                     },
                                     onAssociationSelect = { index ->
+                                        feedbackManager.performKeyPressEffect()
                                         val cs = candidateState.value
                                         val adjustedCandidates = if (cs.pendingEnglishText.isNotEmpty()) {
                                             listOf(cs.pendingEnglishText) + cs.associationCandidates
@@ -847,7 +901,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                             voiceRecognizedText = ""
                                         )
                                         if (enabled) {
-                                            keyboardViewModel.setRoute(KeyboardRoute.Voice)
+                                            keyboardViewModel.switchMain(com.kingzcheung.xime.keyboard.MainType.VOICE)
                                             feedbackManager.performVibration()
                                             isTrackingVoiceButtons = true
                                             keyboardContainer.enableVoiceButtonTracking()
@@ -855,7 +909,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                             voiceRecognitionHandler.startRecognition()
                                             Log.d("VoiceButtons", "Speech recognition starting...")
                                         } else {
-                                            keyboardViewModel.setRoute(KeyboardRoute.Keyboard)
+            keyboardViewModel.switchMain(com.kingzcheung.xime.keyboard.MainType.FULL)
                                             isTrackingVoiceButtons = false
                                         }
                                     },
@@ -888,7 +942,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                         }
                                     },
                                     onDismissDeploying = { notifyDeploymentStatus(false, "") },
-                                    onFloatingModeChange = { enabled -> toggleFloatingMode(enabled, actualNavBarDp) },
+                                    onFloatingModeChange = { enabled -> toggleFloatingMode(enabled, floatingMinY) },
                                     onFloatingKeyboardDrag = { dx, dy ->
                                         val s = uiState.value
                                         val screenW = resources.configuration.screenWidthDp
@@ -896,11 +950,11 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                         val portraitWidth = minOf(screenW, screenH)
                                         val cardWidth = (portraitWidth * 0.85f).roundToInt()
                                         val halfMargin = ((screenW - cardWidth) / 2f).roundToInt()
-                                        val cappedKeyboardHeight = s.keyboardHeightDp.coerceAtMost((screenH * 8) / 10)
-                                        val cardH = (cappedKeyboardHeight * 0.85f).roundToInt() + 18
                                         val newX = (s.floatingOffsetX + dx).roundToInt().coerceIn(-halfMargin, halfMargin)
                                         val newY_raw = (s.floatingOffsetY + dy).roundToInt()
-                                        val newY = newY_raw.coerceIn(floatingMinY, maxOf(floatingMinY, screenH - cardH - 20))
+                                        val actualCardH = if (currentFloatingCardHeightDp > 0) currentFloatingCardHeightDp else currentEffectiveKeyboardHeight
+                                        val maxOffsetY = (screenH - actualCardH).coerceAtLeast(floatingMinY)
+                                        val newY = newY_raw.coerceIn(0, maxOffsetY)
                                         uiState.value = s.copy(
                                             floatingOffsetX = newX,
                                             floatingOffsetY = newY,
@@ -912,8 +966,37 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                         SettingsPreferences.setFloatingOffsetX(this@XimeInputMethodService, s.floatingOffsetX, isLandscape)
                                         SettingsPreferences.setFloatingOffsetY(this@XimeInputMethodService, s.floatingOffsetY, isLandscape)
                                     },
+                                    onT9ReplaceFullPinyin = { pinyin ->
+                                        when {
+                                            pinyin == T9InputController.CLEAR_COMPOSITION_ONLY -> {
+                                                rimeEngine.clearComposition()
+                                            }
+                                            pinyin == T9InputController.CLEAR_ALL -> {
+                                                t9PartialCommitTexts.clear()
+                                                rimeEngine.setInput("")
+                                                rimeEngine.clearComposition()
+                                            }
+                                            pinyin.isEmpty() -> {
+                                                rimeEngine.clearComposition()
+                                            }
+                                            else -> {
+                                                rimeEngine.setInput(pinyin)
+                                            }
+                                        }
+                                        updateUI()
+                                    },
+                                    onT9RightCommitUndone = { count ->
+                                        currentInputConnection?.deleteSurroundingText(count, 0)
+                                        t9PartialCommitTexts.removeLastOrNull()
+                                    },
+                                    onT9SwitchAway = {
+                                        postRimeJob {
+                                            commitFirstCandidateAndClearT9()
+                                        }
+                                    },
                                 )
                             }
+                            keyboardCallbacks = callbacks
                             if (state.isFloatingMode && uiState.value.floatingOffsetY < floatingMinY) {
                                 uiState.value = uiState.value.copy(floatingOffsetY = floatingMinY)
                             }
@@ -922,6 +1005,12 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                 state = kbState,
                                 callbacks = callbacks,
                                 inlineSuggestions = inlineSuggestionManager?.suggestions.orEmpty(),
+                                onCardPositioned = { _: Int, top: Int, _: Int, bottom: Int ->
+                                    val cardHeightPx = bottom - top
+                                    if (cardHeightPx > 0) {
+                                        currentEffectiveKeyboardHeight = (cardHeightPx / density.density).roundToInt()
+                                    }
+                                },
                             )
                            }
                            if (state.showKeyboardResize) {
@@ -1007,6 +1096,42 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         val e = event ?: return super.onKeyDown(keyCode, event)
         Log.d(TAG, "onKeyDown: keyCode=$keyCode")
+        if (hasHardwareKeyboard && candidateState.value.candidates.isNotEmpty()) {
+            when (keyCode) {
+                KeyEvent.KEYCODE_DPAD_DOWN -> {
+                    if (candidateState.value.hasNextPage) { pageDown(); highlightIndex.intValue = 0; return true }
+                }
+                KeyEvent.KEYCODE_DPAD_UP -> {
+                    if (candidateState.value.hasPrevPage) { pageUp(); highlightIndex.intValue = 0; return true }
+                }
+                KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                    val maxIdx = candidateState.value.candidates.size - 1
+                    highlightIndex.intValue = (highlightIndex.intValue + 1).coerceAtMost(maxIdx)
+                    return true
+                }
+                KeyEvent.KEYCODE_DPAD_LEFT -> {
+                    highlightIndex.intValue = (highlightIndex.intValue - 1).coerceAtLeast(0)
+                    return true
+                }
+                KeyEvent.KEYCODE_SPACE, KeyEvent.KEYCODE_ENTER -> {
+                    if (candidateState.value.candidates.isNotEmpty()) {
+                        selectCandidate(highlightIndex.intValue)
+                        highlightIndex.intValue = 0
+                        return true
+                    }
+                }
+                KeyEvent.KEYCODE_1 -> { selectCandidate(0); highlightIndex.intValue = 0; return true }
+                KeyEvent.KEYCODE_2 -> { selectCandidate(1); highlightIndex.intValue = 0; return true }
+                KeyEvent.KEYCODE_3 -> { selectCandidate(2); highlightIndex.intValue = 0; return true }
+                KeyEvent.KEYCODE_4 -> { selectCandidate(3); highlightIndex.intValue = 0; return true }
+                KeyEvent.KEYCODE_5 -> { selectCandidate(4); highlightIndex.intValue = 0; return true }
+                KeyEvent.KEYCODE_6 -> { selectCandidate(5); highlightIndex.intValue = 0; return true }
+                KeyEvent.KEYCODE_7 -> { selectCandidate(6); highlightIndex.intValue = 0; return true }
+                KeyEvent.KEYCODE_8 -> { selectCandidate(7); highlightIndex.intValue = 0; return true }
+                KeyEvent.KEYCODE_9 -> { selectCandidate(8); highlightIndex.intValue = 0; return true }
+                KeyEvent.KEYCODE_0 -> { selectCandidate(9); highlightIndex.intValue = 0; return true }
+            }
+        }
         val isShifted = e.isShiftPressed
         val key = keyCodeToKey(keyCode, isShifted)
         if (key != null) {
@@ -1087,6 +1212,30 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             
             val actualSchema: String
             when {
+                savedSchema == HANDWRITING_SCHEMA_ID -> {
+                    Log.d(TAG, "onStartInput: saved schema is handwriting, checking model files")
+                    val modelFile = java.io.File(filesDir, "ochwpro.onnx")
+                    val charIndexFile = java.io.File(filesDir, "char_index.json")
+                    if (!modelFile.exists() || !charIndexFile.exists()) {
+                        Log.w(TAG, "Handwriting model not found, falling back to first available schema")
+                        android.widget.Toast.makeText(
+                            this, "请先下载手写模型", android.widget.Toast.LENGTH_LONG
+                        ).show()
+                        val fallbackSchema = if (availableSchemas.isNotEmpty()) {
+                            availableSchemas.first()
+                        } else {
+                            savedSchema
+                        }
+                        applyPageSizeSetting(fallbackSchema)
+                        rimeEngine.switchSchema(fallbackSchema)
+                        SettingsPreferences.setCurrentSchema(this, fallbackSchema)
+                        actualSchema = fallbackSchema
+                    } else {
+                        Log.d(TAG, "onStartInput: saved schema is handwriting, keeping handwriting mode")
+                        keyboardViewModel.switchMain(com.kingzcheung.xime.keyboard.MainType.HANDWRITING)
+                        actualSchema = savedSchema
+                    }
+                }
                 savedSchema in availableSchemas -> {
                     if (savedSchema != currentSchema) {
                         Log.d(TAG, "onStartInput: Switching to saved schema: $savedSchema")
@@ -1119,11 +1268,16 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             updateSchemaName()
         }
 
-        // 每次打开键盘时刷新 STT 等偏好设置
         uiState.value = uiState.value.copy(
             inputSessionId = System.nanoTime(),
-            isSttEnabled = SettingsPreferences.isSttEnabled(this@XimeInputMethodService)
+            isSttEnabled = SettingsPreferences.isSttEnabled(this@XimeInputMethodService),
         )
+
+        // 重置键盘布局到初始状态，避免切换应用后仍残留之前的布局（如英文、数字、符号）。
+        // 必须携带当前 schemaId，否则 T9/笔画等专用布局会被错误重置为默认全键盘。
+        if (RimeEngine.isInitialized()) {
+            keyboardViewModel.resetKeyboard(rimeEngine.isAsciiMode(), uiState.value.currentSchemaId)
+        }
 
         // 先重置候选状态到初始值，避免前一 session 的残留状态影响新输入
         candidateState.value = CandidateState()
@@ -1173,11 +1327,49 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         attribute?.let { updateEnterKeyText(it) }
     }
     
+    private val highlightIndex = mutableIntStateOf(0)
+
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         info?.let { updateEnterKeyText(it) }
         hasHardwareKeyboard = resources.configuration.keyboard != android.content.res.Configuration.KEYBOARD_NOKEYS
         applyCompactMode()
+        if (hasHardwareKeyboard) {
+            currentInputConnection?.requestCursorUpdates(
+                InputConnection.CURSOR_UPDATE_MONITOR or InputConnection.CURSOR_UPDATE_IMMEDIATE
+            )
+        }
+    }
+
+    private var anchorCoords = floatArrayOf(0f, 0f, 0f, 0f)
+
+    override fun onUpdateCursorAnchorInfo(info: CursorAnchorInfo) {
+        if (!hasHardwareKeyboard) return
+        try {
+            val bounds = info.getCharacterBounds(0)
+            if (bounds != null) {
+                anchorCoords[0] = bounds.left
+                anchorCoords[1] = bounds.bottom
+                anchorCoords[2] = bounds.left
+                anchorCoords[3] = bounds.top
+            } else {
+                anchorCoords[0] = info.insertionMarkerHorizontal
+                anchorCoords[1] = info.insertionMarkerBottom
+                anchorCoords[2] = info.insertionMarkerHorizontal
+                anchorCoords[3] = info.insertionMarkerTop
+            }
+            if (anchorCoords.any(Float::isNaN)) return
+            info.matrix.mapPoints(anchorCoords)
+            val screenY = anchorCoords[1].toInt().coerceIn(0, resources.displayMetrics.heightPixels)
+            val screenX = anchorCoords[0].toInt().coerceIn(0, resources.displayMetrics.widthPixels)
+            uiState.value = uiState.value.copy(
+                cursorX = screenX,
+                cursorY = screenY,
+                cursorVisible = true,
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "onUpdateCursorAnchorInfo failed", e)
+        }
     }
 
     override fun onEvaluateFullscreenMode(): Boolean {
@@ -1198,19 +1390,19 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         applyCompactMode()
         loadDarkModePreference()
         applyFloatingWindowBackground()
+        if (hasHardwareKeyboard) {
+            currentInputConnection?.requestCursorUpdates(
+                InputConnection.CURSOR_UPDATE_MONITOR or InputConnection.CURSOR_UPDATE_IMMEDIATE
+            )
+        }
     }
 
     private fun applyFloatingWindowBackground() {
-        val enabled = uiState.value.isFloatingMode
+        if (!uiState.value.isFloatingMode) return
         try {
             window.window?.let { win ->
-                if (enabled) {
-                    win.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
-                    win.setDimAmount(0f)
-                } else {
-                    win.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.WHITE))
-                    win.setDimAmount(0.2f)
-                }
+                win.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+                win.setDimAmount(0f)
             }
         } catch (e: Exception) {
             Log.e(TAG, "applyFloatingWindowBackground failed", e)
@@ -1222,24 +1414,8 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         val isCompact = hasHardwareKeyboard
         if (current.isCompact != isCompact) {
             uiState.value = current.copy(isCompact = isCompact)
-        }
-        if (isCompact) {
-            initFloatingPosition()
-        }
-    }
-
-    private fun initFloatingPosition() {
-        window.window?.let { win ->
-            val lp = win.attributes
-            // 切换到左上重力，使 x/y 成为屏幕绝对坐标
-            if (lp.gravity != (android.view.Gravity.TOP or android.view.Gravity.START)) {
-                val decor = win.decorView
-                val loc = IntArray(2)
-                decor.getLocationOnScreen(loc)
-                lp.gravity = android.view.Gravity.TOP or android.view.Gravity.START
-                lp.x = loc[0]
-                lp.y = loc[1]
-                win.attributes = lp
+            if (isCompact) {
+                window.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
             }
         }
     }
@@ -1325,14 +1501,18 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     }
     
     private fun updateUI() {
-        val inputText = rimeEngine.getInput()
-        val candidatesWithComments = rimeEngine.getCandidatesWithComments()
-        val isAsciiMode = rimeEngine.isAsciiMode()
-        val hasNextPage = rimeEngine.hasNextPage()
-        val hasPrevPage = rimeEngine.hasPrevPage()
-        
+        // 一次性查询 RIME composition 全部状态，替代 getInput + getPreedit +
+        // getCandidatesWithComments + isAsciiMode + hasNextPage + hasPrevPage 的多次 JNI 调用。
+        val composition = rimeEngine.getComposition()
+        val inputText = composition.input
+        val preeditText = composition.preedit
+        val candidatesWithComments = composition.candidates.toList()
+        val isAsciiMode = composition.isAsciiMode
+        val hasNextPage = composition.hasNextPage
+        val hasPrevPage = composition.hasPrevPage
+
         val pendingEnglish = candidateState.value.pendingEnglishText
-        
+
         val (filteredTexts, filteredComments) = if (isAsciiMode) {
             val filtered = candidatesWithComments.filterNot { candidate ->
                 candidate.text.any { it.code in 0x4E00..0x9FFF }
@@ -1341,12 +1521,28 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         } else {
             candidatesWithComments.map { it.text } to candidatesWithComments.map { it.comment }
         }
-        
+
+        // 使用 preedit 文本（经过 preedit_format 和 lua_filter 处理）作为显示文本
+        // 对于 T9 九键方案，t9_preedit.lua 会将数字序列转为拼音
+        // 对于非 T9 方案，preedit 和 input 通常相同
+        val displayText = if (preeditText.isNotEmpty()) preeditText else inputText
+        // T9 模式：通过最长后缀重叠检测，将 partial commit 累积文本与 RIME pre-edit 智能拼接
+        val isT9Schema = isT9Schema(uiState.value.currentSchemaId)
+        val t9DisplayText = if (isT9Schema) {
+            PreeditMergeHelper.mergePartialCommitText(t9PartialCommitTexts, displayText)
+        } else {
+            displayText
+        }
+        // T9 模式下，只要还有 partial commit 未最终上屏，就应保持 composing 状态，
+        // 以便预编辑区域继续显示已提交的候选文本（如场景 6 BS5 的"策"）
+        val isComposing = inputText.isNotEmpty() || (isT9Schema && t9PartialCommitTexts.isNotEmpty())
+
         candidateState.value = candidateState.value.copy(
-            inputText = inputText,
+            inputText = t9DisplayText,
+            preeditText = if (isT9Schema) t9DisplayText else preeditText,
             candidates = filteredTexts,
             candidateComments = filteredComments,
-            isComposing = inputText.isNotEmpty(),
+            isComposing = isComposing,
             associationCandidates = if ((isAsciiMode || !isChineseMode) && pendingEnglish.isEmpty()) emptyList() else candidateState.value.associationCandidates,
             isShowingRecentClipboard = false,
             hasNextPage = hasNextPage,
@@ -1371,9 +1567,9 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         val t0 = System.nanoTime()
         val isAsciiMode = result.isAsciiMode
         val candidatesWithComments = result.candidates
-        
+
         val pendingEnglish = candidateState.value.pendingEnglishText
-        
+
         val tFilter = System.nanoTime()
         val (filteredTexts, filteredComments) = if (isAsciiMode) {
             val filtered = candidatesWithComments.filterNot { candidate ->
@@ -1383,17 +1579,24 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         } else {
             candidatesWithComments.map { it.text } to candidatesWithComments.map { it.comment }
         }
-        val filterElapsed = (System.nanoTime() - tFilter) / 1_000_000
-        if (filterElapsed > 5) {
-            FileLogger.d(KEY_PERF, "updateUI filter candidates: ${filterElapsed}ms, count=${candidatesWithComments.size}")
+
+        // 使用 preedit 文本（经过 preedit_format 和 lua_filter 处理）作为显示文本
+        // 对于 T9 九键方案，t9_preedit.lua 会将数字序列转为拼音
+        val displayText = if (result.preeditText.isNotEmpty()) result.preeditText else result.inputText
+        val isT9Schema = isT9Schema(uiState.value.currentSchemaId)
+        val t9DisplayText = if (isT9Schema) {
+            PreeditMergeHelper.mergePartialCommitText(t9PartialCommitTexts, displayText)
+        } else {
+            displayText
         }
-        
+        val isComposing = result.inputText.isNotEmpty() || (isT9Schema && t9PartialCommitTexts.isNotEmpty())
+
         candidateState.value = candidateState.value.copy(
-            inputText = result.inputText,
-            preeditText = result.preeditText,
+            inputText = t9DisplayText,
+            preeditText = if (isT9Schema) t9DisplayText else result.preeditText,
             candidates = filteredTexts,
             candidateComments = filteredComments,
-            isComposing = result.inputText.isNotEmpty(),
+            isComposing = isComposing,
             associationCandidates = if ((isAsciiMode || !isChineseMode) && pendingEnglish.isEmpty()) emptyList() else candidateState.value.associationCandidates,
             isShowingRecentClipboard = false,
             hasNextPage = result.hasNextPage,
@@ -1411,16 +1614,18 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             }
         }
         
-        val elapsed = (System.nanoTime() - t0) / 1_000_000
-        if (elapsed > 5) {
-            FileLogger.d(KEY_PERF, "updateUI: ${elapsed}ms")
-        }
     }
 
     private fun updateSchemaName() {
         val context = this@XimeInputMethodService
         serviceScope.launch(Dispatchers.IO) {
-            val currentSchemaId = rimeEngine.getCurrentSchema()
+            val page = keyboardViewModel.page.value
+            val isHandwritingMode = (page as? com.kingzcheung.xime.keyboard.KeyboardPage.Main)?.type == com.kingzcheung.xime.keyboard.MainType.HANDWRITING
+            val currentSchemaId = if (isHandwritingMode) {
+                HANDWRITING_SCHEMA_ID
+            } else {
+                rimeEngine.getCurrentSchema()
+            }
             val name = SchemaManager.getSchemaDisplayName(context, currentSchemaId)
 
             val enabledIds = SchemaManager.getEnabledSchemas(context)
@@ -1448,15 +1653,53 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         }
     }
 
-    private fun handleKeyPress(key: String, isShifted: Boolean) {
-        val tDispatch = System.nanoTime()
-        val job = serviceScope.launch(keyProcessingDispatcher, start = CoroutineStart.LAZY) {
-            val tStart = System.nanoTime()
-            val dispatchDelay = (tStart - tDispatch) / 1_000_000
-            if (dispatchDelay > 5) {
-                FileLogger.w(KEY_PERF, "Key dispatch delay ${dispatchDelay}ms for '$key'")
+    /**
+     * T9 键盘切换离开时：提交右侧候选词列表首位候选词并清理 T9 和 Rime 状态。
+     * 运行在 keyProcessingDispatcher 线程。
+     */
+    private suspend fun commitFirstCandidateAndClearT9() {
+        val isT9 = isT9Schema(uiState.value.currentSchemaId)
+        if (!isT9) return
+
+        val candState = candidateState.value
+        val candidates = candState.candidates
+
+        if (candidates.isNotEmpty()) {
+            if (rimeEngine.selectCandidate(0)) {
+                val committedText = rimeEngine.commit()
+                if (committedText.isNotEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        commitText(committedText)
+                    }
+                }
             }
-            
+        }
+
+        rimeEngine.clearComposition()
+
+        withContext(Dispatchers.Main) {
+            keyboardCallbacks?.onT9ReplaceFullPinyin?.invoke(T9InputController.CLEAR_ALL)
+            uiState.value = uiState.value.copy(
+                t9ResetSignal = uiState.value.t9ResetSignal + 1,
+                t9RightCandidateSelectedCount = 0,
+                t9SelectedCandidatePinyin = ""
+            )
+            t9PartialCommitTexts.clear()
+            candidateState.value = candidateState.value.copy(
+                inputText = "",
+                preeditText = "",
+                candidates = emptyList(),
+                candidateComments = emptyList(),
+                isComposing = false,
+                associationCandidates = emptyList(),
+                hasNextPage = false,
+                hasPrevPage = false
+            )
+        }
+    }
+
+    private fun handleKeyPress(key: String, isShifted: Boolean) {
+        val job = serviceScope.launch(keyProcessingDispatcher, start = CoroutineStart.LAZY) {
             val state = uiState.value
             val candState = candidateState.value
             var needsUIUpdate = false
@@ -1469,7 +1712,14 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                     calculatorEngine.handleDelete()
                     updateCalculatorCandidates()
                     
-                    when {
+                    // 数字/符号键盘：直接发送系统退格，不经过 Rime
+                    // 防止 T9 残留状态被 Rime 退格修改导致 UI 不一致
+                    val layoutState = keyboardViewModel.keyboardState.value
+                    if (layoutState is KeyboardLayoutState.Number || layoutState is KeyboardLayoutState.Symbol) {
+                        withContext(Dispatchers.Main) {
+                            sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL)
+                        }
+                    } else when {
                         // 1. 英文待处理文本：逐个删除字符，重新加载联想
                         candState.pendingEnglishText.isNotEmpty() -> {
                             val pendingLen = candState.pendingEnglishText.length
@@ -1656,11 +1906,21 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                             associationCandidates = emptyList(),
                             isComposing = false
                         )
+                        // T9 模式：同步重置 T9 控制器状态并清空 partial commit 累积文本，
+                        // 否则左侧候选区残留、下一轮输入会拼接旧 partial commit。
+                        if (isT9Schema(state.currentSchemaId)) {
+                            keyboardCallbacks?.onT9ReplaceFullPinyin?.invoke(T9InputController.CLEAR_ALL)
+                            uiState.value = uiState.value.copy(
+                                t9ResetSignal = uiState.value.t9ResetSignal + 1,
+                                t9RightCandidateSelectedCount = 0,
+                                t9SelectedCandidatePinyin = ""
+                            )
+                        }
                     }
                 }
                 "space" -> {
                     val pendingEnglish = candState.pendingEnglishText
-                    
+
                     if (pendingEnglish.isNotEmpty()) {
                         withContext(Dispatchers.Main) {
                             commitText(" ")
@@ -1670,26 +1930,19 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                             )
                         }
                         Log.d(TAG, "Space: added space after pending English '$pendingEnglish'")
-                    } else if (rimeEngine.getInput().isNotEmpty()) {
-                        val candidates = rimeEngine.getCandidates()
-                        val textToCommit = if (candidates.isNotEmpty()) {
-                            candidates[0]
+                    } else if (candState.isComposing) {
+                        if (candState.candidates.isNotEmpty()) {
+                            selectCandidateAsync(0)
                         } else {
-                            rimeEngine.getInput()
+                            val input = candState.inputText
+                            if (input.isNotEmpty()) {
+                                withContext(Dispatchers.Main) {
+                                    commitText(input)
+                                }
+                                rimeEngine.clearComposition()
+                                needsUIUpdate = true
+                            }
                         }
-                        withContext(Dispatchers.Main) {
-                            commitText(textToCommit)
-                            candidateState.value = candidateState.value.copy(
-                                inputText = "",
-                                candidates = emptyList(),
-                                candidateComments = emptyList(),
-                                isComposing = false,
-                                hasNextPage = false,
-                                hasPrevPage = false,
-                                isShowingRecentClipboard = false
-                            )
-                        }
-                        rimeEngine.clearComposition()
                     } else {
                         withContext(Dispatchers.Main) {
                             commitText(" ")
@@ -1753,7 +2006,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                     // 字母键不进入此分支（即使 pendingEnglish 非空），需要继续积累编码
                     if (pendingEnglish.isNotEmpty() && !key.matches(Regex("[a-zA-Z]"))) {
                         withContext(Dispatchers.Main) {
-                            commitText(key)
+                            commitText(if (isShifted) (shiftedSymbol(key, !state.isAsciiMode) ?: key) else key)
                             candidateState.value = candidateState.value.copy(
                                 pendingEnglishText = "",
                                 associationCandidates = emptyList()
@@ -1762,50 +2015,80 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                         Log.d(TAG, "Symbol: added '$key' after pending English '$pendingEnglish'")
                         needsUIUpdate = true
                     } else {
-                        val char = if (isShifted) key.uppercase() else key
+                        val isChinese = !state.isAsciiMode
+                        val char = if (isShifted) (shiftedSymbol(key, isChinese) ?: key.uppercase()) else key
                         val keyCode = key.lowercase()[0].code
                         val mask = if (isShifted) KeyEvent.META_SHIFT_ON else 0
                         val isLetter = key.matches(Regex("[a-zA-Z]"))
-                        val isShiftedChinese = isShifted && !state.isAsciiMode && isLetter
+                        val isShiftedChinese = isShifted && isChinese && isLetter
 
-                        val t0 = System.nanoTime()
-                        val processed = rimeEngine.processKey(keyCode, mask)
-                        val pElapsed = (System.nanoTime() - t0) / 1_000_000
-                        if (pElapsed > 5) {
-                            FileLogger.d(KEY_PERF, "Rime processKey '${char}' mask=$mask: ${pElapsed}ms")
-                        }
-                        if (processed) {
-                            val result = rimeEngine.getProcessResult(processed)
-                            if (isShiftedChinese && result.committedText != char) {
-                                rimeEngine.clearComposition()
-                                committedText = char
-                                needsUIUpdate = true
-                                Log.d(TAG, "Shift+letter in Chinese mode: Rime consumed key but didn't produce uppercase, committing '$char' directly")
-                            } else {
-                                uiEventChannel.trySend {
-                                    if (result.committedText.isNotEmpty()) commitText(result.committedText)
-                                    updateUIWithResult(result)
-                                    if (calculatorEngine.isActive()) updateCalculatorCandidates()
-                                }
-                            }
-                        } else {
-                            val isAscii = state.isAsciiMode
-                            if (!candState.isComposing || isShiftedChinese) {
-                                if (isAscii) {
-                                    val charToCommit = if (isShifted) char.uppercase() else char.lowercase()
-                                    val currentPending = candState.pendingEnglishText
-                                    val newPending = currentPending + charToCommit
+                        // Shifted non-letter keys: send character code to Rime (like soft keyboard does),
+                        // avoiding Rime misinterpreting physical keycodes as internal actions.
+                        if (isShifted && !isLetter) {
+                            if (char.length == 1) {
+                                val charCode = char[0].code
+                                val processed = rimeEngine.processKey(charCode, 0)
+                                if (processed) {
+                                    val result = rimeEngine.getProcessResult(processed)
                                     uiEventChannel.trySend {
-                                        commitText(charToCommit)
-                                        candidateState.value = candidateState.value.copy(
-                                            pendingEnglishText = newPending,
-                                            associationCandidates = emptyList()
-                                        )
+                                        if (result.committedText.isNotEmpty()) commitText(result.committedText)
+                                        updateUIWithResult(result)
+                                        if (calculatorEngine.isActive()) updateCalculatorCandidates()
                                     }
-                                    needsUIUpdate = true
-                                    Log.d(TAG, "English mode: committed '$charToCommit', pending text '$newPending'")
+                                    Log.d(TAG, "Shift+symbol: Rime processed charCode=$charCode, result='${result.committedText}'")
                                 } else {
                                     committedText = char
+                                    needsUIUpdate = true
+                                    Log.d(TAG, "Shift+symbol: Rime unprocessed, committing '$char' directly")
+                                }
+                            } else {
+                                committedText = char
+                                needsUIUpdate = true
+                                Log.d(TAG, "Shift+symbol: multi-char '$char' committed directly")
+                            }
+                        } else {
+                            val processed = rimeEngine.processKey(keyCode, mask)
+                            if (processed) {
+                                val result = rimeEngine.getProcessResult(processed)
+                                if (isShiftedChinese && result.committedText != char) {
+                                    rimeEngine.clearComposition()
+                                    committedText = char
+                                    needsUIUpdate = true
+                                    Log.d(TAG, "Shift+letter in Chinese mode: Rime consumed key but didn't produce uppercase, committing '$char' directly")
+                                } else {
+                                    uiEventChannel.trySend {
+                                        if (result.committedText.isNotEmpty()) commitText(result.committedText)
+                                        updateUIWithResult(result)
+                                        if (calculatorEngine.isActive()) updateCalculatorCandidates()
+                                    }
+                                }
+                            } else {
+                                val isAscii = state.isAsciiMode
+                                if (!candState.isComposing || isShiftedChinese) {
+                                    if (isAscii) {
+                                        val charToCommit = if (isShifted) char.uppercase() else char.lowercase()
+                                        val currentPending = candState.pendingEnglishText
+                                        val newPending = currentPending + charToCommit
+                                        uiEventChannel.trySend {
+                                            commitText(charToCommit)
+                                            candidateState.value = candidateState.value.copy(
+                                                pendingEnglishText = newPending,
+                                                associationCandidates = emptyList()
+                                            )
+                                        }
+                                        needsUIUpdate = true
+                                        Log.d(TAG, "English mode: committed '$charToCommit', pending text '$newPending'")
+                                    } else {
+                                        committedText = char
+                                        needsUIUpdate = true
+                                    }
+                                } else {
+                                    val candidateText = if (rimeEngine.selectCandidate(0)) {
+                                        rimeEngine.commit()
+                                    } else {
+                                        ""
+                                    }
+                                    committedText = candidateText + char
                                     needsUIUpdate = true
                                 }
                             }
@@ -1818,20 +2101,13 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                 val result = pendingResult
                 val textToCommit = committedText
                 if (result != null) {
-                    val tEnqueue = System.nanoTime()
                     uiEventChannel.trySend {
-                        val tStartMain = System.nanoTime()
                         if (textToCommit != null) {
                             commitText(textToCommit)
                         }
                         updateUIWithResult(result)
                         if (calculatorEngine.isActive()) {
                             updateCalculatorCandidates()
-                        }
-                        val elapsed = (System.nanoTime() - tStartMain) / 1_000_000
-                        val queueDelay = (tStartMain - tEnqueue) / 1_000_000
-                        if (elapsed > 5) {
-                            FileLogger.d(KEY_PERF, "MainThread work: ${elapsed}ms, queue=${queueDelay}ms")
                         }
                     }
                 } else {
@@ -1840,9 +2116,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                     val capturedIsAscii = rimeEngine.isAsciiMode()
                     val capturedHasNext = rimeEngine.hasNextPage()
                     val capturedHasPrev = rimeEngine.hasPrevPage()
-                    val tEnqueue = System.nanoTime()
                     uiEventChannel.trySend {
-                        val tStartMain = System.nanoTime()
                         if (textToCommit != null) {
                             commitText(textToCommit)
                         }
@@ -1877,17 +2151,8 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                         if (calculatorEngine.isActive()) {
                             updateCalculatorCandidates()
                         }
-                        val elapsed = (System.nanoTime() - tStartMain) / 1_000_000
-                        val queueDelay = (tStartMain - tEnqueue) / 1_000_000
-                        if (elapsed > 5) {
-                            FileLogger.d(KEY_PERF, "MainThread work: ${elapsed}ms, queue=${queueDelay}ms")
-                        }
                     }
                 }
-            }
-            val totalElapsed = (System.nanoTime() - tStart) / 1_000_000
-            if (totalElapsed > 10) {
-                FileLogger.d(KEY_PERF, "handleKey '$key' total: ${totalElapsed}ms")
             }
         }
         keyJobs.trySend(job)
@@ -1899,12 +2164,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
      */
     private fun postRimeJob(block: suspend CoroutineScope.() -> Unit) {
         val job = serviceScope.launch(keyProcessingDispatcher, start = CoroutineStart.LAZY) {
-            val t0 = System.nanoTime()
             block()
-            val elapsed = (System.nanoTime() - t0) / 1_000_000
-            if (elapsed > 10) {
-                FileLogger.d(KEY_PERF, "postRimeJob: ${elapsed}ms")
-            }
         }
         keyJobs.trySend(job)
     }
@@ -1913,10 +2173,23 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         val selectedCandidate = if (index < candidateState.value.candidates.size) {
             candidateState.value.candidates[index]
         } else null
-        
+
+        val isT9 = isT9Schema(uiState.value.currentSchemaId)
+        val candidatePinyin = if (isT9 && index < candidateState.value.candidateComments.size) {
+            candidateState.value.candidateComments[index]
+        } else null
+
+        // 在 RIME 真正 select/commit 之前，先同步通知 T9 控制器消费数字。
+        // 控制器返回 true 表示输入序列已被该候选词完整消费，服务层应视为 full commit。
+        val fullyConsumed = if (isT9) {
+            keyboardCallbacks?.onT9RightCandidateWillBeSelected?.invoke(candidatePinyin) ?: false
+        } else {
+            false
+        }
+
         if (rimeEngine.selectCandidate(index)) {
             val committedText = rimeEngine.commit()
-            if (committedText.isNotEmpty()) {
+            if (committedText.isNotEmpty() || (isT9 && fullyConsumed && selectedCandidate != null)) {
                 if (SettingsPreferences.isSmartPredictionEnabled(this) && selectedCandidate != null && AssociationManager.isInitialized()) {
                     if (predictionManager.lastCommittedText.isNotEmpty()) {
                         val lastChar = predictionManager.lastCommittedText.last().toString()
@@ -1924,8 +2197,17 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                         Log.d(TAG, "Learned: '$lastChar' + '$selectedCandidate'")
                     }
                 }
+                // T9 模式：将 partial commit 累积文本与 RIME committedText 合并后上屏，
+                // 避免之前 partial commit 的文本丢失
+                val textToMerge = if (committedText.isNotEmpty()) committedText else selectedCandidate!!
+                val fullCommitText = if (isT9) {
+                    PreeditMergeHelper.mergePartialCommitText(t9PartialCommitTexts, textToMerge)
+                } else {
+                    textToMerge
+                }
                 withContext(Dispatchers.Main) {
-                    commitText(committedText)
+                    commitText(fullCommitText)
+                    t9PartialCommitTexts.clear()
                     candidateState.value = candidateState.value.copy(
                         inputText = "",
                         candidates = emptyList(),
@@ -1935,9 +2217,25 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                         hasPrevPage = false,
                         isShowingRecentClipboard = false
                     )
+                    uiState.value = uiState.value.copy(
+                        t9ResetSignal = uiState.value.t9ResetSignal + 1,
+                        t9RightCandidateSelectedCount = 0,
+                        t9SelectedCandidatePinyin = ""
+                    )
                 }
             } else {
                 withContext(Dispatchers.Main) {
+                    if (isT9) {
+                        // partial commit：把本次选中的候选文本追加到累积列表，供后续合并显示
+                        if (selectedCandidate != null) {
+                            t9PartialCommitTexts.add(selectedCandidate)
+                        }
+                        // 保留状态字段，供 UI 层感知右侧选词事件
+                        uiState.value = uiState.value.copy(
+                            t9RightCandidateSelectedCount = uiState.value.t9RightCandidateSelectedCount + 1,
+                            t9SelectedCandidatePinyin = candidatePinyin ?: ""
+                        )
+                    }
                     updateUI()
                 }
             }
@@ -1972,6 +2270,8 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     }
 
     private fun selectCandidate(index: Int) {
+        feedbackManager.performKeyPressEffect()
+
         // 计算器模式
         if (calculatorEngine.isActive()) {
             val result = calculatorEngine.getResult()
@@ -2167,11 +2467,40 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
 
     private fun switchSchema(schemaId: String) {
         Log.d(TAG, "Switching schema to: $schemaId")
+        if (schemaId == HANDWRITING_SCHEMA_ID) {
+            // 检查手写模型文件是否已下载
+            val modelFile = java.io.File(filesDir, "ochwpro.onnx")
+            val charIndexFile = java.io.File(filesDir, "char_index.json")
+            if (!modelFile.exists() || !charIndexFile.exists()) {
+                Log.w(TAG, "Handwriting model not found, redirecting to download")
+                android.widget.Toast.makeText(
+                    this, "请先下载手写模型", android.widget.Toast.LENGTH_LONG
+                ).show()
+                val intent = android.content.Intent(
+                    this, com.kingzcheung.xime.MainActivity::class.java
+                ).apply {
+                    flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+                    putExtra("open_fragment", "model_management")
+                }
+                startActivity(intent)
+                return
+            }
+            previousSchemaId = rimeEngine.getCurrentSchema()
+            Log.d(TAG, "Entering handwriting mode, previous schema: $previousSchemaId")
+            SettingsPreferences.setCurrentSchema(this, schemaId)
+            keyboardViewModel.switchMain(com.kingzcheung.xime.keyboard.MainType.HANDWRITING)
+            updateSchemaName()
+            return
+        }
+        keyboardViewModel.switchMain(com.kingzcheung.xime.keyboard.MainType.FULL)
         try {
             SettingsPreferences.setCurrentSchema(this, schemaId)
             // 用户自定义候选词数：先写 custom.yaml 再切方案，Rime 会自动加载
             applyPageSizeSetting(schemaId)
             rimeEngine.switchSchema(schemaId)
+            if (!rimeEngine.isAsciiMode()) {
+                rimeEngine.setOption("ascii_punct", false)
+            }
             updateSchemaName()
             updateUI()
             Toast.makeText(this, "已切换输入方案", Toast.LENGTH_SHORT).show()
@@ -2237,8 +2566,8 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     }
 
     private fun toggleFloatingMode(enabled: Boolean, navBarDp: Int = 0) {
-        val effectiveNavBarDp = navBarDp.coerceAtLeast(tryGetNavBarHeightDp())
-        Log.d(TAG, "toggleFloatingMode: $enabled navBarDp=$navBarDp effective=$effectiveNavBarDp")
+        val effectiveNavBarDp = navBarDp
+        Log.d(TAG, "toggleFloatingMode: $enabled navBarDp=$navBarDp")
         val isLandscape = resources.configuration.screenWidthDp > resources.configuration.screenHeightDp
         SettingsPreferences.setFloatingMode(this, enabled, isLandscape)
         SettingsPreferences.setFloatingMode(this, enabled, !isLandscape)
@@ -2251,7 +2580,9 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         val halfMargin = maxOf(0, (screenW - cardWidth) / 2)
         val cappedKbH = SettingsPreferences.getKeyboardHeightDp(this, isLandscape).coerceAtMost((screenH * 8) / 10)
         val cardH = (cappedKbH * 0.85f).roundToInt() + 18
-        val effectiveH = if (enabled) screenH - tryGetStatusBarHeightDp() else screenH
+        // 用物理屏幕高度保证跨版本一致性
+        val physicalDp = (resources.displayMetrics.heightPixels / resources.displayMetrics.density).roundToInt()
+        val effectiveH = if (enabled) physicalDp - tryGetStatusBarHeightDp() else screenH
         val maxY = maxOf(effectiveNavBarDp, effectiveH - cardH - 20)
         val clampedX = loadedX.coerceIn(-halfMargin, halfMargin)
         val clampedY = loadedY.coerceIn(effectiveNavBarDp, maxY)
@@ -2260,6 +2591,9 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             floatingOffsetX = clampedX,
             floatingOffsetY = clampedY,
         )
+        if (enabled) {
+            currentEffectiveKeyboardHeight = cappedKbH + 18 + 50 + uiState.value.keyboardBottomPaddingDp
+        }
         window.window?.let { win ->
             if (enabled) {
                 win.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
@@ -2287,25 +2621,47 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
 
     override fun onComputeInsets(outInsets: Insets) {
         val state = uiState.value
-        if (state.isFloatingMode) {
+        if (state.isCompact) {
+            try {
+                val decor = window.window?.decorView
+                if (decor != null) {
+                    val navBarBg = decor.findViewById<View>(android.R.id.navigationBarBackground)
+                    val navBarH = navBarBg?.height ?: 0
+                    val h = (decor.height - navBarH).coerceAtLeast(0)
+                    outInsets.contentTopInsets = h
+                    outInsets.visibleTopInsets = h
+                    outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_VISIBLE
+                    return
+                }
+            } catch (_: Exception) { }
+            super.onComputeInsets(outInsets)
+        } else if (state.isFloatingMode) {
             outInsets.apply {
                 contentTopInsets = resources.displayMetrics.heightPixels
                 visibleTopInsets = resources.displayMetrics.heightPixels
                 touchableInsets = Insets.TOUCHABLE_INSETS_REGION
                 val decor = window.window?.decorView ?: return
-                val loc = IntArray(2)
-                decor.getLocationOnScreen(loc)
+                if (currentEffectiveKeyboardHeight <= 0) {
+                    val isLandscape = resources.configuration.screenWidthDp > resources.configuration.screenHeightDp
+                    val kbH = SettingsPreferences.getKeyboardHeightDp(this@XimeInputMethodService, isLandscape)
+                        .coerceAtMost((resources.configuration.screenHeightDp * 8) / 10)
+                    currentEffectiveKeyboardHeight = kbH + 18 + 50 + state.keyboardBottomPaddingDp
+                }
                 val density = resources.displayMetrics.density
-                val cardWidthPx = (decor.width * 0.85f).toInt()
-                val leftPaddingPx = ((decor.width - cardWidthPx) / 2f).toInt()
+                val inputViewWidthPx = decor.width
+                val statusBarHeightDp = tryGetStatusBarHeightDp()
+                val physicalHeightPx = resources.displayMetrics.heightPixels
+                val inputViewHeightPx = (physicalHeightPx - (statusBarHeightDp * density).toInt()).coerceAtLeast(1)
+                val cardWidthPx = (inputViewWidthPx * 0.85f).toInt()
+                val leftPaddingPx = ((inputViewWidthPx - cardWidthPx) / 2f).toInt()
                 val offsetXPx = (state.floatingOffsetX * density).toInt()
                 val cardHeightPx = (currentEffectiveKeyboardHeight * density).toInt()
                 val offsetYPx = (state.floatingOffsetY * density).toInt()
                 touchableRegion.set(
-                    loc[0] + leftPaddingPx + offsetXPx,
-                    loc[1] + decor.height - cardHeightPx - offsetYPx,
-                    loc[0] + leftPaddingPx + offsetXPx + cardWidthPx,
-                    loc[1] + decor.height - offsetYPx
+                    leftPaddingPx + offsetXPx,
+                    inputViewHeightPx - cardHeightPx - offsetYPx,
+                    leftPaddingPx + offsetXPx + cardWidthPx,
+                    inputViewHeightPx - offsetYPx
                 )
             }
         } else {
@@ -2314,12 +2670,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     }
 
     override fun commitText(text: String) {
-        val t0 = System.nanoTime()
         currentInputConnection?.commitText(text, 1)
-        val commitElapsed = (System.nanoTime() - t0) / 1_000_000
-        if (commitElapsed > 5) {
-            FileLogger.d(KEY_PERF, "commitText '$text': ${commitElapsed}ms")
-        }
 
         if (isChineseMode) {
             predictionManager.appendCommittedText(text)
@@ -2379,6 +2730,59 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         }
     }
     
+    private fun shiftedSymbol(key: String, chineseMode: Boolean = false): String? {
+        if (chineseMode) {
+            return when (key) {
+                "1" -> "！"
+                "2" -> "@"
+                "3" -> "#"
+                "4" -> "$"
+                "5" -> "%"
+                "6" -> "^"
+                "7" -> "&"
+                "8" -> "*"
+                "9" -> "（"
+                "0" -> "）"
+                "-" -> "——"
+                "=" -> "+"
+                "[" -> "「"
+                "]" -> "」"
+                "\\" -> "、"
+                ";" -> "："
+                "'" -> "\""
+                "," -> "《"
+                "." -> "》"
+                "/" -> "？"
+                "`" -> "～"
+                else -> null
+            }
+        }
+        return when (key) {
+            "`" -> "~"
+            "1" -> "!"
+            "2" -> "@"
+            "3" -> "#"
+            "4" -> "$"
+            "5" -> "%"
+            "6" -> "^"
+            "7" -> "&"
+            "8" -> "*"
+            "9" -> "("
+            "0" -> ")"
+            "-" -> "_"
+            "=" -> "+"
+            "[" -> "{"
+            "]" -> "}"
+            "\\" -> "|"
+            ";" -> ":"
+            "'" -> "\""
+            "," -> "<"
+            "." -> ">"
+            "/" -> "?"
+            else -> null
+        }
+    }
+
     private fun keyCodeToKey(keyCode: Int, isShifted: Boolean): String? {
         return when (keyCode) {
             KeyEvent.KEYCODE_A -> if (isShifted) "A" else "a"

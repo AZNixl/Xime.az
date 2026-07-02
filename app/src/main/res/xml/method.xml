@@ -3,17 +3,5 @@
     android:settingsActivity="com.kingzcheung.xime.MainActivity"
     android:isDefault="false"
     android:supportsInlineSuggestions="true">
-    
-    <subtype
-        android:imeSubtypeMode="keyboard"
-        android:imeSubtypeLocale="zh_CN"
-        android:label="@string/subtype_label_wubi"
-        android:isAsciiCapable="false" />
-        
-    <subtype
-        android:imeSubtypeMode="keyboard"
-        android:imeSubtypeLocale="zh_CN"
-        android:label="@string/subtype_label_pinyin"
-        android:isAsciiCapable="false" />
-        
+
 </input-method>

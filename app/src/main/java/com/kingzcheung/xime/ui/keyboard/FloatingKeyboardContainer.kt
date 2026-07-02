@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -18,7 +19,12 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+
+import kotlin.math.roundToInt
 
 private const val DRAG_BAR_HEIGHT = 18
 
@@ -32,6 +38,7 @@ fun FloatingKeyboardContainer(
     backgroundColor: Color = Color.Transparent,
     onDrag: (dx: Float, dy: Float) -> Unit,
     onDragEnd: () -> Unit,
+    onCardPositioned: (left: Int, top: Int, right: Int, bottom: Int) -> Unit = { _: Int, _: Int, _: Int, _: Int -> },
     keyboardContent: @Composable () -> Unit,
 ) {
     if (!isFloatingMode) {
@@ -52,7 +59,16 @@ fun FloatingKeyboardContainer(
                 .offset(x = offsetX.dp, y = (-safeOffsetY).dp)
                 .shadow(12.dp, RoundedCornerShape(16.dp))
                 .clip(RoundedCornerShape(16.dp))
-
+                .onGloballyPositioned { coords ->
+                    val pos = coords.positionInWindow()
+                    val size = coords.size
+                    onCardPositioned(
+                        pos.x.roundToInt(),
+                        pos.y.roundToInt(),
+                        (pos.x + size.width).roundToInt(),
+                        (pos.y + size.height).roundToInt()
+                    )
+                }
         ) {
             Column {
                 DragBar(
@@ -65,7 +81,11 @@ fun FloatingKeyboardContainer(
                     },
                     onDragEnd = onDragEnd
                 )
-                keyboardContent()
+                CompositionLocalProvider(
+                    LocalDensity provides Density(density = density.density, fontScale = density.fontScale * scaleFactor)
+                ) {
+                    keyboardContent()
+                }
             }
         }
     }

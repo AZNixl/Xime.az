@@ -1,5 +1,6 @@
 package com.kingzcheung.xime.ui.keyboard
 
+import android.graphics.Bitmap
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Typeface
@@ -56,6 +57,7 @@ data class BubbleDrawData(
     val selectedFontSizePx: Float,
     val normalFontSizePx: Float,
     val selectedBgRadiusPx: Float,
+    val longPressIconBitmaps: List<Bitmap> = emptyList(),
 )
 
 @Composable
@@ -105,7 +107,11 @@ fun rememberSwipeBubbleDrawData(
     }
 
     val bodyWidth = if (isLongPressMode) {
-        maxOf(swipeState.longPressItems.size, 3) * keyWidthPx
+        val cellMin = if (swipeState.longPressDrawableIds.isNotEmpty())
+            swipeState.longPressItems.size
+        else
+            maxOf(swipeState.longPressItems.size, 3)
+        cellMin * keyWidthPx
     } else {
         maxOf(textPaint.measureText(displayText!!) + with(density) { 20.dp.toPx() }, minBodyWidthPx)
     }
@@ -140,6 +146,20 @@ fun rememberSwipeBubbleDrawData(
 
     val paddingPx = with(density) { 10.dp.toPx() }
 
+    val longPressIconBitmaps = remember(swipeState.longPressDrawableIds, textColor) {
+        swipeState.longPressDrawableIds.mapNotNull { id ->
+            val drawable = context.resources.getDrawable(id, context.theme)?.mutate() ?: return@mapNotNull null
+            drawable.setTint(textColor)
+            val w = drawable.intrinsicWidth.coerceAtLeast(1)
+            val h = drawable.intrinsicHeight.coerceAtLeast(1)
+            val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            val bmpCanvas = android.graphics.Canvas(bitmap)
+            drawable.setBounds(0, 0, w, h)
+            drawable.draw(bmpCanvas)
+            bitmap
+        }
+    }
+
     return BubbleDrawData(
         boxLeft = boxLeft,
         boxTop = boxTop,
@@ -166,6 +186,7 @@ fun rememberSwipeBubbleDrawData(
         selectedFontSizePx = selectedFontSizePx,
         normalFontSizePx = normalFontSizePx,
         selectedBgRadiusPx = selectedBgRadiusPx,
+        longPressIconBitmaps = longPressIconBitmaps,
     )
 }
 
@@ -254,12 +275,24 @@ fun DrawScope.drawSwipeBubble(data: BubbleDrawData) {
                         itemLeft, 0f, itemLeft + cellWidth, data.bodyHeightPx, r, r, bubbleBgPaint
                     )
                 }
-                val fontSize = if (index == data.selectedLongPressIndex) data.selectedFontSizePx else data.normalFontSizePx
-                bubbleLabelPaint.color = if (index == data.selectedLongPressIndex) accentColor else data.textColor
-                bubbleLabelPaint.textSize = fontSize
-                bubbleLabelPaint.textAlign = Paint.Align.CENTER
-                val textY = data.bodyHeightPx / 2f - (bubbleLabelPaint.fontMetrics.ascent + bubbleLabelPaint.fontMetrics.descent) / 2f
-                canvas.drawText(item, itemLeft + cellWidth / 2f, textY, bubbleLabelPaint)
+                if (data.longPressIconBitmaps.isNotEmpty() && index < data.longPressIconBitmaps.size) {
+                    val icon = data.longPressIconBitmaps[index]
+                    val iconSize = data.bodyHeightPx * 0.45f
+                    val iconLeft = itemLeft + (cellWidth - iconSize) / 2f
+                    val iconTop = (data.bodyHeightPx - iconSize) / 2f
+                    canvas.drawBitmap(
+                        icon, null,
+                        android.graphics.RectF(iconLeft, iconTop, iconLeft + iconSize, iconTop + iconSize),
+                        null
+                    )
+                } else {
+                    val fontSize = if (index == data.selectedLongPressIndex) data.selectedFontSizePx else data.normalFontSizePx
+                    bubbleLabelPaint.color = if (index == data.selectedLongPressIndex) accentColor else data.textColor
+                    bubbleLabelPaint.textSize = fontSize
+                    bubbleLabelPaint.textAlign = Paint.Align.CENTER
+                    val textY = data.bodyHeightPx / 2f - (bubbleLabelPaint.fontMetrics.ascent + bubbleLabelPaint.fontMetrics.descent) / 2f
+                    canvas.drawText(item, itemLeft + cellWidth / 2f, textY, bubbleLabelPaint)
+                }
             }
             canvas.restore()
         } else if (data.displayText != null) {

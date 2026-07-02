@@ -50,7 +50,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kingzcheung.xime.R
-import com.kingzcheung.xime.keyboard.KeyboardRoute
+import com.kingzcheung.xime.keyboard.KeyboardPage
+import com.kingzcheung.xime.keyboard.OverlayRoute
+import com.kingzcheung.xime.keyboard.PanelType
 import com.kingzcheung.xime.keyboard.ToolbarAction
 import com.kingzcheung.xime.settings.SettingsPreferences
 
@@ -77,7 +79,7 @@ data class CandidateBarCallbacks(
 @Composable
 fun CandidateBar(
     state: CandidateBarState,
-    currentRoute: KeyboardRoute = KeyboardRoute.Keyboard,
+    page: KeyboardPage = KeyboardPage.Main(com.kingzcheung.xime.keyboard.MainType.FULL),
     toolbarActions: List<ToolbarAction> = emptyList(),
     visuals: CandidateBarVisuals,
     callbacks: CandidateBarCallbacks,
@@ -107,6 +109,7 @@ fun CandidateBar(
 
     val displayCandidates: List<String>
     val displayAssociation: List<String>
+    val displayComments: List<String>
     val hasAnyMore: Boolean
     val showInputTextRow: Boolean
     val showLeftIcon: Boolean
@@ -115,12 +118,14 @@ fun CandidateBar(
         is CandidateBarState.Idle -> {
             displayCandidates = emptyList()
             displayAssociation = emptyList()
+            displayComments = emptyList()
             hasAnyMore = false
             showLeftIcon = true
         }
         is CandidateBarState.ChineseCandidates -> {
             val taken = s.candidates.take(20)
             displayCandidates = taken
+            displayComments = s.comments
             hasAnyMore = s.hasMore
             showLeftIcon = false
             displayAssociation = remember(s.associationCandidates, taken, s.inputText, textMeasurer) {
@@ -160,27 +165,34 @@ fun CandidateBar(
             displayAssociation = s.candidates.take(PredictionManager.MAX_ASSOCIATION_COUNT)
             hasAnyMore = s.hasMore
             showLeftIcon = false
+            displayComments = s.comments
         }
         is CandidateBarState.EnglishCandidates -> {
             displayCandidates = s.candidates.take(20)
+            displayComments = s.comments
             displayAssociation = emptyList()
             hasAnyMore = false
             showLeftIcon = false
         }
         is CandidateBarState.ClipboardDisplay -> {
             displayCandidates = s.candidates.take(20)
+            displayComments = emptyList()
             displayAssociation = emptyList()
             hasAnyMore = false
             showLeftIcon = true
         }
         is CandidateBarState.Calculator -> {
             displayCandidates = s.candidates.take(20)
+            displayComments = s.comments
             displayAssociation = emptyList()
             hasAnyMore = false
             showLeftIcon = false
         }
     }
-    showInputTextRow = currentRoute !is KeyboardRoute.Clipboard
+    showInputTextRow = when (page) {
+        is KeyboardPage.Overlay -> page.route !is OverlayRoute.Clipboard
+        else -> true
+    }
 
     val candidateListState = rememberLazyListState()
     LaunchedEffect(displayCandidates) {
@@ -241,7 +253,7 @@ fun CandidateBar(
             if (showLeftIcon) {
                 when (state) {
                     is CandidateBarState.Idle -> {
-                        if (currentRoute is KeyboardRoute.SchemaList && callbacks.onBack != null) {
+                        if (page is KeyboardPage.Overlay && page.route is OverlayRoute.SchemaList && callbacks.onBack != null) {
                             Box(
                                 modifier = Modifier
                                     .size(32.dp)
@@ -349,13 +361,14 @@ fun CandidateBar(
                     }
 
                     itemsIndexed(displayAssociation, key = { index, _ -> "assoc-$index" }) { index, candidate ->
+                        val assocState = state as? CandidateBarState.AssociationOnly
                         CandidateItem(
                             text = candidate,
                             index = -1,
                             onClick = { callbacks.onAssociationSelect?.invoke(index) },
                             textColor = visuals.textColor,
-                            comment = "",
-                            isSelected = false,
+                            comment = displayComments.getOrElse(index) { "" },
+                            isSelected = assocState?.highlightIndex == index,
                             accentColor = visuals.accentColor
                         )
                     }
@@ -430,7 +443,7 @@ fun CandidateBar(
                         }
                     }
                 }
-                currentRoute is KeyboardRoute.CandidatePage -> {
+                page is KeyboardPage.Overlay && page.route is OverlayRoute.CandidatePage -> {
                     if (callbacks.onBack != null) {
                         Box(
                             modifier = Modifier
