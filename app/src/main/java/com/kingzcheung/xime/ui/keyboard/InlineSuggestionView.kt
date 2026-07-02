@@ -35,7 +35,7 @@ fun InlineSuggestionView(
     val context = LocalContext.current
     var inflatedView by remember { mutableStateOf<InlineContentView?>(null) }
 
-    androidx.compose.runtime.LaunchedEffect(Unit) {
+    androidx.compose.runtime.LaunchedEffect(suggestion) {
         Log.d("InlineSuggestionView", "inflating suggestion")
         val size = Size(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         val executor = Executors.newSingleThreadExecutor()

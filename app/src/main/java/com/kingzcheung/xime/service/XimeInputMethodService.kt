@@ -1339,6 +1339,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                 InputConnection.CURSOR_UPDATE_MONITOR or InputConnection.CURSOR_UPDATE_IMMEDIATE
             )
         }
+        Log.d(TAG, "onStartInputView: inputType=0x${info?.inputType?.toString(16)} package=${info?.packageName}")
     }
 
     private var anchorCoords = floatArrayOf(0f, 0f, 0f, 0f)
@@ -2605,17 +2606,19 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         }
     }
 
-    @RequiresApi(34)
     override fun onCreateInlineSuggestionsRequest(uiExtras: Bundle): InlineSuggestionsRequest? {
-        Log.d(TAG, "onCreateInlineSuggestionsRequest(Bundle) called")
-        val result = inlineSuggestionManager?.onCreateInlineSuggestionsRequest(uiExtras)
+        if (Build.VERSION.SDK_INT < 34) return null
+        Log.d(TAG, "onCreateInlineSuggestionsRequest(Bundle) called, manager=${inlineSuggestionManager}")
+        if (inlineSuggestionManager == null) return null
+        val result = inlineSuggestionManager.onCreateInlineSuggestionsRequest(uiExtras)
         Log.d(TAG, "onCreateInlineSuggestionsRequest: returning ${if (result != null) "request" else "null"}")
         return result
     }
 
-    @RequiresApi(34)
     override fun onInlineSuggestionsResponse(response: InlineSuggestionsResponse): Boolean {
-        Log.d(TAG, "onInlineSuggestionsResponse: received ${response.inlineSuggestions.size} suggestions")
+        if (Build.VERSION.SDK_INT < 34) return false
+        val count = response.inlineSuggestions.size
+        Log.d(TAG, "onInlineSuggestionsResponse: received $count suggestions")
         return inlineSuggestionManager?.onInlineSuggestionsResponse(response) ?: false
     }
 

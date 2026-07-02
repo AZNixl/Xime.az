@@ -302,7 +302,6 @@ fun KeyboardView(
                             callbacks.onAssociationSelect?.invoke(index)
                         }
                     },
-                    onClearAssociation = callbacks.onClearAssociation
                 ),
                 inlineSuggestions = inlineSuggestions,
             )
