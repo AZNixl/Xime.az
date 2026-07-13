@@ -36,4 +36,4 @@ keyboard:
       # 逗号键
       "'": { tap: { label: ",", value: "," }, swipe_up: { label: ".", value: "." } }
       # 中/英切换键
-      shift_l: { tap: { label: "中", action: "toggle_ascii" } }
+      earth: { tap: { label: "中", action: "toggle_ascii" } }

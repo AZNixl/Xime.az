@@ -85,6 +85,9 @@ fun CandidatePage(
         }
     }
 
+    // 禁用页面滑动手势（翻页由按钮控制，避免滑到空白页）
+    val userScrollEnabled = false
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -103,7 +106,7 @@ fun CandidatePage(
 
             // 翻页按钮
             Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Box(
                     modifier = Modifier
@@ -114,7 +117,7 @@ fun CandidatePage(
                             else state.textColor.copy(alpha = 0.1f)
                         )
                         .clickable(
-                            enabled = state.hasPrevPage && callbacks.onPageUp != null,
+                            enabled = state.hasPrevPage && state.candidates.isNotEmpty() && callbacks.onPageUp != null,
                             onClick = { callbacks.onPageUp?.invoke() }
                         ),
                     contentAlignment = Alignment.Center
@@ -136,7 +139,7 @@ fun CandidatePage(
                             else state.textColor.copy(alpha = 0.1f)
                         )
                         .clickable(
-                            enabled = state.hasNextPage && callbacks.onPageDown != null,
+                            enabled = state.hasNextPage && state.candidates.isNotEmpty() && callbacks.onPageDown != null,
                             onClick = { callbacks.onPageDown?.invoke() }
                         ),
                     contentAlignment = Alignment.Center
@@ -149,7 +152,7 @@ fun CandidatePage(
                     )
                 }
             }
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(16.dp))
             Box(
                 modifier = Modifier
                     .size(28.dp)
@@ -169,6 +172,7 @@ fun CandidatePage(
 
         HorizontalPager(
             state = pagerState,
+            userScrollEnabled = userScrollEnabled,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 8.dp)

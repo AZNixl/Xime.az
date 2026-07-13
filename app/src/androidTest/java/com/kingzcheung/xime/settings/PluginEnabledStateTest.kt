@@ -25,7 +25,7 @@ class PluginEnabledStateTest {
     }
 
     @Test
-    fun `plugin enabled state defaults to false`() {
+    fun pluginEnabledStateDefaultsToFalse() {
         val pluginId = "prediction-onnx"
         
         val isEnabled = SettingsPreferences.isPluginEnabled(context, pluginId)
@@ -34,7 +34,7 @@ class PluginEnabledStateTest {
     }
 
     @Test
-    fun `plugin enabled state can be set to true`() {
+    fun pluginEnabledStateCanBeSetToTrue() {
         val pluginId = "prediction-onnx"
         
         SettingsPreferences.setPluginEnabled(context, pluginId, true)
@@ -43,7 +43,7 @@ class PluginEnabledStateTest {
     }
 
     @Test
-    fun `plugin enabled state can be toggled`() {
+    fun pluginEnabledStateCanBeToggled() {
         val pluginId = "prediction-onnx"
         
         SettingsPreferences.setPluginEnabled(context, pluginId, true)
@@ -54,7 +54,7 @@ class PluginEnabledStateTest {
     }
 
     @Test
-    fun `different plugins have independent enabled states`() {
+    fun differentPluginsHaveIndependentEnabledStates() {
         val plugin1 = "prediction-onnx"
         val plugin2 = "meme-bunny"
         
@@ -71,7 +71,7 @@ class PluginEnabledStateTest {
     }
 
     @Test
-    fun `plugin enabled state persists across clear`() {
+    fun pluginEnabledStatePersistsAcrossClear() {
         val pluginId = "prediction-onnx"
         
         SettingsPreferences.setPluginEnabled(context, pluginId, true)
@@ -86,7 +86,7 @@ class PluginEnabledStateTest {
     }
 
     @Test
-    fun `plugin enabled state keys are isolated`() {
+    fun pluginEnabledStateKeysAreIsolated() {
         val plugin1 = "prediction-onnx"
         val plugin2 = "kaomoji"
         
@@ -100,7 +100,7 @@ class PluginEnabledStateTest {
     }
 
     @Test
-    fun `multiple plugins enabled states are tracked independently`() {
+    fun multiplePluginsEnabledStatesAreTrackedIndependently() {
         val plugins = listOf("prediction-onnx", "meme-bunny", "kaomoji")
         
         plugins.forEachIndexed { index, pluginId ->

@@ -58,6 +58,7 @@ fun HandwritingKeyboardLayout(
     bottomPaddingDp: Int = 18,
     modifier: Modifier = Modifier,
     clearSignal: Int = 0,
+    specialKeyTextColor: Color = Color.White,
 ) {
     val strokes = remember { mutableStateListOf<List<StrokePoint>>() }
     var currentStrokePoints by remember { mutableStateOf<List<StrokePoint>>(emptyList()) }
@@ -83,6 +84,7 @@ fun HandwritingKeyboardLayout(
             dragVersion++
         }
     }
+    LaunchedEffect(clearSignal) { strokes.clear(); dragVersion++ }
 
     suspend fun runPrediction() {
         if (!HandwritingEngine.isInitialized()) return
@@ -136,6 +138,7 @@ fun HandwritingKeyboardLayout(
             ).forEachIndexed { i, (text, action) ->
                 val idx = i + 5
                 val bg = if (text == "符号" || text == "换行") specialKeyBackgroundColor else keyBackgroundColor
+                val txtColor = if (text == "符号" || text == "换行") specialKeyTextColor else keyTextColor
                 val w = when (text) {
                     "空格" -> 1.8f
                     "123", "ABC" -> 0.7f
@@ -147,7 +150,7 @@ fun HandwritingKeyboardLayout(
                         .background(if (pressedButton == idx) Color(0x40000000) else bg),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(text, color = keyTextColor, fontSize = 16.sp,
+                    Text(text, color = txtColor, fontSize = 16.sp,
                         fontWeight = if (text.length <= 1) FontWeight.Normal else FontWeight.Medium,
                         textAlign = TextAlign.Center)
                 }
@@ -156,7 +159,7 @@ fun HandwritingKeyboardLayout(
 
         key(dragVersion) {
             Canvas(Modifier.fillMaxSize()) {
-                renderStrokes(strokes, currentStrokePoints, Color(0xFF333333))
+                renderStrokes(strokes, currentStrokePoints, keyTextColor)
             }
         }
 

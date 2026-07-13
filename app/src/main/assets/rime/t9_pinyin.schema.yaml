@@ -43,7 +43,6 @@ engine:
     - punct_translator
     - script_translator
   filters:
-    - lua_filter@*t9_preedit
     - lua_filter@*date_hint
     - uniquifier
 

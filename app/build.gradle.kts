@@ -308,8 +308,8 @@ android {
         applicationId = "com.kingzcheung.xime"
         minSdk = 28
         targetSdk = 35
-        versionCode = 50
-        versionName = "2.5.0-beta7"
+        versionCode = 55
+        versionName = "2.5.0-beta12"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         
@@ -352,6 +352,7 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        isCoreLibraryDesugaringEnabled = true
     }
     kotlin {
         compilerOptions {
@@ -469,6 +470,12 @@ dependencies {
     // Ktor embedded server for wireless import
     implementation("io.ktor:ktor-server-core:3.1.2")
     implementation("io.ktor:ktor-server-cio:3.1.2")
+
+    // Sora Code Editor for YAML viewing/editing
+    implementation(platform("io.github.rosemoe:editor-bom:0.24.4"))
+    implementation("io.github.rosemoe:editor")
+    implementation("io.github.rosemoe:language-textmate")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
     
     debugImplementation(libs.androidx.compose.ui.tooling)
     
@@ -486,4 +493,13 @@ dependencies {
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test:rules:1.6.1")
     androidTestImplementation("androidx.concurrent:concurrent-futures:1.2.0")
+}
+
+// Align concurrent-futures version: espresso 3.7.0 requires 1.2.0
+dependencies {
+    constraints {
+        implementation("androidx.concurrent:concurrent-futures:1.2.0") {
+            because("test dependencies (espresso 3.7.0) require 1.2.0")
+        }
+    }
 }

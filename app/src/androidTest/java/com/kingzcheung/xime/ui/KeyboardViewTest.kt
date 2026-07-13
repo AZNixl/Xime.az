@@ -5,6 +5,13 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.kingzcheung.xime.ui.keyboard.CandidateBar
+import com.kingzcheung.xime.ui.keyboard.CandidateBarCallbacks
+import com.kingzcheung.xime.ui.keyboard.CandidateBarState
+import com.kingzcheung.xime.ui.keyboard.CandidateBarVisuals
+import com.kingzcheung.xime.ui.keyboard.CandidateItem
+import com.kingzcheung.xime.ui.keyboard.KeyButton
+import com.kingzcheung.xime.ui.keyboard.SpaceKeyButton
 import com.kingzcheung.xime.ui.theme.DividerColor
 import com.kingzcheung.xime.ui.theme.KeyBackground
 import com.kingzcheung.xime.ui.theme.KeyTextColor
@@ -20,11 +27,13 @@ class KeyboardViewTest {
     val composeTestRule = createComposeRule()
     
     @Test
-    fun `KeyButton should display text`() {
+    fun keyButtonDisplaysText() {
         composeTestRule.setContent {
             KeyButton(
                 text = "Q",
-                onClick = {}
+                onClick = {},
+                backgroundColor = KeyBackground,
+                textColor = KeyTextColor
             )
         }
         
@@ -32,12 +41,14 @@ class KeyboardViewTest {
     }
     
     @Test
-    fun `KeyButton should handle click`() {
+    fun keyButtonHandlesClick() {
         var clicked = false
         composeTestRule.setContent {
             KeyButton(
                 text = "A",
-                onClick = { clicked = true }
+                onClick = { clicked = true },
+                backgroundColor = KeyBackground,
+                textColor = KeyTextColor
             )
         }
         
@@ -47,25 +58,25 @@ class KeyboardViewTest {
     }
     
     @Test
-    fun `SpaceKeyButton should display correctly`() {
+    fun spaceKeyButtonDisplaysCorrectly() {
         composeTestRule.setContent {
             SpaceKeyButton(
-                isAsciiMode = false,
                 onClick = {},
-                onLongClick = {}
+                backgroundColor = KeyBackground,
+                textColor = KeyTextColor,
+                schemaName = "en"
             )
         }
     }
     
     @Test
-    fun `CandidateBar should display candidates`() {
-        val candidates = listOf("你好", "世界", "测试")
-        
+    fun candidateBarDisplaysCandidates() {
         composeTestRule.setContent {
             CandidateBar(
-                candidates = candidates,
-                inputText = "nihao",
-                isComposing = true,
+                state = CandidateBarState.ChineseCandidates(
+                    candidates = listOf("你好", "世界", "测试"),
+                    inputText = "nihao",
+                ),
                 visuals = CandidateBarVisuals(
                     backgroundColor = KeyboardBackground,
                     textColor = KeyTextColor,
@@ -82,7 +93,7 @@ class KeyboardViewTest {
     }
     
     @Test
-    fun `CandidateItem should display text and comment`() {
+    fun candidateItemDisplaysTextAndComment() {
         composeTestRule.setContent {
             CandidateItem(
                 text = "你好",

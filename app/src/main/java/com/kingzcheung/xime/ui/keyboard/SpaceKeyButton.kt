@@ -22,9 +22,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -50,15 +53,28 @@ fun SpaceKeyButton(
     var isPressed by remember { mutableStateOf(false) }
     val longPressTimeout = 400L
     val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    val shadowModifier = remember(shadowEnabled, shadowElevation, shadowShapeRadius, density, backgroundColor) {
+        if (shadowEnabled) {
+            val offsetPx = with(density) { shadowElevation.toPx() }
+            val cornerPx = with(density) { shadowShapeRadius.toPx() }
+            val color = crispShadowColor(backgroundColor)
+            Modifier.drawBehind {
+                drawRoundRect(
+                    color = color,
+                    topLeft = Offset(0f, offsetPx),
+                    size = size,
+                    cornerRadius = CornerRadius(cornerPx)
+                )
+            }
+        } else Modifier
+    }
     
     Box(
         modifier = modifier
             .height((44 * LocalStretchFactor.current).dp)
-            .then(
-                if (shadowEnabled) Modifier.shadow(shadowElevation, RoundedCornerShape(shadowShapeRadius), ambientColor = Color(0x80000000), spotColor = Color(0x80000000))
-                else Modifier
-            )
-            .clip(RoundedCornerShape(shadowShapeRadius))
+            .then(shadowModifier)
+            .clip(RoundedCornerShape(LocalKeyCornerRadius.current))
             .background(
                 if (isPressed) backgroundColor.copy(alpha = 0.7f)
                 else backgroundColor

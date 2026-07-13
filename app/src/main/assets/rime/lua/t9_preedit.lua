@@ -6,7 +6,7 @@
 -- cand.comment 由 Kotlin onRightCandidateSelected 用于计算数字消费位数，
 -- 清空 comment 会导致候选词选择后定位错误。
 -- 候选注释的显示/隐藏由 UI 层 SettingsPreferences.showCandidateComments 控制。
-
+-- 废弃，已由 Kotlin 实现
 local function t9_preedit(input, env)
     local config = env.engine.schema.config
     local context = env.engine.context

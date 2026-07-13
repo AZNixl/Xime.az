@@ -29,19 +29,19 @@ class ExtensionManagerTest {
     }
     
     @Test
-    fun `isInitialized should return false before initialization`() {
+    fun isInitializedReturnsFalseBeforeInit() {
         assertFalse("Should not be initialized before init", ExtensionManager.isInitialized())
     }
     
     @Test
-    fun `initialize should set initialized state`() {
+    fun initializeSetsInitializedState() {
         ExtensionManager.initialize(context)
         
         assertTrue("Should be initialized after init", ExtensionManager.isInitialized())
     }
     
     @Test
-    fun `initialize multiple times should not cause error`() {
+    fun initializeMultipleTimesShouldNotCauseError() {
         ExtensionManager.initialize(context)
         ExtensionManager.initialize(context)
         
@@ -49,7 +49,7 @@ class ExtensionManagerTest {
     }
     
     @Test
-    fun `release should reset initialized state`() {
+    fun releaseResetsInitializedState() {
         ExtensionManager.initialize(context)
         assertTrue("Should be initialized", ExtensionManager.isInitialized())
         
@@ -59,7 +59,7 @@ class ExtensionManagerTest {
     }
     
     @Test
-    fun `getAllInstalledPlugins should return list after initialization`() {
+    fun getAllInstalledPluginsReturnsListAfterInit() {
         ExtensionManager.initialize(context)
         
         val plugins = ExtensionManager.getAllInstalledPlugins()
@@ -68,7 +68,7 @@ class ExtensionManagerTest {
     }
     
     @Test
-    fun `getEmojiPlugins should return list after initialization`() {
+    fun getEmojiPluginsReturnsListAfterInit() {
         ExtensionManager.initialize(context)
         
         val emojiPlugins = ExtensionManager.getEmojiPlugins()
@@ -77,7 +77,7 @@ class ExtensionManagerTest {
     }
     
     @Test
-    fun `emojiCategoriesFlow should have default categories`() = runBlocking {
+    fun emojiCategoriesFlowHasDefaultCategories() = runBlocking {
         val categories = ExtensionManager.emojiCategoriesFlow.first()
         
         assertTrue("Should have default categories", categories.isNotEmpty())
@@ -86,7 +86,7 @@ class ExtensionManagerTest {
     }
     
     @Test
-    fun `getEnabledEmojiPlugins should return empty when no plugins enabled`() {
+    fun getEnabledEmojiPluginsReturnsEmptyWhenNoPluginsEnabled() {
         ExtensionManager.initialize(context)
         
         val enabledPlugins = ExtensionManager.getEnabledEmojiPlugins(context)
@@ -95,7 +95,7 @@ class ExtensionManagerTest {
     }
     
     @Test
-    fun `getPluginById should return null for unknown plugin`() {
+    fun getPluginByIdReturnsNullForUnknownPlugin() {
         ExtensionManager.initialize(context)
         
         val plugin = ExtensionManager.getPluginById("unknown_plugin_id")
@@ -104,7 +104,7 @@ class ExtensionManagerTest {
     }
     
     @Test
-    fun `reload should return true when initialized`() {
+    fun reloadReturnsTrueWhenInitialized() {
         ExtensionManager.initialize(context)
         
         val result = ExtensionManager.reload(context)
@@ -113,7 +113,7 @@ class ExtensionManagerTest {
     }
     
     @Test
-    fun `reload should return false when not initialized`() {
+    fun reloadReturnsFalseWhenNotInitialized() {
         ExtensionManager.release()
         
         val result = ExtensionManager.reload(context)
@@ -122,7 +122,7 @@ class ExtensionManagerTest {
     }
     
     @Test
-    fun `emojiCategoriesFlow should be observable`() = runBlocking {
+    fun emojiCategoriesFlowIsObservable() = runBlocking {
         ExtensionManager.initialize(context)
         
         val categories = ExtensionManager.emojiCategoriesFlow.first()
@@ -131,14 +131,14 @@ class ExtensionManagerTest {
     }
     
     @Test
-    fun `initialize should work with null sharedUserId`() {
+    fun initializeWorksWithNullSharedUserId() {
         ExtensionManager.initialize(context)
         
         assertTrue("Should initialize without sharedUserId", ExtensionManager.isInitialized())
     }
     
     @Test
-    fun `multiple release calls should not cause error`() {
+    fun multipleReleaseCallsShouldNotCauseError() {
         ExtensionManager.initialize(context)
         ExtensionManager.release()
         ExtensionManager.release()
@@ -147,7 +147,7 @@ class ExtensionManagerTest {
     }
     
     @Test
-    fun `getEmojiPlugins size should be <= getAllInstalledPlugins size`() {
+    fun emojiPluginsSizeNotExceedAllPluginsSize() {
         ExtensionManager.initialize(context)
         
         val allPlugins = ExtensionManager.getAllInstalledPlugins()

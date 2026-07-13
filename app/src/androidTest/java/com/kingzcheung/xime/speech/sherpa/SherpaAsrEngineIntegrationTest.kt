@@ -145,11 +145,13 @@ class SherpaAsrEngineIntegrationTest {
         for (model in models) {
             assertTrue("Model ${model.id} should have files", model.files.isNotEmpty())
             
-            // CTC models should have ctcModelFile
-            if (model.modelType == "ctc") {
-                assertTrue("CTC model should have ctcModelFile", 
-                    model.ctcModelFile.isNotEmpty())
-            }
+            // All models should have encoder/decoder/joiner files
+            assertTrue("Model should have encoder file",
+                model.encoderFile.isNotEmpty())
+            assertTrue("Model should have decoder file",
+                model.decoderFile.isNotEmpty())
+            assertTrue("Model should have joiner file",
+                model.joinerFile.isNotEmpty())
         }
     }
 

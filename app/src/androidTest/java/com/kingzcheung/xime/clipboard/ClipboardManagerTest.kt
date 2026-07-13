@@ -36,7 +36,7 @@ class ClipboardManagerTest {
     }
     
     @Test
-    fun `getInstance should return singleton`() {
+    fun getInstanceReturnsSingleton() {
         val instance1 = ClipboardManager.getInstance(context)
         val instance2 = ClipboardManager.getInstance(context)
         
@@ -44,19 +44,19 @@ class ClipboardManagerTest {
     }
     
     @Test
-    fun `clipboardItems should be empty initially`() {
+    fun clipboardItemsEmptyInitially() {
         val items = clipboardManager.clipboardItems.value
         assertTrue("Initial clipboard should be empty", items.isEmpty())
     }
     
     @Test
-    fun `quickSendItems should be empty initially`() {
+    fun quickSendItemsEmptyInitially() {
         val items = clipboardManager.quickSendItems.value
         assertTrue("Initial quick send should be empty", items.isEmpty())
     }
     
     @Test
-    fun `addItem should add item to list`() {
+    fun addItemAddsItemToList() {
         clipboardManager.addItem("Test text")
         
         val items = clipboardManager.clipboardItems.value
@@ -66,7 +66,7 @@ class ClipboardManagerTest {
     }
     
     @Test
-    fun `addItem should not add blank text`() {
+    fun addItemNotAddBlankText() {
         clipboardManager.addItem("")
         clipboardManager.addItem("   ")
         
@@ -75,7 +75,7 @@ class ClipboardManagerTest {
     }
     
     @Test
-    fun `addItem should update timestamp for existing text`() {
+    fun addItemUpdatesTimestampForExistingText() {
         clipboardManager.addItem("Test text")
         val firstTimestamp = clipboardManager.clipboardItems.value[0].timestamp
         
@@ -89,7 +89,7 @@ class ClipboardManagerTest {
     }
     
     @Test
-    fun `addItem should move existing item to top`() {
+    fun addItemMovesExistingItemToTop() {
         clipboardManager.addItem("First")
         clipboardManager.addItem("Second")
         
@@ -103,7 +103,7 @@ class ClipboardManagerTest {
     }
     
     @Test
-    fun `removeItem should remove item by id`() {
+    fun removeItemRemovesItemById() {
         clipboardManager.addItem("Test text")
         val itemId = clipboardManager.clipboardItems.value[0].id
         
@@ -114,7 +114,7 @@ class ClipboardManagerTest {
     }
     
     @Test
-    fun `removeItem should not affect other items`() {
+    fun removeItemNotAffectOtherItems() {
         clipboardManager.addItem("First")
         clipboardManager.addItem("Second")
         val firstId = clipboardManager.clipboardItems.value.find { it.text == "First" }!!.id
@@ -127,7 +127,7 @@ class ClipboardManagerTest {
     }
     
     @Test
-    fun `splitItem should split text into individual characters`() {
+    fun splitItemSplitsTextIntoCharacters() {
         clipboardManager.addItem("你好")
         val itemId = clipboardManager.clipboardItems.value[0].id
         
@@ -140,7 +140,7 @@ class ClipboardManagerTest {
     }
 
     @Test
-    fun `splitItem should handle single character`() {
+    fun splitItemHandlesSingleCharacter() {
         clipboardManager.addItem("A")
         val itemId = clipboardManager.clipboardItems.value[0].id
         
@@ -152,7 +152,7 @@ class ClipboardManagerTest {
     }
     
     @Test
-    fun `clearAll should clear all items`() {
+    fun clearAllClearsAllItems() {
         clipboardManager.addItem("Item1")
         clipboardManager.addItem("Item2")
         
@@ -163,7 +163,7 @@ class ClipboardManagerTest {
     }
     
     @Test
-    fun `clearAll should remove all unpinned items`() {
+    fun clearAllRemovesUnpinnedItems() {
         clipboardManager.addItem("First")
         clipboardManager.addItem("Second")
         clipboardManager.addItem("Third")
@@ -174,7 +174,7 @@ class ClipboardManagerTest {
     }
     
     @Test
-    fun `addToQuickSend should add item to quick send list`() {
+    fun addToQuickSendAddsItemToQuickSendList() {
         clipboardManager.addItem("Quick text")
         val itemId = clipboardManager.clipboardItems.value[0].id
         
@@ -188,7 +188,7 @@ class ClipboardManagerTest {
     }
     
     @Test
-    fun `removeFromQuickSend should remove item`() {
+    fun removeFromQuickSendRemovesItem() {
         clipboardManager.addItem("Quick text")
         val itemId = clipboardManager.clipboardItems.value[0].id
         clipboardManager.addToQuickSend(itemId)
@@ -199,7 +199,7 @@ class ClipboardManagerTest {
     }
     
     @Test
-    fun `addQuickSendItem should add text directly`() {
+    fun addQuickSendItemAddsTextDirectly() {
         clipboardManager.addQuickSendItem("Direct quick")
         
         val quickSendItems = clipboardManager.quickSendItems.value
@@ -209,7 +209,7 @@ class ClipboardManagerTest {
     }
     
     @Test
-    fun `addQuickSendItem should not add blank text`() {
+    fun addQuickSendItemNotAddBlankText() {
         clipboardManager.addQuickSendItem("")
         clipboardManager.addQuickSendItem("   ")
         
@@ -217,13 +217,13 @@ class ClipboardManagerTest {
     }
     
     @Test
-    fun `getCurrentClipboardText should return null when empty`() {
+    fun getCurrentClipboardTextReturnsNullWhenEmpty() {
         val text = clipboardManager.getCurrentClipboardText()
         assertNull("Should return null when clipboard is empty", text)
     }
     
     @Test
-    fun `copyToSystemClipboard should set clipboard text`() {
+    fun copyToSystemClipboardSetsClipboardText() {
         clipboardManager.copyToSystemClipboard("Copied text")
         
         val text = clipboardManager.getCurrentClipboardText()
@@ -231,7 +231,7 @@ class ClipboardManagerTest {
     }
     
     @Test
-    fun `ClipboardItem should have correct default values`() {
+    fun clipboardItemHasCorrectDefaultValues() {
         val item = ClipboardItem(text = "Test")
         
         assertNotNull(item.id)
@@ -242,7 +242,7 @@ class ClipboardManagerTest {
     }
     
     @Test
-    fun `ClipboardItem copy should preserve values`() {
+    fun clipboardItemCopyPreservesValues() {
         val original = ClipboardItem(
             id = 123L,
             text = "Original",
@@ -261,7 +261,7 @@ class ClipboardManagerTest {
     }
     
     @Test
-    fun `serialize deserialize should preserve data`() {
+    fun serializeDeserializePreservesData() {
         val items = listOf(
             ClipboardItem(1L, "Test:::with|||special", 1000L, true, false),
             ClipboardItem(2L, "Normal text", 2000L, false, true)
@@ -283,7 +283,7 @@ class ClipboardManagerTest {
     }
     
     @Test
-    fun `max items limit should be enforced`() {
+    fun maxItemsLimitEnforced() {
         for (i in 1..55) {
             clipboardManager.addItem("Item $i")
         }

@@ -36,7 +36,12 @@ fun KeyboardLayoutScreen(
     val keyTextColor = if (uiState.isDarkTheme) longToColor(kbColors.keyTextColorDark) else longToColor(kbColors.keyTextColor)
     val specialKeyBgColor = if (uiState.isDarkTheme) kbColors.specialKeyBgColorDark?.let { longToColor(it) }
         ?: themeSpecialKeyColor else kbColors.specialKeyBgColor?.let { longToColor(it) } ?: themeSpecialKeyColor
+    val specialKeyTextColor = if (uiState.isDarkTheme) Color.White
+        else KeyboardThemes.getSpecialKeyTextColor(uiState.themeId, false)
     val kbShadow = KeysConfigHelper.getKeyboardShadow()
+    val kbKey = KeysConfigHelper.getKeyboardKeyConfig()
+    val accentColor = KeyboardThemes.getAccentColor(uiState.themeId, uiState.isDarkTheme)
+
 
     val onGestureAction: (GestureAction, String) -> Unit = { action, value ->
         when (action) {
@@ -125,9 +130,11 @@ fun KeyboardLayoutScreen(
                 shadowEnabled = kbShadow.enabled,
                 shadowElevation = kbShadow.elevation.dp,
                 shadowShapeRadius = kbShadow.shapeRadius.dp,
+                keyCornerRadius = kbKey.cornerRadius.dp,
                 modifier = modifier,
                 onKeyPressDown = callbacks.onKeyPressDown,
                 isFloatingMode = uiState.isFloatingMode,
+                specialKeyTextColor = specialKeyTextColor,
             )
         }
 
@@ -142,9 +149,11 @@ fun KeyboardLayoutScreen(
                 shadowEnabled = kbShadow.enabled,
                 shadowElevation = kbShadow.elevation.dp,
                 shadowShapeRadius = kbShadow.shapeRadius.dp,
+                keyCornerRadius = kbKey.cornerRadius.dp,
                 modifier = modifier,
                 onKeyPressDown = callbacks.onKeyPressDown,
                 isFloatingMode = uiState.isFloatingMode,
+                specialKeyTextColor = specialKeyTextColor,
             )
         }
 
@@ -158,9 +167,11 @@ fun KeyboardLayoutScreen(
                 shadowEnabled = kbShadow.enabled,
                 shadowElevation = kbShadow.elevation.dp,
                 shadowShapeRadius = kbShadow.shapeRadius.dp,
+                keyCornerRadius = kbKey.cornerRadius.dp,
                 modifier = modifier,
                 onKeyPressDown = callbacks.onKeyPressDown,
                 isFloatingMode = uiState.isFloatingMode,
+                specialKeyTextColor = specialKeyTextColor,
             )
         }
 
@@ -174,13 +185,16 @@ fun KeyboardLayoutScreen(
                     keyBackgroundColor = keyBgColor,
                     keyTextColor = keyTextColor,
                     specialKeyBackgroundColor = specialKeyBgColor,
+                    accentColor = accentColor,
                     keyboardBackgroundColor = keyboardBgColor,
                     shadowEnabled = kbShadow.enabled,
                     shadowElevation = kbShadow.elevation.dp,
                     shadowShapeRadius = kbShadow.shapeRadius.dp,
+                    keyCornerRadius = kbKey.cornerRadius.dp,
                     modifier = modifier,
                     onKeyPressDown = callbacks.onKeyPressDown,
                     isFloatingMode = uiState.isFloatingMode,
+                    specialKeyTextColor = specialKeyTextColor,
                 )
             }
         }

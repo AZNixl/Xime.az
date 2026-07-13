@@ -54,3 +54,4 @@ plugins/kaomoji/build
 app/src/main/assets/plugins/*.apk
 
 /.skills
+fix_encoding.py

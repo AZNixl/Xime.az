@@ -7,7 +7,8 @@ import java.util.Locale
 
 data class DictEntry(
     val word: String,
-    val code: String
+    val code: String,
+    val weight: Int? = null
 )
 
 object DictionaryHelper {

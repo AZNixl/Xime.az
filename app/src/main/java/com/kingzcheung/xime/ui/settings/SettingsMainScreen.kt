@@ -21,6 +21,8 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.twotone.LibraryBooks
 import androidx.compose.material.icons.twotone.AutoAwesome
+import androidx.compose.material.icons.twotone.Ballot
+
 import androidx.compose.material.icons.twotone.Build
 import androidx.compose.material.icons.twotone.CloudSync
 import androidx.compose.material.icons.twotone.Description
@@ -34,6 +36,7 @@ import androidx.compose.material.icons.twotone.Storefront
 import androidx.compose.material.icons.twotone.Straighten
 import androidx.compose.material.icons.twotone.TableChart
 import androidx.compose.material.icons.twotone.ToggleOn
+import androidx.compose.material.icons.twotone.TypeSpecimen
 import androidx.compose.material.icons.twotone.Vibration
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -225,9 +228,9 @@ fun SettingsMainContent(
                         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
                     )
                     SettingsItem(
-                        icon = Icons.AutoMirrored.TwoTone.LibraryBooks,
+                        icon = Icons.TwoTone.Ballot,
                         title = "词库管理",
-                        subtitle = "管理用户词库",
+                        subtitle = "管理个人词库和自定义短语",
                         onClick = onNavigateToDictionary,
                         showArrow = true
                     )

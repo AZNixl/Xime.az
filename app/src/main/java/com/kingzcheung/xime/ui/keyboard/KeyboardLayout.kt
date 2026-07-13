@@ -1,8 +1,8 @@
 package com.kingzcheung.xime.ui.keyboard
 
+import android.annotation.SuppressLint
 import android.widget.Toast
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -33,6 +34,7 @@ import androidx.compose.material.icons.twotone.KeyboardCapslock
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -44,14 +46,16 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import com.kingzcheung.xime.settings.SettingsPreferences
 import com.kingzcheung.xime.settings.DisplayMode
+import com.kingzcheung.xime.settings.ButtonLayout
 import com.kingzcheung.xime.settings.KeysConfigHelper
 import com.kingzcheung.xime.keyboard.GestureAction
 
 /** 半角 → 全角标点映射，中文模式下键帽显示用。提交仍走半角由 Rime 处理。 */
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
@@ -60,6 +64,7 @@ import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
@@ -80,8 +85,7 @@ import com.kingzcheung.xime.viewmodel.KeyboardViewModel
 import com.kingzcheung.xime.viewmodel.ShiftMode
 import com.kingzcheung.xime.keyboard.OverlayRoute
 import com.kingzcheung.xime.ui.theme.KeyboardThemes
-import androidx.compose.ui.platform.LocalConfiguration
-import android.content.res.Configuration
+
 import androidx.compose.material.icons.twotone.KeyboardControlKey
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
@@ -114,8 +118,6 @@ fun KeyboardLayout(
         visualShiftMode = shiftMode
     }
 
-    val isLandscape = !uiState.isFloatingMode && LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
-
     val context = LocalContext.current
     val kbColors = KeysConfigHelper.getKeyboardColors()
     val longToColor: (Long) -> Color = { Color(0xFF000000 or it) }
@@ -125,7 +127,10 @@ fun KeyboardLayout(
     val keyTextColor = if (uiState.isDarkTheme) longToColor(kbColors.keyTextColorDark) else longToColor(kbColors.keyTextColor)
     val specialKeyBackgroundColor = if (uiState.isDarkTheme) kbColors.specialKeyBgColorDark?.let { longToColor(it) }
         ?: themeSpecialKeyColor else kbColors.specialKeyBgColor?.let { longToColor(it) } ?: themeSpecialKeyColor
+    val specialKeyTextColor = if (uiState.isDarkTheme) Color.White
+        else KeyboardThemes.getSpecialKeyTextColor(uiState.themeId, false)
     val kbShadow = KeysConfigHelper.getKeyboardShadow()
+    val kbKey = KeysConfigHelper.getKeyboardKeyConfig()
     val shadowEnabled = kbShadow.enabled
     val shadowElevation = kbShadow.elevation.dp
     val shadowShapeRadius = kbShadow.shapeRadius.dp
@@ -135,6 +140,7 @@ fun KeyboardLayout(
     val isSttEnabled = uiState.isSttEnabled
     val isVoiceMode = uiState.isVoiceMode
     val onKeyPressDown = callbacks.onKeyPressDown
+    val onKeyRelease = callbacks.onKeyRelease
     val onVoiceModeChange = callbacks.onVoiceModeChange
     val onCommitText = callbacks.onCommitText
     val onGestureAction: (GestureAction, String) -> Unit = { action, value ->
@@ -224,11 +230,16 @@ fun KeyboardLayout(
     val bubbleData = rememberSwipeBubbleDrawData(
         swipeState = swipeState,
         keyBounds = lastKeyBounds,
-        isDarkTheme = isDarkTheme,
+        keyBackgroundColor = keyBackgroundColor,
+        keyTextColor = keyTextColor,
+        accentColor = specialKeyTextColor,
         keyWidth = if (swipeState.isSwiping || swipeState.isPressed) lastKeyBounds.width else 0f,
         keyboardWidth = keyboardBounds.width
     )
 
+    val isLandscape = !uiState.isFloatingMode && LocalConfiguration.current.screenWidthDp > LocalConfiguration.current.screenHeightDp
+
+    CompositionLocalProvider(LocalKeyCornerRadius provides kbKey.cornerRadius.dp) {
     Box(
         modifier = modifier
             .background(keyboardBackgroundColor)
@@ -238,9 +249,10 @@ fun KeyboardLayout(
             .drawWithContent {
                 drawContent()
                 bubbleData?.let { drawSwipeBubble(it) }
-            }.padding(bottom = if (uiState.isFloatingMode) {0.dp} else {10.dp})
+            }
+            .padding(bottom = if (uiState.isFloatingMode || isLandscape) {0.dp} else {10.dp})
     ) {
-        if (isLandscape) {
+            if (isLandscape) {
             LandscapeKeyboardContent(
                 onKeyPress = onKeyPress,
                 viewModel = viewModel,
@@ -257,14 +269,14 @@ fun KeyboardLayout(
                     .fillMaxWidth()
                     .fillMaxHeight()
                     .background(keyboardBackgroundColor)
-                    .padding(start = 4.dp, end = 4.dp, bottom = 8.dp)
+                    .padding(start = 4.dp, end = 4.dp, bottom = 8.dp),
             ) {
 
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(KeyboardDimensions.RowSpacing),
+                    verticalArrangement = Arrangement.Top,
                 ) {
                     // 第一行
                     if (isVoiceMode) {
@@ -284,6 +296,9 @@ fun KeyboardLayout(
                                     keyBackgroundColor = keyBackgroundColor,
                                     keyTextColor = keyTextColor,
                                     keyboardBackgroundColor = keyboardBackgroundColor,
+                                    shadowEnabled = shadowEnabled,
+                                    shadowElevation = shadowElevation,
+                                    shadowShapeRadius = shadowShapeRadius,
                                 ),
                                 isShifted = visualIsShifted,
                                 isAsciiMode = isAsciiMode,
@@ -294,6 +309,7 @@ fun KeyboardLayout(
                                     )
                                 },
                                 onKeyPressDown = onKeyPressDown,
+                                onKeyRelease = onKeyRelease,
                                 swipeDownHintsEnabled = effectiveSwipeDownHintsEnabled,
                                 swipeUpHintsEnabled = swipeUpHintsEnabled,
                                 onCommitText = onCommitText,
@@ -325,6 +341,9 @@ fun KeyboardLayout(
                                     keyBackgroundColor = keyBackgroundColor,
                                     keyTextColor = keyTextColor,
                                     keyboardBackgroundColor = keyboardBackgroundColor,
+                                    shadowEnabled = shadowEnabled,
+                                    shadowElevation = shadowElevation,
+                                    shadowShapeRadius = shadowShapeRadius,
                                 ),
                                 isShifted = visualIsShifted,
                                 isAsciiMode = isAsciiMode,
@@ -336,6 +355,7 @@ fun KeyboardLayout(
                                     )
                                 },
                                 onKeyPressDown = onKeyPressDown,
+                                onKeyRelease = onKeyRelease,
                                 swipeDownHintsEnabled = effectiveSwipeDownHintsEnabled,
                                 swipeUpHintsEnabled = swipeUpHintsEnabled,
                                 onCommitText = onCommitText,
@@ -367,8 +387,9 @@ fun KeyboardLayout(
                                 onKeyPress = onKeyPress,
                                 onKeyPressDown = onKeyPressDown,
                                 backgroundColor = specialKeyBackgroundColor,
-                                iconColor = keyTextColor,
+                                iconColor = specialKeyTextColor,
                                 modifier = Modifier
+                                    .padding(2.dp,4.dp)
                                     .weight(1.4f)
                                     .fillMaxHeight(),
                                 shadowEnabled = shadowEnabled,
@@ -421,6 +442,7 @@ fun KeyboardLayout(
 
                                     val onClick = remember(key, commitValue, onKeyPress) { { onKeyPress(commitValue) } }
                                     val onPress: (() -> Unit)? = remember(key, onKeyPressDown) { { onKeyPressDown?.invoke(key); Unit } }
+                                    val onRelease: (() -> Unit)? = remember(key, onKeyRelease) { { onKeyRelease?.invoke(key); Unit } }
                                     val onSwipeDown = if (!isAsciiMode && swipeDownAction != null && swipeDownLabel != null) {
                                         remember(key, onKeyPress, onGestureAction, onCommitText, swipeDownAction, swipeDownValue, swipeDownLabel) {
                                             val label = swipeDownLabel
@@ -450,6 +472,7 @@ fun KeyboardLayout(
                                     } }
 
                                     SwipeableKeyButton(
+                                        layoutMode = KeysConfigHelper.getButtonLayout(isAsciiMode),
                                         text = displayText,
                                         onClick = onClick,
                                         backgroundColor = keyBackgroundColor,
@@ -463,6 +486,7 @@ fun KeyboardLayout(
                                         onSwipeDown = onSwipeDown,
                                         onSwipeStateChange = onSwipeStateChange,
                                         onPress = onPress,
+                                        onRelease = onRelease,
                                         onLongPressSelect = onLongPressSelect,
                                         longPressItems = longPressLabels,
                                         shadowEnabled = shadowEnabled,
@@ -476,14 +500,16 @@ fun KeyboardLayout(
                                 icon = rememberVectorPainter(Icons.AutoMirrored.Filled.Backspace),
                                 onClick = { onKeyPress("delete") },
                                 backgroundColor = specialKeyBackgroundColor,
-                                iconColor = keyTextColor,
+                                iconColor = specialKeyTextColor,
                                 modifier = Modifier
+                                    .padding(2.dp,0.dp)
                                     .weight(1.4f)
                                     .fillMaxHeight(),
                                 swipeText = "清空",
                                 onSwipe = { onKeyPress("clear_composition") },
                                 onLongClick = { onKeyPress("delete") },
                                 onPress = { onKeyPressDown?.invoke("delete") },
+                                onRelease = { onKeyRelease?.invoke("delete") },
                                 swipeUpLabel = "上滑清空",
                                 swipeDownLabel = "下滑撤回",
                                 onSwipeUp = { onKeyPress("clear_all") },
@@ -524,11 +550,12 @@ fun KeyboardLayout(
                                 text = "?123",
                                 onClick = { onKeyPress("mode_change") },
                                 backgroundColor = specialKeyBackgroundColor,
-                                textColor = keyTextColor,
+                                textColor = specialKeyTextColor,
                                 modifier = Modifier.weight(1.2f),
                                 onPress = { onKeyPressDown?.invoke("mode_change") },
-                                onLongPressSelect = { label -> onKeyPress("mode_change_$label") },
-                                longPressItems = listOf("t9", "t26"),
+                                onRelease = { onKeyRelease?.invoke("mode_change") },
+                                onLongPressSelect = { label -> onKeyPress(if (label == "number") "mode_change_number" else "mode_change_common_symbol") },
+                                longPressItems = listOf("number", "common_symbol"),
                                 longPressDrawableIds = listOf(
                                     com.kingzcheung.xime.R.drawable.t9,
                                     com.kingzcheung.xime.R.drawable.t26
@@ -610,12 +637,14 @@ fun KeyboardLayout(
                                     iconColor = keyTextColor,
                                     modifier = Modifier.weight(0.8f),
                                     onPress = { onKeyPressDown?.invoke(k2TapValue) },
+                                    onRelease = { onKeyRelease?.invoke(k2TapValue) },
                                     shadowEnabled = shadowEnabled,
                                     shadowElevation = shadowElevation,
                                     shadowShapeRadius = shadowShapeRadius,
                                 )
                             } else {
                                 SwipeableKeyButton(
+                                    layoutMode = KeysConfigHelper.getButtonLayout(isAsciiMode),
                                     text = k2TapLabel,
                                     onClick = k2OnClick,
                                     backgroundColor = keyBackgroundColor,
@@ -630,6 +659,7 @@ fun KeyboardLayout(
                                         processSwipeState(state, bounds)
                                     },
                                     onPress = { onKeyPressDown?.invoke(k2TapValue) },
+                                    onRelease = { onKeyRelease?.invoke(k2TapValue) },
                                     onLongPressSelect = k2OnLongPressSelect,
                                     longPressItems = k2LongPressLabels,
                                     shadowEnabled = shadowEnabled,
@@ -639,97 +669,22 @@ fun KeyboardLayout(
                             }
                         }
 
-                        // 空格键 - 支持长按语音（硬编码）
-                        val currentOnKeyPress by rememberUpdatedState(onKeyPress)
-                        val currentOnKeyPressDown by rememberUpdatedState(onKeyPressDown)
-                        val currentOnVoiceModeChange by rememberUpdatedState(onVoiceModeChange)
-                        val scope = rememberCoroutineScope()
-                        val spaceShadowModifier = remember(shadowEnabled, shadowElevation, shadowShapeRadius) {
-                            if (shadowEnabled) Modifier.shadow(shadowElevation, RoundedCornerShape(shadowShapeRadius), ambientColor = Color(0x80000000), spotColor = Color(0x80000000))
-                            else Modifier
-                        }
-                        Box(
-                            modifier = Modifier
-                                .weight(3f)
-                                .fillMaxHeight()
-                                .pointerInput(isSttEnabled) {
-                                    awaitEachGesture {
-                                        awaitFirstDown(requireUnconsumed = false)
-                                        currentOnKeyPressDown?.invoke("space")
-
-                                        var longPressTriggered = false
-                                        val longPressJob = scope.launch {
-                                            delay(400)
-                                            longPressTriggered = true
-
-                                            if (isSttEnabled) {
-                                                if (!PermissionHelper.hasRecordAudioPermission(context)) {
-                                                    Toast.makeText(context, "需要麦克风权限才能使用语音输入", Toast.LENGTH_SHORT).show()
-                                                    PermissionHelper.requestRecordAudioPermission(context)
-                                                } else {
-                                                    currentOnVoiceModeChange?.invoke(true)
-                                                }
-                                            } else {
-                                                while (true) {
-                                                    currentOnKeyPress("space")
-                                                    delay(80)
-                                                }
-                                            }
-                                        }
-
-                                        waitForUpOrCancellation()
-                                        longPressJob.cancel()
-
-                                        if (!longPressTriggered) {
-                                            currentOnKeyPress("space")
-                                        }
-                                    }
-                                }
-                                .padding(horizontal = 2.dp, vertical = 3.dp)
-                                .fillMaxWidth()
-                                .fillMaxHeight()
-                                .then(spaceShadowModifier)
-                                .clip(RoundedCornerShape(shadowShapeRadius))
-                                .background(keyBackgroundColor),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (isVoiceMode) {
-                                Icon(
-                                    imageVector = Icons.Default.Mic,
-                                    contentDescription = "语音输入",
-                                    tint = keyTextColor,
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            } else {
-                                Text(
-                                    text = if (isAsciiMode) "English" else schemaName,
-                                    color = keyTextColor,
-                                    fontSize = 14.sp,
-                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Normal,
-                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                    maxLines = 1
-                                )
-
-                                if (isSttEnabled) {
-                                    Icon(
-                                        painter = painterResource(com.kingzcheung.xime.R.drawable.voice),
-                                        contentDescription = "语音输入",
-                                        tint = keyTextColor.copy(alpha = 0.3f),
-                                        modifier = Modifier.size(18.dp).align(Alignment.BottomStart).padding(start = 6.dp, bottom = 2.dp)
-                                    )
-                                } else {
-                                    Text(
-                                        text = "空格",
-                                        color = keyTextColor.copy(alpha = 0.3f),
-                                        fontSize = 10.sp,
-                                        fontWeight = androidx.compose.ui.text.font.FontWeight.Normal,
-                                        textAlign = androidx.compose.ui.text.style.TextAlign.Start,
-                                        maxLines = 1,
-                                        modifier = Modifier.align(Alignment.BottomStart).padding(start = 6.dp, bottom = 2.dp)
-                                    )
-                                }
-                            }
-                        }
+                        SpaceKey(
+                            schemaName = schemaName,
+                            isAsciiMode = isAsciiMode,
+                            isSttEnabled = isSttEnabled,
+                            isVoiceMode = isVoiceMode,
+                            keyBackgroundColor = keyBackgroundColor,
+                            keyTextColor = keyTextColor,
+                            shadowEnabled = shadowEnabled,
+                            shadowElevation = shadowElevation,
+                            shadowShapeRadius = shadowShapeRadius,
+                            modifier = Modifier.weight(3f),
+                            onKeyPress = onKeyPress,
+                            onKeyPressDown = onKeyPressDown,
+                            onKeyRelease = onKeyRelease,
+                            onVoiceModeChange = onVoiceModeChange,
+                        )
 
                         // 中/英切换 + 回车（硬编码 + 配置驱动）
                         if (isVoiceMode) {
@@ -742,14 +697,18 @@ fun KeyboardLayout(
                                 modifier = Modifier.weight(1.2f)
                             )
                         } else {
-                            // shift_l — 从配置读取
-                            val k4KeyGesture = KeysConfigHelper.getKeyGesture("shift_l", isAsciiMode)
+                            // earth — 从配置读取
+                            val k4KeyGesture = KeysConfigHelper.getKeyGesture("earth", isAsciiMode)
                             val k4TapAction = k4KeyGesture?.tap?.action
-                            val k4TapValue = k4KeyGesture?.tap?.value?.takeIf { it.isNotEmpty() }
-                                ?: k4KeyGesture?.tap?.label?.takeIf { it.isNotEmpty() }
-                                ?: "ime_switch"
-                            val k4TapLabel = k4KeyGesture?.tap?.label?.takeIf { it.isNotEmpty() }
-                                ?: if (isAsciiMode) "中" else "英"
+                            val k4TapValue = k4KeyGesture?.tap?.value?.takeIf { it.isNotEmpty() } ?: ""
+                            val k4TapLabel = k4KeyGesture?.tap?.label?.takeIf { it.isNotEmpty() } ?: ""
+                            val k4Icon: Painter? = k4KeyGesture?.tap?.icon?.takeIf { it.isNotEmpty() }?.let { iconName ->
+                                val iv = when (iconName) {
+                                    "language", "globe" -> Icons.Default.Language
+                                    else -> null
+                                }
+                                iv?.let { rememberVectorPainter(it) }
+                            }
                             val k4SwipeUpRaw = k4KeyGesture?.swipeUp
                             val k4SwipeUpLabel = if (isAsciiMode)
                                 (k4SwipeUpRaw?.value?.takeIf { it.isNotEmpty() } ?: "")
@@ -791,7 +750,7 @@ fun KeyboardLayout(
                                         if (k4SwipeDownAction == GestureAction.COMMIT) {
                                             (onCommitText ?: onKeyPress)(k4SwipeDownValue?.ifEmpty { label } ?: label)
                                         } else {
-                                            onGestureAction?.invoke(k4SwipeDownAction, k4SwipeDownValue?.ifEmpty { label } ?: label)
+                                            onGestureAction.invoke(k4SwipeDownAction, k4SwipeDownValue?.ifEmpty { label } ?: label)
                                         }
                                         Unit
                                     }
@@ -801,33 +760,36 @@ fun KeyboardLayout(
                                 { selectedLabel: String ->
                                     val gesture = k4LongPressGestureMap?.get(selectedLabel)
                                     if (gesture != null && gesture.action != GestureAction.COMMIT) {
-                                        onGestureAction?.invoke(gesture.action!!, gesture.value.ifEmpty { selectedLabel })
+                                        onGestureAction.invoke(gesture.action!!, gesture.value.ifEmpty { selectedLabel })
                                     } else {
                                         (onCommitText ?: onKeyPress)(selectedLabel)
                                     }
                                     Unit
                                 }
                             }
-                            if (k4TapAction == GestureAction.TOGGLE_ASCII) {
+                            if (k4TapAction == GestureAction.TOGGLE_ASCII && k4LongPressLabels == null && k4Icon != null) {
                                 IconKeyButton(
-                                    icon = rememberVectorPainter(Icons.Default.Language),
+                                    icon = k4Icon,
                                     onClick = k4OnClick,
                                     backgroundColor = keyBackgroundColor,
                                     iconColor = keyTextColor,
                                     modifier = Modifier.weight(0.8f),
                                     onPress = { onKeyPressDown?.invoke(k4TapValue) },
+                                    onRelease = { onKeyRelease?.invoke(k4TapValue) },
                                     shadowEnabled = shadowEnabled,
                                     shadowElevation = shadowElevation,
                                     shadowShapeRadius = shadowShapeRadius,
                                 )
                             } else {
                                 SwipeableKeyButton(
+                                    layoutMode = KeysConfigHelper.getButtonLayout(isAsciiMode),
                                     text = k4TapLabel,
                                     onClick = k4OnClick,
                                     backgroundColor = keyBackgroundColor,
                                     textColor = keyTextColor,
                                     modifier = Modifier.weight(0.8f),
-                                    swipeText = k4SwipeUpLabel,
+                                    icon = k4Icon,
+                                    swipeText = k4SwipeUpLabel.takeIf { it.isNotEmpty() },
                                     swipeDownText = k4SwipeDownBubbleText,
                                     swipeDownKeyLabel = if (!isAsciiMode && (k4SwipeDownDisplay == DisplayMode.KEY || k4SwipeDownDisplay == DisplayMode.BOTH)) k4SwipeDownLabel else null,
                                     onSwipe = k4OnSwipe,
@@ -836,6 +798,7 @@ fun KeyboardLayout(
                                         processSwipeState(state, bounds)
                                     },
                                     onPress = { onKeyPressDown?.invoke(k4TapValue) },
+                                    onRelease = { onKeyRelease?.invoke(k4TapValue) },
                                     onLongPressSelect = k4OnLongPressSelect,
                                     longPressItems = k4LongPressLabels,
                                     shadowEnabled = shadowEnabled,
@@ -849,9 +812,10 @@ fun KeyboardLayout(
                                 text = enterKeyText,
                                 onClick = { onKeyPress("enter") },
                                 backgroundColor = specialKeyBackgroundColor,
-                                textColor = keyTextColor,
+                                textColor = specialKeyTextColor,
                                 modifier = Modifier.weight(1.2f),
                                 onPress = { onKeyPressDown?.invoke("enter") },
+                                onRelease = { onKeyRelease?.invoke("enter") },
                                 shadowEnabled = shadowEnabled,
                                 shadowElevation = shadowElevation,
                                 shadowShapeRadius = shadowShapeRadius,
@@ -877,6 +841,7 @@ fun KeyboardLayout(
                 )
             }
         }
+    }
 
     }
 }
@@ -944,7 +909,7 @@ private fun DummyKeyButton(
     Box(
         modifier = modifier
             .fillMaxHeight()
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(LocalKeyCornerRadius.current))
             .background(backgroundColor)
     )
 }
@@ -956,9 +921,10 @@ fun KeyboardRowWithConfig(
     config: KeyboardRowConfig,
     isShifted: Boolean,
     isAsciiMode: Boolean = false,
-    modifier: Modifier = Modifier,
+    @SuppressLint("ModifierParameter") modifier: Modifier = Modifier,
     onSwipeStateChange: ((SwipeState, Rect) -> Unit)? = null,
     onKeyPressDown: ((String) -> Unit)? = null,
+    onKeyRelease: ((String) -> Unit)? = null,
     swipeDownHintsEnabled: Boolean = true,
     swipeUpHintsEnabled: Boolean = true,
     onCommitText: ((String) -> Unit)? = null,
@@ -1008,6 +974,7 @@ fun KeyboardRowWithConfig(
 
             val onClick = remember(key, commitValue, onKeyPress) { { onKeyPress(commitValue) } }
             val onPress: (() -> Unit)? = remember(key, onKeyPressDown) { { onKeyPressDown?.invoke(key); Unit } }
+            val onRelease: (() -> Unit)? = remember(key, onKeyRelease) { { onKeyRelease?.invoke(key); Unit } }
             val onSwipeDown: ((String) -> Unit)? = if (swipeDownAction != null && swipeDownHintsEnabled && swipeDownLabel != null) {
                 remember(key, onKeyPress, onGestureAction, onCommitText, swipeDownAction, swipeDownValue, swipeDownLabel) {
                     val label = swipeDownLabel
@@ -1036,6 +1003,7 @@ fun KeyboardRowWithConfig(
             } }
 
             SwipeableKeyButton(
+                layoutMode = KeysConfigHelper.getButtonLayout(isAsciiMode),
                 text = displayText,
                 onClick = onClick,
                 backgroundColor = config.keyBackgroundColor,
@@ -1049,6 +1017,7 @@ fun KeyboardRowWithConfig(
                 onSwipeDown = onSwipeDown,
                 onSwipeStateChange = onSwipeStateChange,
                 onPress = onPress,
+                onRelease = onRelease,
                 onLongPressSelect = onLongPressSelect,
                 longPressItems = longPressLabels,
                 fontSize = config.fontSize,
@@ -1074,19 +1043,32 @@ private fun ShiftCapsKeyButton(
     shadowShapeRadius: Dp = 8.dp,
 ) {
     var isPressed by remember { mutableStateOf(false) }
+    val density = LocalDensity.current
 
-    val shadowShape = remember(shadowShapeRadius) { RoundedCornerShape(shadowShapeRadius) }
-    val shadowModifier = remember(shadowEnabled, shadowElevation, shadowShapeRadius) {
-        if (shadowEnabled) Modifier.shadow(shadowElevation, shadowShape) else Modifier
+    val shadowModifier = remember(shadowEnabled, shadowElevation, shadowShapeRadius, density, backgroundColor) {
+        if (shadowEnabled) {
+            val offsetPx = with(density) { shadowElevation.toPx() }
+            val cornerPx = with(density) { shadowShapeRadius.toPx() }
+            val color = crispShadowColor(backgroundColor)
+            Modifier.drawBehind {
+                drawRoundRect(
+                    color = color,
+                    topLeft = Offset(0f, offsetPx),
+                    size = size,
+                    cornerRadius = CornerRadius(cornerPx)
+                )
+            }
+        } else Modifier
     }
+    val keyCornerRadius = LocalKeyCornerRadius.current
+    val keyClipShape = remember(keyCornerRadius) { RoundedCornerShape(keyCornerRadius) }
 
     fun darkenColor(color: Color, factor: Float = 0.15f): Color {
         return Color(
             red = (color.red * (1 - factor)).coerceIn(0f, 1f),
             green = (color.green * (1 - factor)).coerceIn(0f, 1f),
             blue = (color.blue * (1 - factor)).coerceIn(0f, 1f),
-            alpha = color.alpha
-        )
+            alpha = color.alpha)
     }
 
     Box(
@@ -1114,9 +1096,8 @@ private fun ShiftCapsKeyButton(
                     isPressed = false
                 }
             }
-            .padding(horizontal = 2.dp, vertical = 4.25.dp)
             .then(shadowModifier)
-            .clip(shadowShape)
+            .clip(keyClipShape)
             .background(
                 if (isPressed) darkenColor(backgroundColor, 0.1f)
                 else if (shiftMode == ShiftMode.CAPS) darkenColor(backgroundColor, 0.2f)
@@ -1199,13 +1180,17 @@ private fun LandscapeKeyboardContent(
     val keyTextColor = if (uiState.isDarkTheme) longToColor(kbColors.keyTextColorDark) else longToColor(kbColors.keyTextColor)
     val specialKeyBackgroundColor = if (uiState.isDarkTheme) kbColors.specialKeyBgColorDark?.let { longToColor(it) }
         ?: themeSpecialKeyColor else kbColors.specialKeyBgColor?.let { longToColor(it) } ?: themeSpecialKeyColor
+    val specialKeyTextColor = if (uiState.isDarkTheme) Color.White
+        else KeyboardThemes.getSpecialKeyTextColor(uiState.themeId, false)
     val kbShadow = KeysConfigHelper.getKeyboardShadow()
+    val kbKey = KeysConfigHelper.getKeyboardKeyConfig()
     val shadowEnabled = kbShadow.enabled
     val shadowElevation = kbShadow.elevation.dp
     val shadowShapeRadius = kbShadow.shapeRadius.dp
     val schemaName = uiState.schemaName
     val enterKeyText = uiState.enterKeyText
     val onKeyPressDown = callbacks.onKeyPressDown
+    val onKeyRelease = callbacks.onKeyRelease
     val onCommitText = callbacks.onCommitText
     val onGestureAction: (GestureAction, String) -> Unit = { action, value ->
         when (action) {
@@ -1231,11 +1216,14 @@ private fun LandscapeKeyboardContent(
         }
     }
 
-    Row(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(vertical = 6.dp, horizontal = 50.dp)
+    CompositionLocalProvider(
+        LocalKeyVisualPadding provides PaddingValues(horizontal = 1.dp, vertical = 2.dp)
     ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(vertical = 2.dp, horizontal = 50.dp)
+        ) {
         // ========== 左面板 ==========
         Column(
             modifier = Modifier
@@ -1253,9 +1241,13 @@ private fun LandscapeKeyboardContent(
                         keyboardBackgroundColor = keyboardBackgroundColor,
                         fontSize = landscapeFontSize,
                         swipeFontSize = landscapeSwipeFontSize,
+                        shadowEnabled = shadowEnabled,
+                        shadowElevation = shadowElevation,
+                        shadowShapeRadius = shadowShapeRadius,
                     ),
                     isShifted = visualIsShifted,
                     onKeyPressDown = onKeyPressDown,
+                    onKeyRelease = onKeyRelease,
                     swipeDownHintsEnabled = swipeDownHintsEnabled,
                     swipeUpHintsEnabled = swipeUpHintsEnabled,
                     onCommitText = onCommitText,
@@ -1277,9 +1269,13 @@ private fun LandscapeKeyboardContent(
                         keyboardBackgroundColor = keyboardBackgroundColor,
                         fontSize = landscapeFontSize,
                         swipeFontSize = landscapeSwipeFontSize,
+                        shadowEnabled = shadowEnabled,
+                        shadowElevation = shadowElevation,
+                        shadowShapeRadius = shadowShapeRadius,
                     ),
                     isShifted = visualIsShifted,
                     onKeyPressDown = onKeyPressDown,
+                    onKeyRelease = onKeyRelease,
                     swipeDownHintsEnabled = swipeDownHintsEnabled,
                     swipeUpHintsEnabled = swipeUpHintsEnabled,
                     onCommitText = onCommitText,
@@ -1301,9 +1297,13 @@ private fun LandscapeKeyboardContent(
                         keyboardBackgroundColor = keyboardBackgroundColor,
                         fontSize = landscapeFontSize,
                         swipeFontSize = landscapeSwipeFontSize,
+                        shadowEnabled = shadowEnabled,
+                        shadowElevation = shadowElevation,
+                        shadowShapeRadius = shadowShapeRadius,
                     ),
                     isShifted = visualIsShifted,
                     onKeyPressDown = onKeyPressDown,
+                    onKeyRelease = onKeyRelease,
                     swipeDownHintsEnabled = swipeDownHintsEnabled,
                     swipeUpHintsEnabled = swipeUpHintsEnabled,
                     onCommitText = onCommitText,
@@ -1315,14 +1315,15 @@ private fun LandscapeKeyboardContent(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 ShiftCapsKeyButton(
                     shiftMode = visualShiftMode,
                     onKeyPress = onKeyPress,
                     onKeyPressDown = onKeyPressDown,
                     backgroundColor = specialKeyBackgroundColor,
-                    iconColor = keyTextColor,
-                    modifier = Modifier.weight(1.2f),
+                    iconColor = specialKeyTextColor,
+                    modifier = Modifier.padding(1.dp,2.dp).weight(1.2f),
                         shadowEnabled = shadowEnabled,
                         shadowElevation = shadowElevation,
                         shadowShapeRadius = shadowShapeRadius,
@@ -1340,11 +1341,7 @@ private fun LandscapeKeyboardContent(
                         IconKeyButton(
                             icon = rememberVectorPainter(Icons.Default.Language),
                             onClick = {
-                                if (k2Action != null && k2Action != GestureAction.COMMIT) {
-                                    onGestureAction?.invoke(k2Action, k2Tap)
-                                } else {
-                                    onKeyPress(k2Tap)
-                                }
+                                onGestureAction.invoke(k2Action, k2Tap)
                             },
                             backgroundColor = keyBackgroundColor,
                             iconColor = keyTextColor,
@@ -1355,7 +1352,7 @@ private fun LandscapeKeyboardContent(
                             shadowShapeRadius = shadowShapeRadius,
                         )
                     } else {
-                        CompactSwipeableKeyButton(
+                        SwipeableKeyButtonLandscape(
                             text = k2Tap,
                             onClick = {
                                 if (k2Action != null && k2Action != GestureAction.COMMIT) {
@@ -1410,9 +1407,13 @@ private fun LandscapeKeyboardContent(
                         keyboardBackgroundColor = keyboardBackgroundColor,
                         fontSize = landscapeFontSize,
                         swipeFontSize = landscapeSwipeFontSize,
+                        shadowEnabled = shadowEnabled,
+                        shadowElevation = shadowElevation,
+                        shadowShapeRadius = shadowShapeRadius,
                     ),
                     isShifted = visualIsShifted,
                     onKeyPressDown = onKeyPressDown,
+                    onKeyRelease = onKeyRelease,
                     swipeDownHintsEnabled = swipeDownHintsEnabled,
                     swipeUpHintsEnabled = swipeUpHintsEnabled,
                     onCommitText = onCommitText,
@@ -1437,6 +1438,7 @@ private fun LandscapeKeyboardContent(
                     ),
                     isShifted = visualIsShifted,
                     onKeyPressDown = onKeyPressDown,
+                    onKeyRelease = onKeyRelease,
                     swipeDownHintsEnabled = swipeDownHintsEnabled,
                     swipeUpHintsEnabled = swipeUpHintsEnabled,
                     onCommitText = onCommitText,
@@ -1463,6 +1465,7 @@ private fun LandscapeKeyboardContent(
                         ),
                         isShifted = visualIsShifted,
                         onKeyPressDown = onKeyPressDown,
+                        onKeyRelease = onKeyRelease,
                         swipeDownHintsEnabled = swipeDownHintsEnabled,
                         swipeUpHintsEnabled = swipeUpHintsEnabled,
                         onCommitText = onCommitText,
@@ -1474,14 +1477,14 @@ private fun LandscapeKeyboardContent(
                     icon = rememberVectorPainter(Icons.AutoMirrored.Filled.Backspace),
                     onClick = { onKeyPress("delete") },
                     backgroundColor = specialKeyBackgroundColor,
-                    iconColor = keyTextColor,
+                    iconColor = specialKeyTextColor,
                     modifier = Modifier
+                        .padding(1.dp)
                         .width(48.dp)
                         .fillMaxHeight(),
-                    swipeText = "",
-                    onSwipe = { onKeyPress("clear_composition") },
                     onLongClick = { onKeyPress("delete") },
                     onPress = { onKeyPressDown?.invoke("delete") },
+                    onRelease = { onKeyRelease?.invoke("delete") },
                     swipeUpLabel = "上滑清空",
                     swipeDownLabel = "下滑撤回",
                     onSwipeUp = { onKeyPress("clear_all") },
@@ -1497,6 +1500,7 @@ private fun LandscapeKeyboardContent(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 SplitSpaceKey(
                     onClick = { onKeyPress("space") },
@@ -1513,11 +1517,12 @@ private fun LandscapeKeyboardContent(
                     text = "?123",
                     onClick = { onKeyPress("mode_change") },
                     backgroundColor = specialKeyBackgroundColor,
-                    textColor = keyTextColor,
+                    textColor = specialKeyTextColor,
                     modifier = Modifier.weight(1.2f),
                     onPress = { onKeyPressDown?.invoke("mode_change") },
-                    onLongPressSelect = { label -> onKeyPress("mode_change_$label") },
-                    longPressItems = listOf("t9", "t26"),
+                    onRelease = { onKeyRelease?.invoke("mode_change") },
+                    onLongPressSelect = { label -> onKeyPress(if (label == "number") "mode_change_number" else "mode_change_common_symbol") },
+                    longPressItems = listOf("number", "common_symbol"),
                     longPressDrawableIds = listOf(
                         com.kingzcheung.xime.R.drawable.t9,
                         com.kingzcheung.xime.R.drawable.t26
@@ -1527,7 +1532,7 @@ private fun LandscapeKeyboardContent(
                     shadowElevation = shadowElevation,
                     shadowShapeRadius = shadowShapeRadius,
                 )
-                val k4Gesture = KeysConfigHelper.getKeyGesture("shift_l")
+                val k4Gesture = KeysConfigHelper.getKeyGesture("earth")
                 val k4Action = k4Gesture?.tap?.action
                 val k4Value = k4Gesture?.tap?.value?.takeIf { it.isNotEmpty() } ?: k4Gesture?.tap?.label?.takeIf { it.isNotEmpty() } ?: "ime_switch"
                 val k4Label = k4Gesture?.tap?.label?.takeIf { it.isNotEmpty() } ?: "中"
@@ -1545,6 +1550,7 @@ private fun LandscapeKeyboardContent(
                         iconColor = keyTextColor,
                         modifier = Modifier.weight(0.8f),
                         onPress = { onKeyPressDown?.invoke(k4Value) },
+                        onRelease = { onKeyRelease?.invoke(k4Value) },
                         shadowEnabled = shadowEnabled,
                         shadowElevation = shadowElevation,
                         shadowShapeRadius = shadowShapeRadius,
@@ -1553,7 +1559,7 @@ private fun LandscapeKeyboardContent(
                     val k4SwipeValue = k4Gesture?.swipeUp?.value?.takeIf { it.isNotEmpty() }
                     val k4SwipeLabel = if (isAsciiMode) (k4SwipeValue ?: "")
                         else (k4Gesture?.swipeUp?.label?.takeIf { it.isNotEmpty() } ?: k4SwipeValue ?: "")
-                    CompactSwipeableKeyButton(
+                    SwipeableKeyButtonLandscape(
                         text = k4Label,
                         onClick = {
                             if (k4Action != null && k4Action != GestureAction.COMMIT) {
@@ -1568,6 +1574,7 @@ private fun LandscapeKeyboardContent(
                         swipeText = k4SwipeLabel,
                         onSwipe = if (k4SwipeValue != null) { { onKeyPress(k4SwipeValue) } } else null,
                         onPress = { onKeyPressDown?.invoke(k4Value) },
+                        onRelease = { onKeyRelease?.invoke(k4Value) },
                         shadowEnabled = shadowEnabled,
                         shadowElevation = shadowElevation,
                         shadowShapeRadius = shadowShapeRadius,
@@ -1577,9 +1584,10 @@ private fun LandscapeKeyboardContent(
                     text = enterKeyText,
                     onClick = { onKeyPress("enter") },
                     backgroundColor = specialKeyBackgroundColor,
-                    textColor = keyTextColor,
+                    textColor = specialKeyTextColor,
                     modifier = Modifier.weight(1.2f),
                     onPress = { onKeyPressDown?.invoke("enter") },
+                    onRelease = { onKeyRelease?.invoke("enter") },
                     shadowEnabled = shadowEnabled,
                     shadowElevation = shadowElevation,
                     shadowShapeRadius = shadowShapeRadius,
@@ -1587,13 +1595,14 @@ private fun LandscapeKeyboardContent(
             }
         }
     }
+    }
 }
 
 /**
  * 横屏紧凑版按键 — 主字符和上滑字符垂直堆叠居中
  */
 @Composable
-fun CompactSwipeableKeyButton(
+fun SwipeableKeyButtonLandscape(
     text: String,
     onClick: () -> Unit,
     backgroundColor: Color,
@@ -1606,6 +1615,7 @@ fun CompactSwipeableKeyButton(
     onSwipe: ((String) -> Unit)? = null,
     onSwipeDown: ((String) -> Unit)? = null,
     onPress: (() -> Unit)? = null,
+    onRelease: (() -> Unit)? = null,
     onLongPressSelect: ((String) -> Unit)? = null,
     longPressItems: List<String>? = null,
     fontSize: androidx.compose.ui.unit.TextUnit = androidx.compose.ui.unit.TextUnit.Unspecified,
@@ -1631,6 +1641,7 @@ fun CompactSwipeableKeyButton(
     val currentOnSwipeDown by rememberUpdatedState(onSwipeDown)
     val currentOnClick by rememberUpdatedState(onClick)
     val currentOnPress by rememberUpdatedState(onPress)
+    val currentOnRelease by rememberUpdatedState(onRelease)
     val currentOnLongPressSelect by rememberUpdatedState(onLongPressSelect)
     val currentLongPressItems by rememberUpdatedState(longPressItems)
     val currentOnSwipeStateChange by rememberUpdatedState(onSwipeStateChange)
@@ -1647,10 +1658,23 @@ fun CompactSwipeableKeyButton(
     val bubbleShowThresholdUp = swipeUpThreshold * 0.3f
     val bubbleShowThresholdDown = swipeDownThreshold * 0.3f
 
-    val shadowShape = remember(shadowShapeRadius) { RoundedCornerShape(shadowShapeRadius) }
-    val shadowModifier = remember(shadowEnabled, shadowElevation, shadowShapeRadius) {
-        if (shadowEnabled) Modifier.shadow(shadowElevation, shadowShape) else Modifier
+    val shadowModifier = remember(shadowEnabled, shadowElevation, shadowShapeRadius, density, backgroundColor) {
+        if (shadowEnabled) {
+            val offsetPx = with(density) { shadowElevation.toPx() }
+            val cornerPx = with(density) { shadowShapeRadius.toPx() }
+            val color = crispShadowColor(backgroundColor)
+            Modifier.drawBehind {
+                drawRoundRect(
+                    color = color,
+                    topLeft = Offset(0f, offsetPx),
+                    size = size,
+                    cornerRadius = CornerRadius(cornerPx)
+                )
+            }
+        } else Modifier
     }
+    val keyCornerRadius = LocalKeyCornerRadius.current
+    val keyClipShape = remember(keyCornerRadius) { RoundedCornerShape(keyCornerRadius) }
 
     fun darkenColor(color: Color, factor: Float = 0.15f): Color {
         return Color(
@@ -1665,7 +1689,7 @@ fun CompactSwipeableKeyButton(
         modifier = modifier
             .fillMaxHeight()
             .fillMaxWidth()
-            .pointerInput(currentLongPressItems, currentOnLongPressSelect) {
+            .pointerInput(currentText, currentLongPressItems.isNullOrEmpty(), currentOnLongPressSelect != null) {
                 if (currentLongPressItems.isNullOrEmpty() || currentOnLongPressSelect == null) {
                     detectTapGestures(
                         onPress = {
@@ -1674,6 +1698,7 @@ fun CompactSwipeableKeyButton(
                             currentOnPress?.invoke()
                             tryAwaitRelease()
                             isPressed = false
+                            currentOnRelease?.invoke()
                             currentOnSwipeStateChange?.invoke(SwipeState(), buttonBounds)
                         },
                         onTap = {
@@ -1765,6 +1790,7 @@ fun CompactSwipeableKeyButton(
                         } finally {
                             longPressJob.cancel()
                             isPressed = false
+                            currentOnRelease?.invoke()
                             currentOnSwipeStateChange?.invoke(SwipeState(), buttonBounds)
                         }
                     }
@@ -1857,13 +1883,12 @@ fun CompactSwipeableKeyButton(
             .onGloballyPositioned { coordinates ->
                 buttonBounds = coordinates.boundsInRoot()
             }
-            .padding(horizontal = 2.dp, vertical = 3.dp)
+            .padding(LocalKeyVisualPadding.current)
             .then(shadowModifier)
-            .clip(shadowShape)
+            .clip(keyClipShape)
             .background(if (isPressed) darkenColor(backgroundColor) else backgroundColor),
         contentAlignment = Alignment.TopStart
     ) {
-
 
         Box(
             modifier = Modifier.fillMaxSize(),
@@ -1914,7 +1939,7 @@ fun CompactSwipeableKeyButton(
 }
 
 /**
- * 横屏紧凑版键盘行 — 使用 [CompactSwipeableKeyButton] 替代 [SwipeableKeyButton]
+ * 横屏紧凑版键盘行 — 使用 [SwipeableKeyButtonLandscape] 替代 [SwipeableKeyButton]
  */
 @Composable
 fun CompactKeyboardRowWithConfig(
@@ -1925,6 +1950,7 @@ fun CompactKeyboardRowWithConfig(
     isAsciiMode: Boolean = false,
     modifier: Modifier = Modifier,
     onKeyPressDown: ((String) -> Unit)? = null,
+    onKeyRelease: ((String) -> Unit)? = null,
     swipeDownHintsEnabled: Boolean = true,
     swipeUpHintsEnabled: Boolean = true,
     onCommitText: ((String) -> Unit)? = null,
@@ -1968,6 +1994,7 @@ fun CompactKeyboardRowWithConfig(
             val compactDisplayText = if (isAsciiMode) commitValue else KeysConfigHelper.getKeyDisplayLabel(key, isAsciiMode)
             val compactOnClick = remember(key, commitValue, onKeyPress) { { onKeyPress(commitValue) } }
             val compactOnPress: (() -> Unit)? = remember(key, onKeyPressDown) { { onKeyPressDown?.invoke(key); Unit } }
+            val compactOnRelease: (() -> Unit)? = remember(key, onKeyRelease) { { onKeyRelease?.invoke(key); Unit } }
             val compactOnSwipeDown: ((String) -> Unit)? = if (swipeDownAction != null && swipeDownHintsEnabled && swipeDownLabel != null) {
                 remember(key, onKeyPress, onGestureAction, onCommitText, swipeDownAction, swipeDownValue, swipeDownLabel) {
                     val label = swipeDownLabel
@@ -1995,7 +2022,7 @@ fun CompactKeyboardRowWithConfig(
                 Unit
             } }
 
-            CompactSwipeableKeyButton(
+            SwipeableKeyButtonLandscape(
                 text = compactDisplayText,
                 onClick = compactOnClick,
                 backgroundColor = config.keyBackgroundColor,
@@ -2008,6 +2035,7 @@ fun CompactKeyboardRowWithConfig(
                 onSwipeDown = compactOnSwipeDown,
                 onSwipeStateChange = onSwipeStateChange,
                 onPress = compactOnPress,
+                onRelease = compactOnRelease,
                 onLongPressSelect = compactOnLongPressSelect,
                 longPressItems = longPressLabels,
                 fontSize = config.fontSize,
@@ -2035,16 +2063,31 @@ private fun SplitSpaceKey(
     shadowElevation: Dp = 1.dp,
     shadowShapeRadius: Dp = 8.dp,
 ) {
-    val shadowShape = remember(shadowShapeRadius) { RoundedCornerShape(shadowShapeRadius) }
-    val shadowModifier = remember(shadowEnabled, shadowElevation, shadowShapeRadius) {
-        if (shadowEnabled) Modifier.shadow(shadowElevation, shadowShape) else Modifier
+    val density = LocalDensity.current
+    val shadowModifier = remember(shadowEnabled, shadowElevation, shadowShapeRadius, density, backgroundColor) {
+        if (shadowEnabled) {
+            val offsetPx = with(density) { shadowElevation.toPx() }
+            val cornerPx = with(density) { shadowShapeRadius.toPx() }
+            val color = crispShadowColor(backgroundColor)
+            Modifier.drawBehind {
+                drawRoundRect(
+                    color = color,
+                    topLeft = Offset(0f, offsetPx),
+                    size = size,
+                    cornerRadius = CornerRadius(cornerPx)
+                )
+            }
+        } else Modifier
     }
+    val keyCornerRadius = LocalKeyCornerRadius.current
+    val keyClipShape = remember(keyCornerRadius) { RoundedCornerShape(keyCornerRadius) }
 
     Box(
         modifier = modifier
             .fillMaxHeight()
+            .padding(LocalKeyVisualPadding.current)
             .then(shadowModifier)
-            .clip(shadowShape)
+            .clip(keyClipShape)
             .background(backgroundColor)
             .clickable(
                 interactionSource = null,
@@ -2073,5 +2116,131 @@ private fun SplitSpaceKey(
                 .align(Alignment.BottomStart)
                 .padding(start = 6.dp, bottom = 2.dp)
         )
+    }
+}
+
+/** QWERTY 空格键 */
+@Composable
+private fun SpaceKey(
+    schemaName: String,
+    isAsciiMode: Boolean,
+    isSttEnabled: Boolean,
+    isVoiceMode: Boolean,
+    keyBackgroundColor: Color,
+    keyTextColor: Color,
+    shadowEnabled: Boolean,
+    shadowElevation: Dp,
+    shadowShapeRadius: Dp,
+    modifier: Modifier = Modifier,
+    onKeyPress: (String) -> Unit,
+    onKeyPressDown: ((String) -> Unit)?,
+    onKeyRelease: ((String) -> Unit)?,
+    onVoiceModeChange: ((Boolean) -> Unit)?,
+) {
+    val currentOnKeyPress by rememberUpdatedState(onKeyPress)
+    val currentOnKeyPressDown by rememberUpdatedState(onKeyPressDown)
+    val currentOnKeyRelease by rememberUpdatedState(onKeyRelease)
+    val currentOnVoiceModeChange by rememberUpdatedState(onVoiceModeChange)
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+
+    val density = LocalDensity.current
+    val shadowModifier = remember(shadowEnabled, shadowElevation, shadowShapeRadius, density, keyBackgroundColor) {
+        if (shadowEnabled) {
+            val offsetPx = with(density) { shadowElevation.toPx() }
+            val cornerPx = with(density) { shadowShapeRadius.toPx() }
+            val color = crispShadowColor(keyBackgroundColor)
+            Modifier.drawBehind {
+                drawRoundRect(
+                    color = color,
+                    topLeft = Offset(0f, offsetPx),
+                    size = size,
+                    cornerRadius = CornerRadius(cornerPx)
+                )
+            }
+        } else Modifier
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxHeight()
+            .pointerInput(isSttEnabled) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    currentOnKeyPressDown?.invoke("space")
+
+                    var longPressTriggered = false
+                    val longPressJob = scope.launch {
+                        delay(400)
+                        longPressTriggered = true
+
+                        if (isSttEnabled) {
+                            if (!PermissionHelper.hasRecordAudioPermission(context)) {
+                                Toast.makeText(context, "需要麦克风权限才能使用语音输入", Toast.LENGTH_SHORT).show()
+                                PermissionHelper.requestRecordAudioPermission(context)
+                            } else {
+                                currentOnVoiceModeChange?.invoke(true)
+                            }
+                        } else {
+                            while (true) {
+                                currentOnKeyPress("space")
+                                delay(80)
+                            }
+                        }
+                    }
+
+                    waitForUpOrCancellation()
+                    longPressJob.cancel()
+                    currentOnKeyRelease?.invoke("space")
+
+                    if (!longPressTriggered) {
+                        currentOnKeyPress("space")
+                    }
+                }
+            }
+            .padding(LocalKeyVisualPadding.current)
+            .fillMaxWidth()
+            .fillMaxHeight()
+            .then(shadowModifier)
+            .clip(RoundedCornerShape(LocalKeyCornerRadius.current))
+            .background(keyBackgroundColor),
+        contentAlignment = Alignment.Center
+    ) {
+        if (isVoiceMode) {
+            Icon(
+                imageVector = Icons.Default.Mic,
+                contentDescription = "语音输入",
+                tint = keyTextColor,
+                modifier = Modifier.size(24.dp)
+            )
+        } else {
+            Text(
+                text = if (isAsciiMode) "English" else schemaName,
+                color = keyTextColor,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Normal,
+                textAlign = TextAlign.Center,
+                maxLines = 1
+            )
+
+            if (isSttEnabled) {
+                Icon(
+                    painter = painterResource(com.kingzcheung.xime.R.drawable.voice),
+                    contentDescription = "语音输入",
+                    tint = keyTextColor.copy(alpha = 0.3f),
+                    modifier = Modifier.size(18.dp).align(Alignment.BottomStart).padding(start = 6.dp, bottom = 2.dp)
+                )
+            } else {
+                Text(
+                    text = "空格",
+                    color = keyTextColor.copy(alpha = 0.3f),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Normal,
+                    textAlign = TextAlign.Start,
+                    maxLines = 1,
+                    modifier = Modifier.align(Alignment.BottomStart).padding(start = 6.dp, bottom = 2.dp)
+                )
+            }
+        }
     }
 }

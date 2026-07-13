@@ -31,7 +31,7 @@ class RimeEngineTest {
     }
     
     @Test
-    fun `getInstance should return singleton`() {
+    fun getInstanceReturnsSingleton() {
         val instance1 = RimeEngine.getInstance()
         val instance2 = RimeEngine.getInstance()
         
@@ -39,34 +39,34 @@ class RimeEngineTest {
     }
     
     @Test
-    fun `isInitialized should return false before initialization`() {
+    fun isInitializedReturnsFalseBeforeInit() {
         val engine = RimeEngine.getInstance()
         assertFalse(RimeEngine.isInitialized())
     }
     
     @Test
-    fun `processKey should return false when not initialized`() {
+    fun processKeyReturnsFalseWhenNotInitialized() {
         val engine = RimeEngine.getInstance()
         val result = engine.processKey(65, 0)
         assertFalse(result)
     }
     
     @Test
-    fun `getCandidates should return empty array when not initialized`() {
+    fun getCandidatesReturnsEmptyArrayWhenNotInitialized() {
         val engine = RimeEngine.getInstance()
         val candidates = engine.getCandidates()
         assertTrue(candidates.isEmpty())
     }
     
     @Test
-    fun `getInput should return empty string when not initialized`() {
+    fun getInputReturnsEmptyStringWhenNotInitialized() {
         val engine = RimeEngine.getInstance()
         val input = engine.getInput()
         assertEquals("", input)
     }
     
     @Test
-    fun `initialize should create valid directories`() {
+    fun initializeCreatesValidDirectories() {
         val userDataDir = File(context.filesDir, "rime_user_test")
         val sharedDataDir = File(context.filesDir, "rime_shared_test")
         
@@ -75,56 +75,56 @@ class RimeEngineTest {
     }
     
     @Test
-    fun `toggleAsciiMode should return false when not initialized`() {
+    fun toggleAsciiModeReturnsFalseWhenNotInitialized() {
         val engine = RimeEngine.getInstance()
         val result = engine.toggleAsciiMode()
         assertFalse(result)
     }
     
     @Test
-    fun `isAsciiMode should return false when not initialized`() {
+    fun isAsciiModeReturnsFalseWhenNotInitialized() {
         val engine = RimeEngine.getInstance()
         val result = engine.isAsciiMode()
         assertFalse(result)
     }
     
     @Test
-    fun `switchSchema should return false when not initialized`() {
+    fun switchSchemaReturnsFalseWhenNotInitialized() {
         val engine = RimeEngine.getInstance()
         val result = engine.switchSchema("wubi86")
         assertFalse(result)
     }
     
     @Test
-    fun `getAvailableSchemas should return empty array when not initialized`() {
+    fun getAvailableSchemasReturnsEmptyArrayWhenNotInitialized() {
         val engine = RimeEngine.getInstance()
         val schemas = engine.getAvailableSchemas()
         assertTrue(schemas.isEmpty())
     }
     
     @Test
-    fun `selectCandidate should return false when not initialized`() {
+    fun selectCandidateReturnsFalseWhenNotInitialized() {
         val engine = RimeEngine.getInstance()
         val result = engine.selectCandidate(0)
         assertFalse(result)
     }
     
     @Test
-    fun `commit should return empty string when not initialized`() {
+    fun commitReturnsEmptyStringWhenNotInitialized() {
         val engine = RimeEngine.getInstance()
         val result = engine.commit()
         assertEquals("", result)
     }
     
     @Test
-    fun `deploy should return false when not initialized`() {
+    fun deployReturnsFalseWhenNotInitialized() {
         val engine = RimeEngine.getInstance()
         val result = engine.deploy()
         assertFalse(result)
     }
     
     @Test
-    fun `lookupText should return empty string when not initialized`() {
+    fun lookupTextReturnsEmptyStringWhenNotInitialized() {
         val engine = RimeEngine.getInstance()
         val result = engine.lookupText("工")
         assertEquals("", result)

@@ -470,7 +470,9 @@ class KeyboardGestureConfigTest {
     private fun parseGestureNode(node: com.charleskorn.kaml.YamlNode): GestureDef {
         if (node is com.charleskorn.kaml.YamlScalar) {
             val text = node.content
-            return GestureDef(label = text, action = GestureAction.COMMIT, value = text)
+            val icon = if (text.startsWith("@")) text.removePrefix("@") else ""
+            val cleanLabel = if (icon.isNotEmpty()) "" else text
+            return GestureDef(label = cleanLabel, action = GestureAction.COMMIT, value = text, icon = icon)
         }
         if (node is com.charleskorn.kaml.YamlMap) {
             var label = ""
@@ -487,7 +489,9 @@ class KeyboardGestureConfigTest {
                     "display" -> if (vStr != null) display = vStr
                 }
             }
-            return GestureDef(label = label, action = action, value = value, display = DisplayMode.fromValue(display))
+            val icon = if (label.startsWith("@")) label.removePrefix("@") else ""
+            val cleanLabel = if (icon.isNotEmpty()) "" else label
+            return GestureDef(label = cleanLabel, action = action, value = value, icon = icon, display = DisplayMode.fromValue(display))
         }
         return GestureDef()
     }
@@ -514,19 +518,59 @@ class KeyboardGestureConfigTest {
     // ── qwerty / qwerty_en 双布局解析 ──
 
     @Test
-    fun `qwerty 和 qwerty_en 独立解析`() {
+    fun `标签以 @ 开头时自动提取 icon label 置空`() {
+        val keys = parseKeys("""
+            k: { tap: { label: "@language", action: "toggle_ascii" } }
+        """.trimIndent())
+        val tap = keys["k"]!!.tap!!
+        assertEquals("", tap.label)
+        assertEquals("language", tap.icon)
+    }
+
+    @Test
+    fun `标签以 @ 开头时 value 不 fallback 到 label`() {
+        val keys = parseKeys("""
+            k: { tap: { label: "@language", action: "toggle_ascii" } }
+        """.trimIndent())
+        val tap = keys["k"]!!.tap!!
+        assertEquals("", tap.value)
+    }
+
+    @Test
+    fun `字符串简写 @label 也提取 icon`() {
+        val keys = parseKeys("""
+            k: { tap: "@language" }
+        """.trimIndent())
+        val tap = keys["k"]!!.tap!!
+        assertEquals("", tap.label)
+        assertEquals("language", tap.icon)
+        assertEquals("@language", tap.value)
+    }
+
+    @Test
+    fun `普通标签不受 @ 影响`() {
+        val keys = parseKeys("""
+            k: { tap: { label: "英", action: "toggle_ascii" } }
+        """.trimIndent())
+        val tap = keys["k"]!!.tap!!
+        assertEquals("英", tap.label)
+        assertEquals("", tap.icon)
+    }
+
+    @Test
+    fun `qwerty_en 与 qwerty 独立读取`() {
         val yaml = """
 keyboard:
   qwerty:
     keys:
       "'": { tap: { label: "，", value: "," } }
-      shift_l: { tap: { label: "英", action: "toggle_ascii" } }
+      earth: { tap: { label: "英", action: "toggle_ascii" } }
       space: { tap: { label: "空格", value: " " } }
       return: { tap: { label: "回车", value: "\\n" } }
   qwerty_en:
     keys:
       "'": { tap: { label: ",", value: "," } }
-      shift_l: { tap: { label: "中", action: "toggle_ascii" } }
+      earth: { tap: { label: "中", action: "toggle_ascii" } }
       space: { tap: { label: "English", value: " " } }
       return: { tap: { label: "Enter", value: "\\n" } }
         """.trimIndent()
@@ -534,12 +578,12 @@ keyboard:
         val en = parseSection(yaml, "qwerty_en")
         // 中文布局
         assertEquals("，", zh["'"]!!.tap!!.label)
-        assertEquals("英", zh["shift_l"]!!.tap!!.label)
+        assertEquals("英", zh["earth"]!!.tap!!.label)
         assertEquals("空格", zh["space"]!!.tap!!.label)
         assertEquals("回车", zh["return"]!!.tap!!.label)
         // 英文布局
         assertEquals(",", en["'"]!!.tap!!.label)
-        assertEquals("中", en["shift_l"]!!.tap!!.label)
+        assertEquals("中", en["earth"]!!.tap!!.label)
         assertEquals("English", en["space"]!!.tap!!.label)
         assertEquals("Enter", en["return"]!!.tap!!.label)
     }
@@ -580,22 +624,22 @@ keyboard:
   qwerty:
     keys:
       "'": { tap: { label: "，", value: "," } }
-      shift_l: { tap: { label: "英", action: "toggle_ascii" } }
+      earth: { tap: { label: "英", action: "toggle_ascii" } }
   qwerty_en:
     keys:
       "'": { tap: { label: ",", value: "," } }
-      shift_l: { tap: { label: "中", action: "toggle_ascii" } }
+      earth: { tap: { label: "中", action: "toggle_ascii" } }
         """.trimIndent()
         val zh = parseSection(yaml, "qwerty")
         val en = parseSection(yaml, "qwerty_en")
         
         // 中文模式 (isAsciiMode = false)
         assertEquals("，", zh["'"]!!.tap!!.label)
-        assertEquals("英", zh["shift_l"]!!.tap!!.label)
+        assertEquals("英", zh["earth"]!!.tap!!.label)
         
         // 英文模式 (isAsciiMode = true)
         assertEquals(",", en["'"]!!.tap!!.label)
-        assertEquals("中", en["shift_l"]!!.tap!!.label)
+        assertEquals("中", en["earth"]!!.tap!!.label)
         
         // 验证中英文不同
         assertNotEquals(zh["'"]!!.tap!!.label, en["'"]!!.tap!!.label)

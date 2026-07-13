@@ -31,10 +31,24 @@ enum class DisplayMode(val value: String) {
     }
 }
 
+/** 按键布局模式，从 xime.yaml keyboard.button_layout 加载。 */
+enum class ButtonLayout(val value: String) {
+    STANDARD("standard"),
+    COMPACT("compact");
+
+    companion object {
+        fun fromValue(value: String): ButtonLayout =
+            entries.firstOrNull { it.value == value } ?: STANDARD
+    }
+}
+
 data class GestureDef(
     val label: String = "",
+    /** 多行标签（YAML 数组格式），每行作为独立字符串，用于多行显示 */
+    val labels: List<String> = emptyList(),
     val action: GestureAction? = GestureAction.COMMIT,
     val value: String = "",
+    val icon: String = "",
     val display: DisplayMode = DisplayMode.BOTH,
 )
 
@@ -61,6 +75,13 @@ data class KeyboardShadowConfig(
     val enabled: Boolean = true,
     val elevation: Int = 1,
     val shapeRadius: Int = 8,
+)
+
+/**
+ * 键盘按键配置，从 xime.yaml keyboard.key 加载。
+ */
+data class KeyboardKeyConfig(
+    val cornerRadius: Int = 8,
 )
 
 /**
@@ -149,25 +170,46 @@ private fun parseGestureNode(node: com.charleskorn.kaml.YamlNode): GestureDef {
     // 字符串 → commit
     if (node is com.charleskorn.kaml.YamlScalar) {
         val text = node.content
-        return GestureDef(label = text, action = GestureAction.COMMIT, value = text)
+        val icon = if (text.startsWith("@")) text.removePrefix("@") else ""
+        val cleanLabel = if (icon.isNotEmpty()) "" else text
+        return GestureDef(label = cleanLabel, action = GestureAction.COMMIT, value = text, icon = icon)
     }
     // 映射 → 完整定义
     if (node is com.charleskorn.kaml.YamlMap) {
         var label = ""
+        var labels: List<String> = emptyList()
         var action: GestureAction? = GestureAction.COMMIT
         var value = ""
         var display = "key"
         for ((k, v) in node.entries) {
             val key = (k as? com.charleskorn.kaml.YamlScalar)?.content ?: continue
-            val vStr = (v as? com.charleskorn.kaml.YamlScalar)?.content ?: continue
             when (key) {
-                "label" -> label = vStr
-                "action" -> action = if (vStr == "null") null else GestureAction.fromValue(vStr)
-                "value" -> value = vStr
-                "display" -> display = vStr
+                "label" -> {
+                    if (v is YamlList) {
+                        labels = v.items.mapNotNull { (it as? YamlScalar)?.content }
+                        label = labels.joinToString("\n")
+                    } else {
+                        val vStr = (v as? YamlScalar)?.content ?: continue
+                        label = vStr
+                    }
+                }
+                "action" -> {
+                    val vStr = (v as? YamlScalar)?.content ?: continue
+                    action = if (vStr == "null") null else GestureAction.fromValue(vStr)
+                }
+                "value" -> {
+                    val vStr = (v as? YamlScalar)?.content ?: continue
+                    value = vStr
+                }
+                "display" -> {
+                    val vStr = (v as? YamlScalar)?.content ?: continue
+                    display = vStr
+                }
             }
         }
-        return GestureDef(label = label, action = action, value = value, display = DisplayMode.fromValue(display))
+        val icon = if (label.startsWith("@")) label.removePrefix("@") else ""
+        val cleanLabel = if (icon.isNotEmpty()) "" else label
+        return GestureDef(label = cleanLabel, labels = labels, action = action, value = value, icon = icon, display = DisplayMode.fromValue(display))
     }
     return GestureDef()
 }
@@ -264,6 +306,15 @@ object KeysConfigHelper {
     
     // 键盘阴影配置缓存
     private var keyboardShadowConfig: KeyboardShadowConfig = KeyboardShadowConfig()
+
+    // 键盘按键配置缓存
+    private var keyboardKeyConfig: KeyboardKeyConfig = KeyboardKeyConfig()
+    
+    // 按键布局模式缓存（中文 qwerty / 英文 qwerty_en）
+    private var _buttonLayoutZh: ButtonLayout = ButtonLayout.STANDARD
+    private var _buttonLayoutEn: ButtonLayout = ButtonLayout.STANDARD
+    fun getButtonLayout(isAsciiMode: Boolean): ButtonLayout =
+        if (isAsciiMode) _buttonLayoutEn else _buttonLayoutZh
     
     /** 配置版本号，每次 loadConfig 时递增，用于 Compose 感知配置变更。 */
     private val _configVersion = MutableStateFlow(0)
@@ -291,6 +342,12 @@ object KeysConfigHelper {
             keyboardColorsConfig = parseKeyboardColorsFromAssets(context)
             // 键盘阴影（从原始 YAML 手动解析）
             keyboardShadowConfig = parseKeyboardShadowFromAssets(context)
+            // 键盘按键（从原始 YAML 手动解析）
+            keyboardKeyConfig = parseKeyboardKeyFromAssets(context)
+            // 按键布局（从原始 YAML 手动解析，中英文分开）
+            val parsedLayouts = parseButtonLayoutFromAssets(context)
+            _buttonLayoutZh = parsedLayouts.first
+            _buttonLayoutEn = parsedLayouts.second
             // 校验配置版本兼容性
             val merged = try { loadMergedConfig(context) } catch (_: YamlException) { null }
             val meta = merged?.metadata
@@ -459,6 +516,79 @@ object KeysConfigHelper {
         return KeyboardShadowConfig(enabled = enabled, elevation = elevation, shapeRadius = shapeRadius)
     }
 
+    /** 从 xime.yaml + xime.custom.yaml 合并解析键盘按键配置。 */
+    private fun parseKeyboardKeyFromAssets(context: Context): KeyboardKeyConfig {
+        val defaultText = readAssetText(context, XIME_CONFIG_FILE) ?: return KeyboardKeyConfig()
+        val default = parseKeyboardKeyYamlText(defaultText) ?: return KeyboardKeyConfig()
+        val custom = readUserDataText(context, XIME_CUSTOM_CONFIG_FILE)
+            ?.let { parseKeyboardKeyYamlText(it) }
+            ?: readAssetText(context, XIME_CUSTOM_CONFIG_FILE)
+                ?.let { parseKeyboardKeyYamlText(it) }
+        return custom ?: default
+    }
+
+    /** 从 YAML 文本中提取 keyboard.key 段。
+     *  兼容旧版：若 key.corner_radius 未设置，回退读取 shadow.shape_radius。 */
+    private fun parseKeyboardKeyYamlText(yamlText: String): KeyboardKeyConfig? {
+        val root = yaml.parseToYamlNode(yamlText) as? YamlMap ?: return null
+        val keyboardNode = root["keyboard"] as? YamlMap ?: return null
+        var cornerRadius = 8
+        // 优先读取 key.corner_radius
+        val keyNode = keyboardNode["key"] as? YamlMap
+        if (keyNode != null) {
+            for ((kNode, vNode) in keyNode.entries) {
+                val key = (kNode as? YamlScalar)?.content ?: continue
+                val value = (vNode as? YamlScalar)?.content ?: continue
+                if (key == "corner_radius") {
+                    cornerRadius = value.toIntOrNull() ?: 8
+                }
+            }
+        }
+        // 未设置 key.corner_radius 时，回退读取 shadow.shape_radius
+        if (cornerRadius == 8) {
+            val shadowNode = keyboardNode["shadow"] as? YamlMap
+            if (shadowNode != null) {
+                for ((kNode, vNode) in shadowNode.entries) {
+                    val key = (kNode as? YamlScalar)?.content ?: continue
+                    val value = (vNode as? YamlScalar)?.content ?: continue
+                    if (key == "shape_radius") {
+                        cornerRadius = value.toIntOrNull() ?: 8
+                    }
+                }
+            }
+        }
+        return KeyboardKeyConfig(cornerRadius = cornerRadius)
+    }
+
+    /** 从 xime.yaml + xime.custom.yaml 合并解析按键布局模式（中英文分开）。 */
+    private fun parseButtonLayoutFromAssets(context: Context): Pair<ButtonLayout, ButtonLayout> {
+        val defaultText = readAssetText(context, XIME_CONFIG_FILE) ?: return Pair(ButtonLayout.STANDARD, ButtonLayout.STANDARD)
+        val defaultZh = parseButtonLayoutYamlText(defaultText, "qwerty")
+        val defaultEn = parseButtonLayoutYamlText(defaultText, "qwerty_en")
+        Log.d(TAG, "parseButtonLayout: defaultZh=$defaultZh, defaultEn=$defaultEn")
+        val customText = readUserDataText(context, XIME_CUSTOM_CONFIG_FILE)
+            ?: readAssetText(context, XIME_CUSTOM_CONFIG_FILE)
+        Log.d(TAG, "parseButtonLayout: customText exists=${customText != null}, length=${customText?.length ?: 0}")
+        val customZh = customText?.let { parseButtonLayoutYamlText(it, "qwerty") }
+        val customEn = customText?.let { parseButtonLayoutYamlText(it, "qwerty_en") }
+        Log.d(TAG, "parseButtonLayout: customZh=$customZh, customEn=$customEn")
+        val result = Pair(
+            customZh ?: defaultZh ?: ButtonLayout.STANDARD,
+            customEn ?: defaultEn ?: ButtonLayout.STANDARD,
+        )
+        Log.d(TAG, "parseButtonLayout: result zh=${result.first}, en=${result.second}")
+        return result
+    }
+
+    /** 从 YAML 文本中提取 keyboard.<section>.button_layout。 */
+    private fun parseButtonLayoutYamlText(yamlText: String, section: String): ButtonLayout? {
+        val root = yaml.parseToYamlNode(yamlText) as? YamlMap ?: return null
+        val keyboardNode = root["keyboard"] as? YamlMap ?: return null
+        val sectionNode = keyboardNode[section] as? YamlMap ?: return null
+        val layoutNode = sectionNode["button_layout"] as? YamlScalar ?: return null
+        return ButtonLayout.fromValue(layoutNode.content)
+    }
+
     /** 从 YAML 文本中提取 keyboard.<section>.keys 段。 */
     private fun parseKeyboardYamlSection(yamlText: String, section: String): Map<String, KeyGestureConfig>? {
         val root = yaml.parseToYamlNode(yamlText) as? YamlMap ?: return null
@@ -565,6 +695,9 @@ object KeysConfigHelper {
 
     /** 获取键盘阴影配置（从 xime.yaml keyboard.shadow 加载）。 */
     fun getKeyboardShadow(): KeyboardShadowConfig = keyboardShadowConfig
+
+    /** 获取键盘按键配置（从 xime.yaml keyboard.key 加载）。 */
+    fun getKeyboardKeyConfig(): KeyboardKeyConfig = keyboardKeyConfig
 
     /** 获取某个按键的手势配置。 */
     fun getKeyGesture(key: String): KeyGestureConfig? = keyGestureConfig[key.lowercase()]

@@ -257,12 +257,15 @@ class RimeEngine {
      * 是 T9 路径 updateUI 的首选查询接口，可替代多次独立 JNI 调用。
      */
     fun getComposition(): RimeComposition {
-        if (!isInitialized) return RimeComposition("", "", "", emptyArray(), false, false, false)
-        synchronized(rimeLock) {
-            if (!nativeHasSession() && !nativeCreateSession())
-                return RimeComposition("", "", "", emptyArray(), false, false, false)
-            return nativeGetComposition()
+        val t0 = System.nanoTime()
+        val result: RimeComposition = synchronized(rimeLock) {
+            nativeGetComposition()
         }
+        val elapsed = (System.nanoTime() - t0) / 1_000_000L
+        if (elapsed > 1) {
+            Log.d(TAG, "getComposition() took ${elapsed}ms (input='${result.input}')")
+        }
+        return result
     }
 
     fun selectCandidate(index: Int): Boolean {
@@ -324,11 +327,18 @@ class RimeEngine {
      * @return 是否设置成功
      */
     fun setInput(input: String): Boolean {
+        val t0 = System.nanoTime()
         if (!isInitialized) return false
+        var result = false
         synchronized(rimeLock) {
-            if (!nativeHasSession() && !nativeCreateSession()) return false
-            return nativeSetInput(input)
+            if (!nativeHasSession() && !nativeCreateSession()) return@synchronized
+            result = nativeSetInput(input)
         }
+        val elapsed = (System.nanoTime() - t0) / 1_000_000L
+        if (elapsed > 5) {
+            Log.d(TAG, "setInput('$input') took ${elapsed}ms")
+        }
+        return result
     }
 
     fun toggleAsciiMode(): Boolean {

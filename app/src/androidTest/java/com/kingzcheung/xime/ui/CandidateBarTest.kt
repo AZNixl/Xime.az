@@ -4,6 +4,11 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.kingzcheung.xime.ui.keyboard.CandidateBar
+import com.kingzcheung.xime.ui.keyboard.CandidateBarCallbacks
+import com.kingzcheung.xime.ui.keyboard.CandidateBarState
+import com.kingzcheung.xime.ui.keyboard.CandidateBarVisuals
+import com.kingzcheung.xime.ui.keyboard.CandidateItem
 import com.kingzcheung.xime.ui.theme.DividerColor
 import com.kingzcheung.xime.ui.theme.KeyTextColor
 import com.kingzcheung.xime.ui.theme.KeyboardBackground
@@ -18,14 +23,13 @@ class CandidateBarTest {
     val composeTestRule = createComposeRule()
     
     @Test
-    fun `CandidateBar should display candidates`() {
-        val candidates = listOf("你好", "世界", "测试")
-        
+    fun candidateBarDisplaysCandidates() {
         composeTestRule.setContent {
             CandidateBar(
-                candidates = candidates,
-                inputText = "nihao",
-                isComposing = true,
+                state = CandidateBarState.ChineseCandidates(
+                    candidates = listOf("你好", "世界", "测试"),
+                    inputText = "nihao",
+                ),
                 visuals = CandidateBarVisuals(
                     backgroundColor = KeyboardBackground,
                     textColor = KeyTextColor,
@@ -43,12 +47,10 @@ class CandidateBarTest {
     }
     
     @Test
-    fun `CandidateBar should handle empty candidates`() {
+    fun candidateBarHandlesEmptyCandidates() {
         composeTestRule.setContent {
             CandidateBar(
-                candidates = emptyList(),
-                inputText = "",
-                isComposing = false,
+                state = CandidateBarState.Idle,
                 visuals = CandidateBarVisuals(
                     backgroundColor = KeyboardBackground,
                     textColor = KeyTextColor,
@@ -62,12 +64,13 @@ class CandidateBarTest {
     }
     
     @Test
-    fun `CandidateBar should display input text when composing`() {
+    fun candidateBarDisplaysInputTextWhenComposing() {
         composeTestRule.setContent {
             CandidateBar(
-                candidates = listOf("你好"),
-                inputText = "nihao",
-                isComposing = true,
+                state = CandidateBarState.ChineseCandidates(
+                    candidates = listOf("你好"),
+                    inputText = "nihao",
+                ),
                 visuals = CandidateBarVisuals(
                     backgroundColor = KeyboardBackground,
                     textColor = KeyTextColor,
@@ -83,13 +86,14 @@ class CandidateBarTest {
     }
     
     @Test
-    fun `CandidateBar should display comments`() {
+    fun candidateBarDisplaysComments() {
         composeTestRule.setContent {
             CandidateBar(
-                candidates = listOf("你好"),
-                candidateComments = listOf("wubi"),
-                inputText = "nihao",
-                isComposing = true,
+                state = CandidateBarState.ChineseCandidates(
+                    candidates = listOf("你好"),
+                    comments = listOf("wubi"),
+                    inputText = "nihao",
+                ),
                 visuals = CandidateBarVisuals(
                     backgroundColor = KeyboardBackground,
                     textColor = KeyTextColor,
@@ -105,13 +109,14 @@ class CandidateBarTest {
     }
     
     @Test
-    fun `CandidateBar should display association candidates`() {
+    fun candidateBarDisplaysAssociationCandidates() {
         composeTestRule.setContent {
             CandidateBar(
-                candidates = listOf("你好"),
-                associationCandidates = listOf("世界", "吗"),
-                inputText = "nihao",
-                isComposing = true,
+                state = CandidateBarState.ChineseCandidates(
+                    candidates = listOf("你好"),
+                    associationCandidates = listOf("世界", "吗"),
+                    inputText = "nihao",
+                ),
                 visuals = CandidateBarVisuals(
                     backgroundColor = KeyboardBackground,
                     textColor = KeyTextColor,
@@ -128,7 +133,7 @@ class CandidateBarTest {
     }
     
     @Test
-    fun `CandidateItem should display text`() {
+    fun candidateItemDisplaysText() {
         composeTestRule.setContent {
             CandidateItem(
                 text = "测试候选词",
@@ -142,7 +147,7 @@ class CandidateBarTest {
     }
     
     @Test
-    fun `CandidateItem should display comment`() {
+    fun candidateItemDisplaysComment() {
         composeTestRule.setContent {
             CandidateItem(
                 text = "你好",

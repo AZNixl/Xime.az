@@ -34,7 +34,7 @@ class InputMethodIntegrationTest {
     }
     
     @Test
-    fun `test full initialization workflow`() {
+    fun testFullInitializationWorkflow() {
         assertFalse(ExtensionManager.isInitialized())
         
         ExtensionManager.initialize(context)
@@ -43,7 +43,7 @@ class InputMethodIntegrationTest {
     }
     
     @Test
-    fun `test plugin loading workflow`() {
+    fun testPluginLoadingWorkflow() {
         ExtensionManager.initialize(context)
         
         val allPlugins = ExtensionManager.getAllInstalledPlugins()
@@ -55,7 +55,7 @@ class InputMethodIntegrationTest {
     }
     
     @Test
-    fun `test plugin enable disable workflow`() {
+    fun testPluginEnableDisableWorkflow() {
         val pluginId = "test_plugin_integration"
         
         ExtensionManager.initialize(context)
@@ -68,7 +68,7 @@ class InputMethodIntegrationTest {
     }
     
     @Test
-    fun `test rime directory setup`() {
+    fun testRimeDirectorySetup() {
         val userDataDir = File(context.filesDir, "rime_user")
         val sharedDataDir = File(context.filesDir, "rime_shared")
         
@@ -77,7 +77,7 @@ class InputMethodIntegrationTest {
     }
     
     @Test
-    fun `test reload workflow`() {
+    fun testReloadWorkflow() {
         ExtensionManager.initialize(context)
         assertTrue(ExtensionManager.isInitialized())
         

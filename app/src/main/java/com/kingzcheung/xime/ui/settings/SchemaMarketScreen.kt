@@ -39,6 +39,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -72,6 +73,7 @@ import com.kingzcheung.xime.viewmodel.SchemaMarketViewModel
 fun SchemaMarketContent(
     onBack: () -> Unit,
     onNavigateToDetail: (String) -> Unit = {},
+    onNavigateToLocal: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val viewModel: SchemaMarketViewModel = viewModel()
@@ -94,6 +96,10 @@ fun SchemaMarketContent(
                     }
                 },
                 actions = {
+                    TextButton(onClick = onNavigateToLocal) {
+                        Text("本地管理", style = MaterialTheme.typography.labelMedium)
+                    }
+                    Spacer(Modifier.width(4.dp))
                     IconButton(
                         onClick = { viewModel.loadSchemes(manual = true) },
                         enabled = !uiState.isLoading,
@@ -199,25 +205,25 @@ fun SchemaMarketContent(
                             item = item,
                             downloading = uiState.downloadingId == item.scheme.id,
                             downloadProgress = uiState.downloadProgress,
-                            extracting = uiState.extractingId == item.scheme.id,
                             downloaded = item.scheme.id in uiState.downloadedIds,
-                            installed = item.scheme.id in uiState.installedIds,
                             sha256Status = uiState.sha256Status[item.scheme.id],
-                            deploying = uiState.isDeploying,
                             selectedVersion = uiState.selectedVersions[item.scheme.id]
                                 ?: item.scheme.currentVersion,
                             onSelectVersion = { viewModel.selectVersion(item.scheme.id, it) },
                             onDownload = { viewModel.downloadScheme(item) },
-                            onInstall = { viewModel.installFromMarket(item) },
-                            onDeploy = { viewModel.deploy() },
-                            onDelete = { viewModel.deleteDownloadedScheme(item.scheme.id) },
                         )
                     }
                     item {
                         Spacer(Modifier.height(8.dp))
+                        val updatedAt = uiState.updatedAt.takeIf { it.isNotBlank() }
+                        val sourceLabel = if (uiState.source.isNotBlank()) "来源：${uiState.source}" else "来自 Xime 官方源"
+                        val footerText = buildString {
+                            append("共 ${uiState.filteredSchemes.size} 个方案（$sourceLabel")
+                            if (updatedAt != null) append(" · 更新于 $updatedAt")
+                            append("）")
+                        }
                         Text(
-                            "共 ${uiState.filteredSchemes.size} 个方案" +
-                                if (uiState.source.isNotBlank()) "（来源：${uiState.source}）" else "（来自 Xime 官方源）",
+                            footerText,
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.outline,
                             modifier = Modifier.padding(bottom = 16.dp),
@@ -240,17 +246,11 @@ private fun SchemeCard(
     item: MarketSchemeItem,
     downloading: Boolean,
     downloadProgress: Float,
-    extracting: Boolean,
     downloaded: Boolean,
-    installed: Boolean,
     sha256Status: Boolean?,
-    deploying: Boolean,
     selectedVersion: String,
     onSelectVersion: (String) -> Unit,
     onDownload: () -> Unit,
-    onInstall: () -> Unit,
-    onDeploy: () -> Unit,
-    onDelete: () -> Unit = {},
 ) {
     val scheme = item.scheme
     Card(
@@ -369,21 +369,25 @@ private fun SchemeCard(
             }
             Spacer(Modifier.height(10.dp))
             val versionForSize = scheme.versions.firstOrNull { it.version == selectedVersion }
-            val sizeLabel = versionForSize?.size?.ifBlank {
-                versionForSize.downloadUrls.firstOrNull { it.size.isNotBlank() }?.size
+            val totalBytes = versionForSize?.downloadUrls?.sumOf { dl ->
+                dl.size?.removeSuffix(" MB")?.trim()?.toDoubleOrNull()
+                    ?.let { (it * 1024.0 * 1024.0).toLong() } ?: 0L
+            } ?: 0L
+            val sizeLabel = if (totalBytes > 0) {
+                "%.1f MB".format(totalBytes / (1024.0 * 1024.0))
+            } else null
+            if (sizeLabel != null) {
+                Text(
+                    "大小: $sizeLabel",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.outline,
+                    modifier = Modifier.padding(bottom = 4.dp),
+                )
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (sizeLabel != null) {
-                    Text(
-                        "大小: $sizeLabel",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.outline,
-                    )
-                }
-                Spacer(Modifier.weight(1f))
                 when {
                     downloading -> {
                         OutlinedButton(onClick = onDownload, enabled = false) {
@@ -395,49 +399,19 @@ private fun SchemeCard(
                         }
                     }
 
-                    extracting -> {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                            Spacer(Modifier.width(8.dp))
-                            Text("安装中…", style = MaterialTheme.typography.labelMedium)
-                        }
-                    }
-
                     !item.compatible -> OutlinedButton(onClick = {}, enabled = false) {
                         Text("需 App ≥ ${item.minAppVersion}")
                     }
 
-                    downloaded && !installed -> OutlinedButton(onClick = onInstall) {
-                        Text("安装")
-                    }
-
-                    installed -> {
-                        Row(
-                            modifier = Modifier.weight(1f),
-                            horizontalArrangement = Arrangement.Start,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            OutlinedButton(onClick = onDownload) { Text("重新下载") }
-                            Spacer(Modifier.width(4.dp))
-                            IconButton(
-                                onClick = onDelete,
-                                modifier = Modifier.size(36.dp),
-                            ) {
-                                Icon(
-                                    Icons.Default.Delete,
-                                    contentDescription = "删除压缩包",
-                                    tint = MaterialTheme.colorScheme.error,
-                                    modifier = Modifier.size(20.dp),
-                                )
-                            }
-                        }
-                        Spacer(Modifier.width(8.dp))
-                        if (deploying) {
-                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    downloaded -> {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "已下载",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.outline,
+                            )
                             Spacer(Modifier.width(8.dp))
-                            Text("部署中…", style = MaterialTheme.typography.labelMedium)
-                        } else {
-                            OutlinedButton(onClick = onDeploy) { Text("部署") }
+                            OutlinedButton(onClick = onDownload) { Text("重新下载") }
                         }
                     }
 

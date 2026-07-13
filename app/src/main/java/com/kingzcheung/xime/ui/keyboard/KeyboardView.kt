@@ -41,9 +41,12 @@ import com.kingzcheung.xime.keyboard.PanelType
 import com.kingzcheung.xime.keyboard.ToolbarAction
 import com.kingzcheung.xime.keyboard.ToolbarButton
 import com.kingzcheung.xime.rime.T9InputController
+import com.kingzcheung.xime.rime.filterCandidatesBySelectionHistory
 import com.kingzcheung.xime.settings.KeysConfigHelper
 import com.kingzcheung.xime.settings.SettingsPreferences
-import com.kingzcheung.xime.ui.settings.SchemaListView
+import com.kingzcheung.xime.ui.menubar.ClipboardView
+import com.kingzcheung.xime.ui.menubar.SchemaListView
+import com.kingzcheung.xime.ui.menubar.ToolbarCustomizeView
 import com.kingzcheung.xime.ui.theme.KeyboardThemes
 import com.kingzcheung.xime.viewmodel.KeyboardUiState
 import com.kingzcheung.xime.viewmodel.KeyboardViewModel
@@ -65,30 +68,17 @@ fun KeyboardView(
     val isShifted by viewModel.isShifted.collectAsStateWithLifecycle()
     val keyboardState by viewModel.keyboardState.collectAsStateWithLifecycle()
     val page by viewModel.page.collectAsStateWithLifecycle()
+    val viewState by viewModel.viewState.collectAsStateWithLifecycle()
     val isLandscape = if (state.isFloatingMode) false
         else LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     SideEffect {
-        val active = (keyboardState is KeyboardLayoutState.Chinese || keyboardState is KeyboardLayoutState.Stroke || keyboardState is KeyboardLayoutState.T9Pinyin)
+        val isHandwriting = page is KeyboardPage.Main && (page as KeyboardPage.Main).type == MainType.HANDWRITING
+        val active = isHandwriting || (
+            (keyboardState is KeyboardLayoutState.Chinese || keyboardState is KeyboardLayoutState.Stroke || keyboardState is KeyboardLayoutState.T9Pinyin)
             && page is KeyboardPage.Main && (page as KeyboardPage.Main).type == MainType.FULL
+        )
         callbacks.onKeyboardModeChange?.invoke(active)
-    }
-
-    LaunchedEffect(state.inputSessionId) {
-        when {
-            page !is KeyboardPage.Main -> viewModel.switchMain(MainType.FULL)
-            (page as KeyboardPage.Main).type == MainType.FULL -> {
-                if (keyboardState !is KeyboardLayoutState.Number) {
-                    viewModel.setKeyboardState(initialKeyboardLayoutState(state.isAsciiMode, state.currentSchemaId))
-                }
-            }
-        }
-    }
-
-    LaunchedEffect(state.isAsciiMode, state.currentSchemaId) {
-        if (keyboardState is KeyboardLayoutState.Number) return@LaunchedEffect
-        val newState = initialKeyboardLayoutState(state.isAsciiMode, state.currentSchemaId)
-        viewModel.setKeyboardState(newState)
     }
 
     var savedNumberAsciiMode by remember { mutableStateOf<Boolean?>(null) }
@@ -105,10 +95,31 @@ fun KeyboardView(
         )
     }
 
+    LaunchedEffect(state.inputSessionId) {
+        t9Controller.reset()
+        viewModel.dispatch(
+            KeyboardDispatchAction.InputSessionStarted(state.isAsciiMode, state.currentSchemaId)
+        )
+    }
+
+    LaunchedEffect(state.isAsciiMode, state.currentSchemaId) {
+        viewModel.dispatch(
+            KeyboardDispatchAction.AsciiModeChanged(state.isAsciiMode, state.currentSchemaId)
+        )
+    }
+
     SideEffect {
-        callbacks.onT9RightCandidateWillBeSelected = { pinyin ->
-            t9Controller.onRightCandidateSelected(pinyin)
-            t9Controller.inputBuffer.isEmpty()
+        callbacks.onT9RightCandidateWillBeSelected = { pinyin, textLength ->
+            t9Controller.onRightCandidateSelected(pinyin, textLength)
+            t9Controller.inputBuffer.isEmpty
+        }
+        callbacks.onT9ForceSendToRime = {
+            t9Controller.forceSendToRime()
+        }
+        callbacks.onFilterT9Candidates = { candidates, comments ->
+            filterCandidatesBySelectionHistory(
+                candidates, comments, t9Controller.selectionHistory
+            )
         }
     }
 
@@ -120,7 +131,7 @@ fun KeyboardView(
         if (keyboardState is KeyboardLayoutState.Number) {
             if (savedNumberAsciiMode == null) {
                 savedNumberAsciiMode = state.isAsciiMode
-                if (!state.isAsciiMode) {
+                if (!state.isAsciiMode && page is KeyboardPage.Main) {
                     callbacks.onKeyPress("ime_switch", false)
                 }
             }
@@ -131,6 +142,7 @@ fun KeyboardView(
 
     val kbColors = KeysConfigHelper.getKeyboardColors()
     val kbShadow = KeysConfigHelper.getKeyboardShadow()
+    val kbKey = KeysConfigHelper.getKeyboardKeyConfig()
     val longToColor: (Long) -> androidx.compose.ui.graphics.Color = { androidx.compose.ui.graphics.Color(0xFF000000 or it) }
     val keyboardBgColor = if (state.isDarkTheme) longToColor(kbColors.keyboardBgColorDark)
         else longToColor(kbColors.keyboardBgColor)
@@ -143,6 +155,8 @@ fun KeyboardView(
     val specialKeyBgColor = if (state.isDarkTheme) kbColors.specialKeyBgColorDark?.let { longToColor(it) }
         ?: themeSpecialKeyColor
         else kbColors.specialKeyBgColor?.let { longToColor(it) } ?: themeSpecialKeyColor
+    val specialKeyTextColor = if (state.isDarkTheme) androidx.compose.ui.graphics.Color.White
+        else KeyboardThemes.getSpecialKeyTextColor(state.themeId, false)
     val candidateBarBg = if (state.isDarkTheme) longToColor(kbColors.candidateBarBgColorDark)
         else longToColor(kbColors.candidateBarBgColor)
     val candidateTextColor = if (state.isDarkTheme) longToColor(kbColors.candidateTextColorDark)
@@ -154,13 +168,16 @@ fun KeyboardView(
     } ?: 0
     val screenW = LocalConfiguration.current.screenWidthDp
     val screenH = LocalConfiguration.current.screenHeightDp
-    val cardWidthDp = (minOf(screenW, screenH) * 0.85f).roundToInt()
+    val portraitScreenWidth = minOf(screenW, screenH)
+    val cardWidthDp = (portraitScreenWidth * 0.85f).roundToInt()
     val floatScaleFactor = if (state.isFloatingMode) cardWidthDp.toFloat() / screenW.toFloat() else 0.85f
+    val floatFontScale = if (state.isFloatingMode) cardWidthDp.toFloat() / portraitScreenWidth.toFloat() else 1f
 
     val contentModifier = modifier.background(keyboardBgColor)
     FloatingKeyboardContainer(
         isFloatingMode = state.isFloatingMode,
         scaleFactor = floatScaleFactor,
+        fontScaleFactor = floatFontScale,
         offsetX = state.floatingOffsetX,
         offsetY = state.floatingOffsetY,
         minOffsetY = state.floatingMinOffsetY,
@@ -385,12 +402,12 @@ fun KeyboardView(
                                     callbacks.onKeyPress("clear_composition", false)
                                 }
                                 "mode_change_symbol" -> viewModel.showOverlay(OverlayRoute.Symbol)
-                                "mode_change_t9" -> {
+                                "mode_change_number" -> {
                                     modeChangeTarget = KeyboardLayoutAction.SwitchToNumber
                                     SettingsPreferences.setModeChangeTargetIsNumber(context, true)
-                                    viewModel.setKeyboardState(KeyboardLayoutState.T9Pinyin)
+                                    viewModel.setKeyboardState(KeyboardLayoutState.Number)
                                 }
-                                "mode_change_t26" -> {
+                                "mode_change_common_symbol" -> {
                                     modeChangeTarget = KeyboardLayoutAction.SwitchToCommonSymbol
                                     SettingsPreferences.setModeChangeTargetIsNumber(context, false)
                                     viewModel.setKeyboardState(keyboardState.transition(
@@ -575,6 +592,7 @@ fun KeyboardView(
                             keyBackgroundColor = keyBgColor,
                             keyTextColor = keyTextColor,
                             specialKeyBackgroundColor = specialKeyBgColor,
+                            specialKeyTextColor = specialKeyTextColor,
                             modifier = Modifier.weight(1f),
                         )
                         if (state.keyboardBottomPaddingDp > 0) {
@@ -641,8 +659,10 @@ fun KeyboardView(
                         shadowEnabled = kbShadow.enabled,
                         shadowElevation = kbShadow.elevation.dp,
                         shadowShapeRadius = kbShadow.shapeRadius.dp,
+                        keyCornerRadius = kbKey.cornerRadius.dp,
                         onKeyPressDown = callbacks.onKeyPressDown,
                         isFloatingMode = state.isFloatingMode,
+                        specialKeyTextColor = specialKeyTextColor,
                         modifier = Modifier.weight(1f).fillMaxWidth()
                     )
 
@@ -664,8 +684,10 @@ fun KeyboardView(
                         shadowEnabled = kbShadow.enabled,
                         shadowElevation = kbShadow.elevation.dp,
                         shadowShapeRadius = kbShadow.shapeRadius.dp,
+                        keyCornerRadius = kbKey.cornerRadius.dp,
                         onKeyPressDown = callbacks.onKeyPressDown,
                         isFloatingMode = state.isFloatingMode,
+                        specialKeyTextColor = specialKeyTextColor,
                         modifier = Modifier.weight(1f).fillMaxWidth()
                     )
 
