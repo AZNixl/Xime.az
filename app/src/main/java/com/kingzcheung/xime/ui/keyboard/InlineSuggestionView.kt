@@ -7,6 +7,7 @@ import android.view.inputmethod.InlineSuggestion
 import android.widget.inline.InlineContentView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -18,6 +19,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import java.util.concurrent.Executors
@@ -34,25 +36,30 @@ fun InlineSuggestionView(
 
     val realSuggestion = suggestion as? InlineSuggestion ?: return
     val context = LocalContext.current
-    var inflatedView by remember { mutableStateOf<InlineContentView?>(null) }
+    val density = LocalDensity.current
 
-    androidx.compose.runtime.LaunchedEffect(suggestion) {
-        Log.d(TAG, "inflating suggestion")
-        val executor = Executors.newSingleThreadExecutor()
-        realSuggestion.inflate(
-            context,
-            Size(Int.MAX_VALUE, Int.MAX_VALUE),
-            executor,
-            Consumer { contentView ->
-                Log.d(TAG, "inflate callback fired: $contentView")
-                inflatedView = contentView
-            },
-        )
-    }
+    BoxWithConstraints(modifier = modifier) {
+        val targetWidthPx = with(density) { maxWidth.toPx().toInt() }
+        val targetHeightPx = with(density) { maxHeight.toPx().toInt() }
 
-    val view = inflatedView
-    if (view != null) {
-        Box(modifier = modifier) {
+        var inflatedView by remember { mutableStateOf<InlineContentView?>(null) }
+
+        androidx.compose.runtime.LaunchedEffect(suggestion, targetWidthPx, targetHeightPx) {
+            Log.d(TAG, "inflating suggestion at ${targetWidthPx}x${targetHeightPx}px")
+            val executor = Executors.newSingleThreadExecutor()
+            realSuggestion.inflate(
+                context,
+                Size(targetWidthPx, targetHeightPx),
+                executor,
+                Consumer { contentView ->
+                    Log.d(TAG, "inflate callback fired: $contentView")
+                    inflatedView = contentView
+                },
+            )
+        }
+
+        val view = inflatedView
+        if (view != null) {
             AndroidView(
                 factory = { view },
                 modifier = Modifier.matchParentSize(),

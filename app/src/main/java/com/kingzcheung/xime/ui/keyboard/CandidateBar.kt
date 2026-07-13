@@ -311,7 +311,7 @@ fun CandidateBar(
                         suggestion = suggestion,
                         modifier = Modifier
                             .fillMaxHeight()
-                            .width(80.dp),
+                            .width(180.dp),
                     )
                     if (index < inlineSuggestions.lastIndex) {
                         InlineSuggestionDivider(color = visuals.dividerColor)
