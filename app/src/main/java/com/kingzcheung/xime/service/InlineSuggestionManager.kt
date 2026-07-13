@@ -1,5 +1,7 @@
 package com.kingzcheung.xime.service
 
+import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.util.Size
@@ -8,6 +10,9 @@ import android.view.inputmethod.InlineSuggestionsRequest
 import android.view.inputmethod.InlineSuggestionsResponse
 import android.widget.inline.InlinePresentationSpec
 import androidx.annotation.RequiresApi
+import androidx.autofill.inline.UiVersions
+import androidx.autofill.inline.common.TextViewStyle
+import androidx.autofill.inline.v1.InlineSuggestionUi
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -20,19 +25,35 @@ class InlineSuggestionManager {
     var isAvailable: Boolean = false
         private set
 
-    @RequiresApi(34)
+    var candidateTextColorArgb: Int = Color.BLACK
+    var labelTextColorArgb: Int = Color.GRAY
+    var backgroundColorArgb: Int = Color.WHITE
+
+    @RequiresApi(Build.VERSION_CODES.R)
     fun onCreateInlineSuggestionsRequest(uiExtras: Bundle): InlineSuggestionsRequest? {
         return try {
-            val small = InlinePresentationSpec.Builder(
-                Size(120, 20), Size(300, 80)
-            ).build()
-            val medium = InlinePresentationSpec.Builder(
-                Size(200, 56), Size(500, 136)
-            ).build()
-            val large = InlinePresentationSpec.Builder(
-                Size(300, 100), Size(800, 300)
-            ).build()
-            InlineSuggestionsRequest.Builder(listOf(small, medium, large))
+            val style = InlineSuggestionUi.newStyleBuilder()
+                .setTitleStyle(
+                    TextViewStyle.Builder()
+                        .setTextColor(candidateTextColorArgb)
+                        .setTextSize(15f)
+                        .build()
+                )
+                .setSubtitleStyle(
+                    TextViewStyle.Builder()
+                        .setTextColor(labelTextColorArgb)
+                        .setTextSize(12f)
+                        .build()
+                )
+                .build()
+            val styleBundle = UiVersions.newStylesBuilder()
+                .addStyle(style)
+                .build()
+            val spec = InlinePresentationSpec.Builder(
+                Size(0, 0), Size(Int.MAX_VALUE, Int.MAX_VALUE)
+            ).setStyle(styleBundle).build()
+            InlineSuggestionsRequest.Builder(listOf(spec))
+                .setMaxSuggestionCount(InlineSuggestionsRequest.SUGGESTION_COUNT_UNLIMITED)
                 .build()
         } catch (e: Throwable) {
             Log.w("InlineSuggestionManager", "onCreateInlineSuggestionsRequest failed", e)
@@ -40,11 +61,10 @@ class InlineSuggestionManager {
         }
     }
 
-    @RequiresApi(34)
+    @RequiresApi(Build.VERSION_CODES.R)
     fun onInlineSuggestionsResponse(response: InlineSuggestionsResponse): Boolean {
         isAvailable = true
         val newSuggestions = response.inlineSuggestions
-        // Ignore empty response if we already have suggestions — keeps inflate in flight
         if (newSuggestions.isEmpty() && suggestions.isNotEmpty()) {
             Log.d("InlineSuggestionManager", "onInlineSuggestionsResponse: ignoring empty, keeping ${suggestions.size} pending suggestions")
             return true

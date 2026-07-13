@@ -237,7 +237,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     
     private val feedbackManager = FeedbackManager(this)
     
-    private val inlineSuggestionManager = if (Build.VERSION.SDK_INT >= 34) {
+    private val inlineSuggestionManager = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
         InlineSuggestionManager()
     } else null
     
@@ -2745,19 +2745,50 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     }
 
     override fun onCreateInlineSuggestionsRequest(uiExtras: Bundle): InlineSuggestionsRequest? {
-        if (Build.VERSION.SDK_INT < 34) return null
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
         Log.d(TAG, "onCreateInlineSuggestionsRequest(Bundle) called, manager=${inlineSuggestionManager}")
         if (inlineSuggestionManager == null) return null
+        updateInlineSuggestionTheme()
         val result = inlineSuggestionManager.onCreateInlineSuggestionsRequest(uiExtras)
         Log.d(TAG, "onCreateInlineSuggestionsRequest: returning ${if (result != null) "request" else "null"}")
         return result
     }
 
     override fun onInlineSuggestionsResponse(response: InlineSuggestionsResponse): Boolean {
-        if (Build.VERSION.SDK_INT < 34) return false
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
         val count = response.inlineSuggestions.size
         Log.d(TAG, "onInlineSuggestionsResponse: received $count suggestions")
         return inlineSuggestionManager?.onInlineSuggestionsResponse(response) ?: false
+    }
+
+    @RequiresApi(Build.VERSION_CODES.R)
+    private fun updateInlineSuggestionTheme() {
+        val state = uiState.value
+        val isDark = when (state.darkMode) {
+            1 -> true
+            2 -> (resources.configuration.uiMode.and(
+                android.content.res.Configuration.UI_MODE_NIGHT_MASK
+            )) == android.content.res.Configuration.UI_MODE_NIGHT_YES
+            else -> false
+        }
+        val t = com.kingzcheung.xime.ui.theme.KeyboardThemes
+        inlineSuggestionManager?.apply {
+            val c = t.getCandidateTextColor(state.themeId, isDark)
+            candidateTextColorArgb = (c.alpha * 255).toInt() shl 24 or
+                (c.red * 255).toInt() shl 16 or
+                (c.green * 255).toInt() shl 8 or
+                (c.blue * 255).toInt()
+            val d = t.getDividerColor(state.themeId, isDark)
+            labelTextColorArgb = (d.alpha * 255).toInt() shl 24 or
+                (d.red * 255).toInt() shl 16 or
+                (d.green * 255).toInt() shl 8 or
+                (d.blue * 255).toInt()
+            val b = t.getCandidateBarBackgroundColor(state.themeId, isDark)
+            backgroundColorArgb = (b.alpha * 255).toInt() shl 24 or
+                (b.red * 255).toInt() shl 16 or
+                (b.green * 255).toInt() shl 8 or
+                (b.blue * 255).toInt()
+        }
     }
 
     override fun onComputeInsets(outInsets: Insets) {

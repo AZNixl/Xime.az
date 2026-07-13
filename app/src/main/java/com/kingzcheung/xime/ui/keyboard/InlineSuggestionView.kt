@@ -3,7 +3,6 @@ package com.kingzcheung.xime.ui.keyboard
 import android.os.Build
 import android.util.Log
 import android.util.Size
-import android.view.ViewGroup
 import android.view.inputmethod.InlineSuggestion
 import android.widget.inline.InlineContentView
 import androidx.compose.foundation.background
@@ -24,27 +23,28 @@ import androidx.compose.ui.viewinterop.AndroidView
 import java.util.concurrent.Executors
 import java.util.function.Consumer
 
+private const val TAG = "InlineSuggestionView"
+
 @Composable
 fun InlineSuggestionView(
     suggestion: Any?,
     modifier: Modifier = Modifier,
 ) {
-    if (Build.VERSION.SDK_INT < 34) return
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
 
     val realSuggestion = suggestion as? InlineSuggestion ?: return
     val context = LocalContext.current
     var inflatedView by remember { mutableStateOf<InlineContentView?>(null) }
 
     androidx.compose.runtime.LaunchedEffect(suggestion) {
-        Log.d("InlineSuggestionView", "inflating suggestion")
-        val size = Size(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        Log.d(TAG, "inflating suggestion")
         val executor = Executors.newSingleThreadExecutor()
         realSuggestion.inflate(
             context,
-            size,
+            Size(Int.MAX_VALUE, Int.MAX_VALUE),
             executor,
             Consumer { contentView ->
-                Log.d("InlineSuggestionView", "inflate callback fired: $contentView")
+                Log.d(TAG, "inflate callback fired: $contentView")
                 inflatedView = contentView
             },
         )
