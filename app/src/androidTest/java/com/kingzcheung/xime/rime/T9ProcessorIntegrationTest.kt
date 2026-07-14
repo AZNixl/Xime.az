@@ -457,6 +457,32 @@ class T9ProcessorIntegrationTest {
         android.util.Log.d(TAG, "scenario45: ji+hua+计划")
     }
 
+    // ═══════════════════════════════════════════════════════════
+    // 场景：777 → 左选 q → 左选 s → 左选 s → 右选"确实"
+    // 验证：3 个左选消费全部 3 位数字后，右选匹配候选应 full commit
+    // ═══════════════════════════════════════════════════════════
+
+    @Test fun test47_threeSelectionsPartialCommit() {
+        // 777 → q+s+s (3 selections) → 确实(que shi, 2 syllables, 2 chars)
+        // Per design: candidateTextLength(2) < selectionHistory.size(3) → PARTIAL commit
+        digits("777")
+        engine.t9SelectPinyinDirect("q", 1)
+        engine.t9SelectPinyinDirect("s", 1)
+        engine.t9SelectPinyinDirect("s", 1)
+        android.util.Log.d(TAG, "test47: after q+s+s, input='${input()}'")
+
+        val cand = candidates()
+        val queShiIdx = cand.indexOfFirst { it.first == "确实" }
+        if (queShiIdx >= 0) {
+            val isFull = engine.t9SelectCandidate(queShiIdx)
+            android.util.Log.d(TAG, "test47: 确实 isFull=$isFull, input='${input()}'")
+            // 2 chars < 3 selections → partial commit
+            assertFalse("q+s+s should be PARTIAL commit for 确实(2 chars, 3 selections)", isFull)
+            assertTrue("Remaining digit '7' should be in buffer after partial commit",
+                input().isNotEmpty())
+        }
+    }
+
     @Test fun test46_jiuJianLeftThenRight() {
         digits("5485426"); leftSelect("jiu", 3)
         android.util.Log.d(TAG, "scenario46: jiu jian partial, input='${input()}'")

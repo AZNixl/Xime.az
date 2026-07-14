@@ -9,6 +9,7 @@
 #include <rime/menu.h>
 #include <rime/schema.h>
 #include <set>
+#include <algorithm>
 
 #include <android/log.h>
 #define T9LOG(...) __android_log_print(ANDROID_LOG_DEBUG, "T9Processor", __VA_ARGS__)
@@ -201,14 +202,7 @@ bool T9Processor::SelectCandidate(int candidate_index) {
     T9LOG("SelectCandidate(%d): text='%s' comment='%s', fullyConsumed=%d",
           candidate_index, cand->text().c_str(), comment.c_str(), digit_buffer_.IsFullyConsumed());
 
-    // Full commit: all digits consumed
-    if (digit_buffer_.IsFullyConsumed()) {
-        T9LOG("SelectCandidate: full commit (all digits consumed)");
-        digit_buffer_.Clear();
-        return true;
-    }
-
-    // Parse comment into syllables
+    // Parse comment into syllables (needed for all paths below)
     vector<string> comment_syllables;
     size_t pos = 0;
     while (pos < comment.length()) {
@@ -235,7 +229,53 @@ bool T9Processor::SelectCandidate(int candidate_index) {
     int remaining_digits = static_cast<int>(digit_buffer_.raw_digits().size()) - digit_buffer_.ConsumedCount();
     T9LOG("  comment_digit_count=%d remaining_digits=%d", comment_digit_count, remaining_digits);
 
-    // Jianpin alignment: check if selection initials match comment syllable initials
+    // Full commit check: all digits consumed AND candidate covers all selections
+    // Per design doc: candidateTextLength >= selectionHistory.size
+    // (q+s+s consuming 3 digits but "确实" only has 2 chars → NOT full commit)
+    if (digit_buffer_.IsFullyConsumed() &&
+        comment_syllables.size() >= digit_buffer_.selections().size() &&
+        cand->text().length() >= digit_buffer_.selections().size()) {
+        bool full_commit = true;
+        for (size_t i = 0; i < digit_buffer_.selections().size(); ++i) {
+            char sel_initial = digit_buffer_.selections()[i].pinyin[0];
+            char syl_initial = comment_syllables[i][0];
+            if (DigitCode(sel_initial) != DigitCode(syl_initial)) {
+                full_commit = false;
+                break;
+            }
+        }
+        if (full_commit) {
+            T9LOG("SelectCandidate: full commit (all digits consumed, comment aligns)");
+            digit_buffer_.Clear();
+            return true;
+        }
+        // Comment doesn't cover all selections → release extra digits
+        // Count how many selections the comment actually covers
+        size_t covered = 0;
+        size_t max_check = std::min(comment_syllables.size(), digit_buffer_.selections().size());
+        for (size_t i = 0; i < max_check; ++i) {
+            if (DigitCode(digit_buffer_.selections()[i].pinyin[0]) ==
+                DigitCode(comment_syllables[i][0])) {
+                covered++;
+            } else {
+                break;
+            }
+        }
+        int consumed = 0;
+        for (size_t i = 0; i < covered; ++i) {
+            consumed += digit_buffer_.selections()[i].digit_length;
+        }
+        string remaining = digit_buffer_.raw_digits().substr(consumed);
+        T9LOG("SelectCandidate: releasing excess, covered=%zu consumed=%d remaining='%s'",
+              covered, consumed, remaining.c_str());
+        digit_buffer_.Clear();
+        for (char d : remaining) {
+            digit_buffer_.AppendDigit(d);
+        }
+        return false;
+    }
+
+    // Jianpin alignment: selection initials match comment syllable initials
     // Full commit only when comment syllables cover ALL remaining digits
     if (comment_syllables.size() >= digit_buffer_.selections().size() &&
         comment_digit_count >= remaining_digits) {
