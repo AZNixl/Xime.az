@@ -10,6 +10,7 @@ target_include_directories(rime_jni PRIVATE
     ${CMAKE_SOURCE_DIR}/librime/include
     ${CMAKE_SOURCE_DIR}/librime/src
     ${CMAKE_BINARY_DIR}/librime/src
+    ${CMAKE_SOURCE_DIR}/librime/plugins/librime-t9/src
 )
 
 # 链接 librime 和其他依赖库

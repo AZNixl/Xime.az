@@ -413,6 +413,46 @@ class RimeEngine {
         }
     }
 
+    // ═══════════════════════════════════════════════════════════
+    // T9 Processor 公共 API
+    // ═══════════════════════════════════════════════════════════
+
+    /**
+     * 左选拼音：选择第 candidateIndex 个候选词的第一音节。
+     * t9_processor 会将对应数字替换为拼音并重新触发引擎处理。
+     */
+    fun t9SelectSyllable(candidateIndex: Int): Boolean {
+        if (!isInitialized) return false
+        synchronized(rimeLock) {
+            if (!nativeHasSession() && !nativeCreateSession()) return false
+            return nativeT9SelectSyllable(candidateIndex)
+        }
+    }
+
+    /**
+     * 右选候选：选择第 candidateIndex 个候选词。
+     * t9_processor 内部判断 full/partial commit 并做相应处理。
+     */
+    fun t9SelectCandidate(candidateIndex: Int): Boolean {
+        if (!isInitialized) return false
+        synchronized(rimeLock) {
+            if (!nativeHasSession() && !nativeCreateSession()) return false
+            return nativeT9SelectCandidate(candidateIndex)
+        }
+    }
+
+    /**
+     * 获取左侧候选区拼音列表。
+     * 从当前 RIME 候选的 comment 中提取唯一首音节。
+     */
+    fun t9GetSyllableCandidates(): Array<String> {
+        if (!isInitialized) return emptyArray()
+        synchronized(rimeLock) {
+            if (!nativeHasSession()) return emptyArray()
+            return nativeT9GetSyllableCandidates() ?: emptyArray()
+        }
+    }
+
     // Native 方法声明
     private external fun nativeInitialize(userDataDir: String, sharedDataDir: String)
     private external fun nativeCreateSession(): Boolean
@@ -448,6 +488,32 @@ class RimeEngine {
     private external fun nativeUpdateLastBuildTime()
     private external fun nativeSetPageSize(schemaId: String, pageSize: Int)
     private external fun nativeDestroy()
+    private external fun nativeT9SelectSyllable(candidateIndex: Int): Boolean
+    private external fun nativeT9SelectCandidate(candidateIndex: Int): Boolean
+    private external fun nativeT9SelectPinyinDirect(pinyin: String, digitLength: Int): Boolean
+    private external fun nativeT9GetSyllableCandidates(): Array<String>?
+    private external fun nativeT9GetRemainingDigits(): String?
+
+    /**
+     * 直接选择拼音：传入拼音和对应数字长度，t9_processor 替换 buffer。
+     */
+    fun t9SelectPinyinDirect(pinyin: String, digitLength: Int): Boolean {
+        if (!isInitialized) return false
+        synchronized(rimeLock) {
+            if (!nativeHasSession() && !nativeCreateSession()) return false
+            return nativeT9SelectPinyinDirect(pinyin, digitLength)
+        }
+    }
+
+    /**
+     * 获取 partial commit 后 t9_processor 中剩余的数字串。
+     */
+    fun t9GetRemainingDigits(): String {
+        if (!isInitialized) return ""
+        synchronized(rimeLock) {
+            return nativeT9GetRemainingDigits() ?: ""
+        }
+    }
 
     fun deploySchema(schemaId: String): Boolean {
         if (!isInitialized) return false

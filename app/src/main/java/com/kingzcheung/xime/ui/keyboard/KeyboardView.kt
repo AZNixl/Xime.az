@@ -41,7 +41,6 @@ import com.kingzcheung.xime.keyboard.PanelType
 import com.kingzcheung.xime.keyboard.ToolbarAction
 import com.kingzcheung.xime.keyboard.ToolbarButton
 import com.kingzcheung.xime.rime.T9InputController
-import com.kingzcheung.xime.rime.filterCandidatesBySelectionHistory
 import com.kingzcheung.xime.settings.KeysConfigHelper
 import com.kingzcheung.xime.settings.SettingsPreferences
 import com.kingzcheung.xime.ui.menubar.ClipboardView
@@ -84,13 +83,7 @@ fun KeyboardView(
 
     val t9Controller = remember {
         T9InputController(
-            onReplaceFullPinyin = { pinyin ->
-                callbacks.onT9ReplaceFullPinyin?.invoke(pinyin)
-            },
-            onQueryRimeComposition = null,
-            onRightCommitUndone = { count ->
-                callbacks.onT9RightCommitUndone?.invoke(count)
-            }
+            onCompositionRefresh = { callbacks.onT9RefreshComposition?.invoke() }
         )
     }
 
@@ -110,15 +103,12 @@ fun KeyboardView(
     SideEffect {
         callbacks.onT9RightCandidateWillBeSelected = { pinyin, textLength ->
             t9Controller.onRightCandidateSelected(pinyin, textLength)
-            t9Controller.inputBuffer.isEmpty
         }
         callbacks.onT9ForceSendToRime = {
             t9Controller.forceSendToRime()
         }
         callbacks.onFilterT9Candidates = { candidates, comments ->
-            filterCandidatesBySelectionHistory(
-                candidates, comments, t9Controller.selectionHistory
-            )
+            Pair(candidates, comments)  // no-op: t9_processor handles filtering
         }
     }
 

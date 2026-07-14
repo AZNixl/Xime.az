@@ -25,6 +25,7 @@ switches:
 
 engine:
   processors:
+    - t9_processor
     - ascii_composer
     - recognizer
     - key_binder

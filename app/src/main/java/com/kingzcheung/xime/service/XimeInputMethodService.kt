@@ -1016,6 +1016,10 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                         currentInputConnection?.deleteSurroundingText(count, 0)
                                         t9PartialCommitTexts.removeLastOrNull()
                                     },
+                                    onT9RefreshComposition = {
+                                        val composition = rimeEngine.getComposition()
+                                        mainHandler.post { applyComposition(composition) }
+                                    },
                                     onT9SwitchAway = {
                                         postRimeJob {
                                             commitFirstCandidateAndClearT9()

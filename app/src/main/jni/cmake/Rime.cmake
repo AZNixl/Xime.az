@@ -38,7 +38,7 @@ if(EXISTS "${LUA_LIOLIB_SRC}")
 endif()
 
 # 已集成的插件
-set(RIME_PLUGINS librime-octagram librime-predict)
+set(RIME_PLUGINS librime-octagram librime-predict librime-t9)
 
 # 将插件复制到 plugins/ 目录
 foreach(plugin ${RIME_PLUGINS})
