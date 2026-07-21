@@ -34,7 +34,8 @@ enum class ToolbarButton(
     PASTE("paste", "黏贴", Icons.TwoTone.ContentPaste),
     HOME("home", "段首", Icons.TwoTone.FirstPage),
     END("end", "段尾", Icons.AutoMirrored.TwoTone.LastPage),
-    HANDWRITING_LOOKUP("handwriting_lookup", "手写找字", Icons.Outlined.Gesture);
+    HANDWRITING_LOOKUP("handwriting_lookup", "手写找字", Icons.Outlined.Gesture),
+    EDIT("edit", "编辑", Icons.Default.Create);
 
     companion object {
         val DEFAULT_VISIBLE = emptySet<ToolbarButton>()
