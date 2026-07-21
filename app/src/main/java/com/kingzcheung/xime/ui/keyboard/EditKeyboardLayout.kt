@@ -34,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.toArgb
@@ -197,36 +198,63 @@ private fun CircularDPad(
     val outerFraction = 0.92f
     val innerFraction = 0.38f
 
+    var pressedAction by remember { mutableStateOf<String?>(null) }
     Box(
         modifier = modifier
             .aspectRatio(1f)
             .clip(CircleShape)
             .background(keyBg)
             .pointerInput(isSelecting) {
-                detectTapGestures { offset ->
-                    val w = size.width.toFloat()
-                    val h = size.height.toFloat()
-                    val cx = w / 2f
-                    val cy = h / 2f
-                    val dist = sqrt((offset.x - cx) * (offset.x - cx) + (offset.y - cy) * (offset.y - cy))
-                    val outerR = w / 2f * outerFraction
-                    val innerR = w / 2f * innerFraction
-
-                    when {
-                        dist < innerR -> onToggleSelect()
-                        dist < outerR -> {
-                            val angle = atan2(offset.y - cy, offset.x - cx)
-                            val deg = ((Math.toDegrees(angle.toDouble()) + 360) % 360).toFloat()
-                            val dirAction = when {
-                                deg in 225f..314f -> quadrants[0].actionBase
-                                deg in 315f..359f || deg in 0f..44f -> quadrants[1].actionBase
-                                deg in 45f..134f -> quadrants[2].actionBase
-                                else -> quadrants[3].actionBase
+                detectTapGestures(
+                    onPress = { offset ->
+                        val w = size.width.toFloat()
+                        val h = size.height.toFloat()
+                        val cx = w / 2f
+                        val cy = h / 2f
+                        val dist = sqrt((offset.x - cx) * (offset.x - cx) + (offset.y - cy) * (offset.y - cy))
+                        val outerR = w / 2f * outerFraction
+                        val innerR = w / 2f * innerFraction
+                        when {
+                            dist < innerR -> pressedAction = "center"
+                            dist < outerR -> {
+                                val angle = atan2(offset.y - cy, offset.x - cx)
+                                val deg = ((Math.toDegrees(angle.toDouble()) + 360) % 360).toFloat()
+                                pressedAction = when {
+                                    deg in 225f..314f -> quadrants[0].actionBase
+                                    deg in 315f..359f || deg in 0f..44f -> quadrants[1].actionBase
+                                    deg in 45f..134f -> quadrants[2].actionBase
+                                    else -> quadrants[3].actionBase
+                                }
                             }
-                            onDirection(dirAction)
+                            else -> pressedAction = null
+                        }
+                        tryAwaitRelease()
+                        pressedAction = null
+                    },
+                    onTap = { offset ->
+                        val w = size.width.toFloat()
+                        val h = size.height.toFloat()
+                        val cx = w / 2f
+                        val cy = h / 2f
+                        val dist = sqrt((offset.x - cx) * (offset.x - cx) + (offset.y - cy) * (offset.y - cy))
+                        val outerR = w / 2f * outerFraction
+                        val innerR = w / 2f * innerFraction
+                        when {
+                            dist < innerR -> onToggleSelect()
+                            dist < outerR -> {
+                                val angle = atan2(offset.y - cy, offset.x - cx)
+                                val deg = ((Math.toDegrees(angle.toDouble()) + 360) % 360).toFloat()
+                                val dirAction = when {
+                                    deg in 225f..314f -> quadrants[0].actionBase
+                                    deg in 315f..359f || deg in 0f..44f -> quadrants[1].actionBase
+                                    deg in 45f..134f -> quadrants[2].actionBase
+                                    else -> quadrants[3].actionBase
+                                }
+                                onDirection(dirAction)
+                            }
                         }
                     }
-                }
+                )
             }
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
@@ -260,6 +288,27 @@ private fun CircularDPad(
                 radius = centerR,
                 style = Stroke(width = 1.dp.toPx())
             )
+
+            // 按下效果：外圆向内圆方向渐变
+            val pressedIdx = quadrants.indexOfFirst { it.actionBase == pressedAction }
+            if (pressedIdx >= 0) {
+                val q = quadrants[pressedIdx]
+                val gradient = Brush.radialGradient(
+                    0f to Color.Transparent,
+                    (innerR / outerR) to Color.Transparent,
+                    1f to accentColor.copy(alpha = 0.3f),
+                    center = Offset(cx, cy),
+                    radius = outerR
+                )
+                drawArc(
+                    brush = gradient,
+                    startAngle = q.startAngle,
+                    sweepAngle = 90f,
+                    useCenter = true,
+                    topLeft = Offset.Zero,
+                    size = size
+                )
+            }
 
             directionLabelPaint.textSize = 28.sp.toPx()
             directionLabelPaint.color = textColor.toArgb()
