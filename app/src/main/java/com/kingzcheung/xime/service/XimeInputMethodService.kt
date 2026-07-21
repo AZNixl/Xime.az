@@ -2741,6 +2741,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         when (action) {
             "select_all" -> ic.performContextMenuAction(android.R.id.selectAll)
             "copy" -> ic.performContextMenuAction(android.R.id.copy)
+            "cut" -> ic.performContextMenuAction(android.R.id.cut)
             "paste" -> ic.performContextMenuAction(android.R.id.paste)
             "home" -> ic.setSelection(0, 0)
             "end" -> {
