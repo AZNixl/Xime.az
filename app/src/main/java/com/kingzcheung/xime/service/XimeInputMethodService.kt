@@ -177,6 +177,8 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     private val voiceAmplitudeState = mutableFloatStateOf(0f)
     private val quickSendItemsState = mutableStateOf<List<com.kingzcheung.xime.clipboard.ClipboardItem>>(emptyList())
     private val recentClipboardItemsState = mutableStateOf<List<com.kingzcheung.xime.clipboard.ClipboardItem>>(emptyList())
+
+
     private var hasHardwareKeyboard = false
     private var floatingWinX = 100
     private var floatingWinY = 300
@@ -2732,20 +2734,86 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         }
     }
     
+    private var editSelAnchor = -1
+
     private fun handleToolbarEditingAction(action: String) {
         val ic = currentInputConnection ?: return
         when (action) {
             "select_all" -> ic.performContextMenuAction(android.R.id.selectAll)
             "copy" -> ic.performContextMenuAction(android.R.id.copy)
             "paste" -> ic.performContextMenuAction(android.R.id.paste)
-            "home" -> {
-                ic.setSelection(0, 0)
-            }
+            "home" -> ic.setSelection(0, 0)
             "end" -> {
-                val textBefore = ic.getTextBeforeCursor(SAFE_TEXT_LIMIT, 0) ?: ""
-                val textAfter = ic.getTextAfterCursor(SAFE_TEXT_LIMIT, 0) ?: ""
-                ic.setSelection(textBefore.length + textAfter.length, textBefore.length + textAfter.length)
+                val before = ic.getTextBeforeCursor(SAFE_TEXT_LIMIT, 0) ?: ""
+                val after = ic.getTextAfterCursor(SAFE_TEXT_LIMIT, 0) ?: ""
+                ic.setSelection(before.length + after.length, before.length + after.length)
             }
+            "arrow_up" -> {
+                val t = SystemClock.uptimeMillis()
+                ic.sendKeyEvent(KeyEvent(t, t, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_UP, 0))
+                ic.sendKeyEvent(KeyEvent(t, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_UP, 0))
+            }
+            "arrow_down" -> {
+                val t = SystemClock.uptimeMillis()
+                ic.sendKeyEvent(KeyEvent(t, t, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_DOWN, 0))
+                ic.sendKeyEvent(KeyEvent(t, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_DOWN, 0))
+            }
+            "arrow_left" -> {
+                val t = SystemClock.uptimeMillis()
+                ic.sendKeyEvent(KeyEvent(t, t, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_LEFT, 0))
+                ic.sendKeyEvent(KeyEvent(t, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_LEFT, 0))
+            }
+            "arrow_right" -> {
+                val t = SystemClock.uptimeMillis()
+                ic.sendKeyEvent(KeyEvent(t, t, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT, 0))
+                ic.sendKeyEvent(KeyEvent(t, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_RIGHT, 0))
+            }
+
+            "select_begin" -> {
+                editSelAnchor = (ic.getTextBeforeCursor(SAFE_TEXT_LIMIT, 0) ?: "").length
+            }
+            "select_end" -> {
+                editSelAnchor = -1
+            }
+            "select_arrow_left" -> extendSelection(ic, -1)
+            "select_arrow_right" -> extendSelection(ic, 1)
+            "select_arrow_up" -> {
+                val before = ic.getTextBeforeCursor(SAFE_TEXT_LIMIT, 0) ?: ""
+                val pos = before.length
+                if (pos > 0) {
+                    val prevNewline = before.lastIndexOf('\n', pos - 2)
+                    val lineStart = if (prevNewline >= 0) prevNewline + 1 else 0
+                    ic.beginBatchEdit()
+                    ic.setSelection(editSelAnchor, lineStart)
+                    ic.endBatchEdit()
+                }
+            }
+            "select_arrow_down" -> {
+                val before = ic.getTextBeforeCursor(SAFE_TEXT_LIMIT, 0) ?: ""
+                val after = ic.getTextAfterCursor(SAFE_TEXT_LIMIT, 0) ?: ""
+                val pos = before.length
+                val total = before.length + after.length
+                if (pos < total) {
+                    val nextNewline = after.indexOf('\n')
+                    val lineEnd = if (nextNewline >= 0) pos + nextNewline else total
+                    ic.beginBatchEdit()
+                    ic.setSelection(editSelAnchor, lineEnd)
+                    ic.endBatchEdit()
+                }
+            }
+        }
+    }
+
+    private fun extendSelection(ic: InputConnection, direction: Int) {
+        val before = ic.getTextBeforeCursor(SAFE_TEXT_LIMIT, 0) ?: ""
+        val after = ic.getTextAfterCursor(SAFE_TEXT_LIMIT, 0) ?: ""
+        val pos = before.length
+        val total = before.length + after.length
+        val next = (pos + direction).coerceIn(0, total)
+        if (next != pos) {
+            ic.beginBatchEdit()
+            ic.setSelection(editSelAnchor, next)
+            ic.endBatchEdit()
         }
     }
 
