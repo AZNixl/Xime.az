@@ -92,41 +92,52 @@ fun CommonSymbolKeyboardLayout(
     )
 
     CompositionLocalProvider(LocalKeyCornerRadius provides keyCornerRadius) {
-        Box(
-            modifier = modifier
-                .fillMaxWidth()
-                .fillMaxHeight()
-                .background(keyboardBackgroundColor)
-                .onGloballyPositioned { coordinates ->
-                    keyboardBounds = coordinates.boundsInRoot()
-                }
-                .drawWithContent {
-                    drawContent()
-                    bubbleData?.let { drawSwipeBubble(it) }
-                }
-                .padding(bottom = if (isFloatingMode || isLandscape) 0.dp else 10.dp),
-        ) {
-            if (isLandscape) {
-                CommonSymbolLandscapeContent(
-                    onKeyPress = onKeyPress,
-                    row2Symbols = row2Symbols,
-                    row3Symbols = row3Symbols,
-                    keyBackgroundColor = keyBackgroundColor,
-                    keyTextColor = keyTextColor,
-                    specialKeyBackgroundColor = specialKeyBackgroundColor,
-                    shadowEnabled = shadowEnabled,
-                    shadowElevation = shadowElevation,
-                    shadowShapeRadius = shadowShapeRadius,
-                    onKeyPressDown = onKeyPressDown,
-                    suppressCursorMove = suppressCursorMove,
-                    onSwipeStateChange = { state, bounds -> processSwipeState(state, bounds) },
-                    specialKeyTextColor = specialKeyTextColor,
-                    isAsciiMode = localAsciiMode,
-                    onToggleAsciiMode = { localAsciiMode = !localAsciiMode },
-                )
-            } else {
-                CompositionLocalProvider(
-                    LocalKeyVisualPadding provides PaddingValues(horizontal = 2.dp, vertical = 4.dp)
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .fillMaxHeight()
+            .background(keyboardBackgroundColor)
+            .onGloballyPositioned { coordinates ->
+                keyboardBounds = coordinates.boundsInRoot()
+            }
+            .drawWithContent {
+                drawContent()
+                bubbleData?.let { drawSwipeBubble(it) }
+            }
+            .padding(bottom = if (isFloatingMode || isLandscape) 0.dp else 0.dp),
+    ) {
+        if (isLandscape) {
+            CommonSymbolLandscapeContent(
+                onKeyPress = onKeyPress,
+                row2Symbols = row2Symbols,
+                row3Symbols = row3Symbols,
+                commaChar = commaChar,
+                periodChar = periodChar,
+                keyBackgroundColor = keyBackgroundColor,
+                keyTextColor = keyTextColor,
+                specialKeyBackgroundColor = specialKeyBackgroundColor,
+                shadowEnabled = shadowEnabled,
+                shadowElevation = shadowElevation,
+                shadowShapeRadius = shadowShapeRadius,
+                onKeyPressDown = onKeyPressDown,
+                suppressCursorMove = suppressCursorMove,
+                onSwipeStateChange = { state, bounds -> processSwipeState(state, bounds) },
+                specialKeyTextColor = specialKeyTextColor,
+            )
+        } else {
+            CompositionLocalProvider(
+                LocalKeyVisualPadding provides PaddingValues(horizontal = 2.dp, vertical = 4.dp)
+            ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight()
+                    .padding(start = 4.dp, end = 4.dp, bottom = 8.dp),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
                 ) {
                     Column(
                         modifier = Modifier
