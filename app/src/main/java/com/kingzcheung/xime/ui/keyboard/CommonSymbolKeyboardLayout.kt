@@ -111,8 +111,6 @@ fun CommonSymbolKeyboardLayout(
                 onKeyPress = onKeyPress,
                 row2Symbols = row2Symbols,
                 row3Symbols = row3Symbols,
-                commaChar = commaChar,
-                periodChar = periodChar,
                 keyBackgroundColor = keyBackgroundColor,
                 keyTextColor = keyTextColor,
                 specialKeyBackgroundColor = specialKeyBackgroundColor,
@@ -315,10 +313,12 @@ fun CommonSymbolKeyboardLayout(
             }
         }
     }
+    }
+    }
 }
 
 @Composable
-private fun CommonSymbolLandscapeContent(
+fun CommonSymbolLandscapeContent(
     onKeyPress: (String) -> Unit,
     row2Symbols: List<String>,
     row3Symbols: List<String>,
