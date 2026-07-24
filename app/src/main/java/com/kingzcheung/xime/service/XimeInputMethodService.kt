@@ -1764,7 +1764,12 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             displayComments = display.displayComments
             isComposing = display.isComposing
         } else {
-            displayText = if (preeditText.isNotEmpty()) preeditText else inputText
+            val strippedPreedit = preeditText.replace(" ", "").replace("'", "")
+            displayText = if (strippedPreedit.isNotEmpty() && strippedPreedit != inputText) {
+                preeditText
+            } else {
+                inputText
+            }
             displayCandidates = filteredTexts
             displayComments = filteredComments
             isComposing = inputText.isNotEmpty()
@@ -1840,7 +1845,12 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             displayComments = display.displayComments
             isComposing = display.isComposing
         } else {
-            displayText = if (result.preeditText.isNotEmpty()) result.preeditText else result.inputText
+            val strippedPreedit = result.preeditText.replace(" ", "").replace("'", "")
+            displayText = if (strippedPreedit.isNotEmpty() && strippedPreedit != result.inputText) {
+                result.preeditText
+            } else {
+                result.inputText
+            }
             displayCandidates = filteredTexts
             displayComments = filteredComments
             isComposing = result.inputText.isNotEmpty()
