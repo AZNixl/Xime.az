@@ -1763,17 +1763,15 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             displayComments = display.displayComments
             isComposing = display.isComposing
         } else {
-            val strippedPreedit = preeditText.replace(" ", "").replace("'", "")
-            displayText = if (strippedPreedit.isNotEmpty() && strippedPreedit != inputText) {
-                preeditText
-            } else {
-                inputText
+            val lowerInput = inputText.lowercase()
+            val hasExtraContent = preeditText.any { c ->
+                !c.isWhitespace() && c != '\'' && !lowerInput.contains(c.lowercaseChar())
             }
+            displayText = if (preeditText.isNotEmpty() && hasExtraContent) preeditText else inputText
             displayCandidates = filteredTexts
             displayComments = filteredComments
             isComposing = inputText.isNotEmpty()
         }
-
 
         candidateState.value = candidateState.value.copy(
             inputText = displayText,
@@ -1844,12 +1842,11 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             displayComments = display.displayComments
             isComposing = display.isComposing
         } else {
-            val strippedPreedit = result.preeditText.replace(" ", "").replace("'", "")
-            displayText = if (strippedPreedit.isNotEmpty() && strippedPreedit != result.inputText) {
-                result.preeditText
-            } else {
-                result.inputText
+            val lowerInput = result.inputText.lowercase()
+            val hasExtraContent = result.preeditText.any { c ->
+                !c.isWhitespace() && c != '\'' && !lowerInput.contains(c.lowercaseChar())
             }
+            displayText = if (result.preeditText.isNotEmpty() && hasExtraContent) result.preeditText else result.inputText
             displayCandidates = filteredTexts
             displayComments = filteredComments
             isComposing = result.inputText.isNotEmpty()
