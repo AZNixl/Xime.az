@@ -287,6 +287,7 @@ fun KeyboardView(
                         ToolbarButton.END -> ({ callbacks.onToolbarEditingAction?.invoke("end") })
                         ToolbarButton.FLOAT -> ({ callbacks.onFloatingModeChange?.invoke(!state.isFloatingMode) })
                         ToolbarButton.HANDWRITING_LOOKUP -> ({ isHandwritingLookup = !isHandwritingLookup })
+                        ToolbarButton.EDIT -> ({ viewModel.showOverlay(OverlayRoute.Edit) })
                     }
                     ToolbarAction(button, onClick)
                 },
@@ -858,6 +859,24 @@ fun KeyboardView(
                         bottomPaddingDp = state.keyboardBottomPaddingDp,
                         modifier = Modifier.fillMaxWidth().fillMaxHeight()
                     )
+                    is OverlayRoute.Edit -> {
+                        val editAction: (String) -> Unit = { action ->
+                            when (action) {
+                                "delete" -> callbacks.onKeyPress("delete", false)
+                                "enter" -> callbacks.onKeyPress("enter", false)
+                                else -> callbacks.onToolbarEditingAction?.invoke(action)
+                            }
+                        }
+                        EditKeyboardLayout(
+                            onAction = editAction,
+                            onBack = { viewModel.closeOverlay() },
+                            backgroundColor = candidateBarBg,
+                            textColor = keyTextColor,
+                            accentColor = accentColor,
+                            bottomPaddingDp = state.keyboardBottomPaddingDp,
+                            modifier = Modifier.fillMaxWidth().fillMaxHeight()
+                        )
+                    }
                     is OverlayRoute.Emoji -> EmojiKeyboardLayout(
                         onEmojiSelect = { emoji ->
                             if (emoji == "delete") {
