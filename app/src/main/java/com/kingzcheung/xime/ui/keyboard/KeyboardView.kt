@@ -10,8 +10,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -26,11 +33,14 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kingzcheung.xime.handwriting.HandwritingCandidate
 import com.kingzcheung.xime.keyboard.KeyboardPage
@@ -110,7 +120,12 @@ fun KeyboardView(
 
     SideEffect {
         callbacks.onT9RightCandidateWillBeSelected = { pinyin, textLength ->
-            t9Controller.onRightCandidateSelected(pinyin, textLength)
+            if (pinyin.isNullOrBlank()) {
+                // emoji/符号等无拼音注释的候选词：直接提交上屏，不走消耗算法
+                t9Controller.onRightCandidateSelectedByDirectCommit()
+            } else {
+                t9Controller.onRightCandidateSelected(pinyin, textLength)
+            }
             t9Controller.inputBuffer.isEmpty
         }
         callbacks.onT9ForceSendToRime = {
@@ -131,9 +146,6 @@ fun KeyboardView(
         if (keyboardState is KeyboardLayoutState.Number) {
             if (savedNumberAsciiMode == null) {
                 savedNumberAsciiMode = state.isAsciiMode
-                if (!state.isAsciiMode && page is KeyboardPage.Main) {
-                    callbacks.onKeyPress("ime_switch", false)
-                }
             }
         } else {
             savedNumberAsciiMode = null
@@ -225,6 +237,33 @@ fun KeyboardView(
                 }
             }
 
+            if (state.showQuickSendForm) {
+                QuickSendFormArea(
+                    backgroundColor = candidateBarBg,
+                    textColor = keyTextColor,
+                    accentColor = accentColor,
+                    isDarkTheme = state.isDarkTheme,
+                    isFocused = state.quickSendFormFocused,
+                    initialText = state.quickSendEditingItemText,
+                    cardBgColor = keyBgColor,
+                    editingItemId = state.quickSendEditingItemId,
+                    onClose = { text: String ->
+                        if (text.isNotBlank()) {
+                            val editingId = state.quickSendEditingItemId
+                            if (editingId != null) {
+                                viewModel.updateQuickSendItem(editingId, text)
+                            } else {
+                                viewModel.addQuickSendText(text)
+                            }
+                        }
+                        callbacks.onHideQuickSendForm?.invoke()
+                    },
+                    onFocusChange = { focused: Boolean ->
+                        callbacks.onQuickSendFormFocusChange?.invoke(focused)
+                    },
+                )
+            }
+
             CandidateBar(
                 state = candidateBarState,
                 page = page,
@@ -249,6 +288,7 @@ fun KeyboardView(
                         ToolbarButton.END -> ({ callbacks.onToolbarEditingAction?.invoke("end") })
                         ToolbarButton.FLOAT -> ({ callbacks.onFloatingModeChange?.invoke(!state.isFloatingMode) })
                         ToolbarButton.HANDWRITING_LOOKUP -> ({ isHandwritingLookup = !isHandwritingLookup })
+                        ToolbarButton.EDIT -> ({ viewModel.showOverlay(OverlayRoute.Edit) })
                     }
                     ToolbarAction(button, onClick)
                 },
@@ -424,6 +464,7 @@ fun KeyboardView(
                         val numberOnKeyPress: (String) -> Unit = { key ->
                             when (key) {
                                 "abc" -> {
+                                    callbacks.onKeyPress("abc", false)
                                     val saved = savedNumberAsciiMode
                                     savedNumberAsciiMode = null
                                     if (saved != null && saved != state.isAsciiMode) {
@@ -800,7 +841,15 @@ fun KeyboardView(
                         onBack = { viewModel.closeOverlay() },
                         onClipboardTabChange = { viewModel.pushOverlay(OverlayRoute.Clipboard(it)) },
                         bottomPaddingDp = state.keyboardBottomPaddingDp,
-                        modifier = Modifier.fillMaxWidth().fillMaxHeight()
+                        modifier = Modifier.fillMaxWidth().fillMaxHeight(),
+                        onQuickSendAddClick = {
+                            viewModel.closeOverlay()
+                            callbacks.onShowQuickSendForm?.invoke()
+                        },
+                        onQuickSendEditItem = { id, text ->
+                            viewModel.closeOverlay()
+                            callbacks.onQuickSendEditItem?.invoke(id, text)
+                        },
                     )
                     is OverlayRoute.ToolbarCustomize -> ToolbarCustomizeView(
                         toolbarButtons = state.toolbarButtons,
@@ -812,6 +861,24 @@ fun KeyboardView(
                         bottomPaddingDp = state.keyboardBottomPaddingDp,
                         modifier = Modifier.fillMaxWidth().fillMaxHeight()
                     )
+                    is OverlayRoute.Edit -> {
+                        val editAction: (String) -> Unit = { action ->
+                            when (action) {
+                                "delete" -> callbacks.onKeyPress("delete", false)
+                                "enter" -> callbacks.onKeyPress("enter", false)
+                                else -> callbacks.onToolbarEditingAction?.invoke(action)
+                            }
+                        }
+                        EditKeyboardLayout(
+                            onAction = editAction,
+                            onBack = { viewModel.closeOverlay() },
+                            backgroundColor = candidateBarBg,
+                            textColor = keyTextColor,
+                            accentColor = accentColor,
+                            bottomPaddingDp = state.keyboardBottomPaddingDp,
+                            modifier = Modifier.fillMaxWidth().fillMaxHeight()
+                        )
+                    }
                     is OverlayRoute.Emoji -> EmojiKeyboardLayout(
                         onEmojiSelect = { emoji ->
                             if (emoji == "delete") {
@@ -887,3 +954,5 @@ fun KeyboardView(
     }
     }
 }
+
+

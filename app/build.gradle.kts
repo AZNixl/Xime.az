@@ -1,6 +1,8 @@
 import com.android.build.gradle.internal.api.BaseVariantOutputImpl
+import com.android.build.api.variant.ApplicationAndroidComponentsExtension
 import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.Locale
 import java.util.Properties
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -308,8 +310,8 @@ android {
         applicationId = "com.kingzcheung.xime"
         minSdk = 28
         targetSdk = 35
-        versionCode = 55
-        versionName = "2.5.0-beta12"
+        versionCode = 20260724
+        versionName = "2.6.0-beta1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         
@@ -394,7 +396,7 @@ android {
         checkDependencies = true
     }
     
-    // 分架构打�?
+    // 分架构打包
     splits {
         abi {
             isEnable = true
@@ -413,6 +415,19 @@ android.applicationVariants.all {
     }
 }
 
+// Nightly 构建通过 androidComponents API 覆盖 versionCode/versionName
+androidComponents {
+    onVariants { variant ->
+        val vc = project.findProperty("versionCode")?.toString()?.toIntOrNull()
+        val vn = project.findProperty("versionName")?.toString()
+        if (vc != null && vn != null) {
+            variant.outputs.forEach { output ->
+                output.versionCode.set(vc)
+                output.versionName.set(vn)
+            }
+        }
+    }
+}
 dependencies {
     implementation(project(":plugin-core"))
     implementation(libs.androidx.core.ktx)
@@ -420,7 +435,7 @@ dependencies {
     implementation(libs.material)
     
     // Kotlin stdlib - CRITICAL for plugin compatibility
-    implementation("org.jetbrains.kotlin:kotlin-stdlib:2.3.20")
+    implementation("org.jetbrains.kotlin:kotlin-stdlib:2.4.10")
     implementation(libs.kotlinx.coroutines.core)
     
     // Jetpack Compose
@@ -447,16 +462,13 @@ dependencies {
     // SavedState
     implementation(libs.androidx.savedstate)
     
-    // Coil (Image Loading with SVG support)
+    // Coil (Image Loading)
     implementation(libs.coil)
-    implementation(libs.coil.svg)
     
     // OkHttp for WebSocket and model download
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("com.squareup.okhttp3:okhttp-sse:4.12.0")
-    
+    implementation("com.squareup.okhttp3:okhttp:5.4.0")
     // Apache Commons Compress for tar.bz2 extraction
-    implementation("org.apache.commons:commons-compress:1.26.0")
+    implementation("org.apache.commons:commons-compress:1.28.0")
     
     // Kaml for YAML parsing
     implementation(libs.kaml)
@@ -471,8 +483,8 @@ dependencies {
     implementation("com.google.zxing:core:3.5.3")
 
     // Ktor embedded server for wireless import
-    implementation("io.ktor:ktor-server-core:3.1.2")
-    implementation("io.ktor:ktor-server-cio:3.1.2")
+    implementation("io.ktor:ktor-server-core:3.5.1")
+    implementation("io.ktor:ktor-server-cio:3.5.1")
 
     // Sora Code Editor for YAML viewing/editing
     implementation(platform("io.github.rosemoe:editor-bom:0.24.4"))
@@ -484,7 +496,7 @@ dependencies {
     
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.core)
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
     testImplementation("org.mockito:mockito-core:5.8.0")
     testImplementation("org.mockito.kotlin:mockito-kotlin:5.2.1")
     
@@ -492,7 +504,7 @@ dependencies {
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
-    androidTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+    androidTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test:rules:1.6.1")
     androidTestImplementation("androidx.concurrent:concurrent-futures:1.2.0")

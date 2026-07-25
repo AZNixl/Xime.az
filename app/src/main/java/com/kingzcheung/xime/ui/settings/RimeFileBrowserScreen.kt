@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -25,25 +26,35 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.IosShare
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -52,6 +63,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.kingzcheung.xime.settings.ExportMode
+import com.kingzcheung.xime.settings.ExportResult
+import com.kingzcheung.xime.settings.RimeExportManager
 import com.kingzcheung.xime.settings.SchemaManager
 import io.github.rosemoe.sora.event.ContentChangeEvent
 import io.github.rosemoe.sora.langs.textmate.TextMateColorScheme
@@ -86,6 +100,12 @@ fun RimeFileBrowserContent(onBack: () -> Unit) {
     var entries by remember { mutableStateOf(listOf<FileEntry>()) }
     var viewingFile by remember { mutableStateOf<File?>(null) }
     var showDeleteDialog by remember { mutableStateOf<File?>(null) }
+    var showExportDialog by remember { mutableStateOf(false) }
+    var exportMode by remember { mutableStateOf(ExportMode.CONFIG_ONLY) }
+    var exportInProgress by remember { mutableStateOf(false) }
+    var exportResult by remember { mutableStateOf<ExportResult?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     fun refresh() {
         entries = currentDir.listFiles()
@@ -149,13 +169,17 @@ fun RimeFileBrowserContent(onBack: () -> Unit) {
                     IconButton(onClick = { refresh() }) {
                         Icon(Icons.Default.Refresh, contentDescription = "刷新")
                     }
+                    IconButton(onClick = { showExportDialog = true }) {
+                        Icon(Icons.Default.IosShare, contentDescription = "导出")
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
                     titleContentColor = MaterialTheme.colorScheme.onBackground
                 )
             )
-        }
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { innerPadding ->
         if (entries.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize().padding(innerPadding),
@@ -170,13 +194,24 @@ fun RimeFileBrowserContent(onBack: () -> Unit) {
                 items(entries, key = { currentDir.absolutePath + "/" + it.name }) { entry ->
                     FileEntryRow(
                         entry = entry,
-                        onView = { viewingFile = entry.file },
+                        onView = {
+                            if (entry.isDirectory) {
+                                currentDir = entry.file
+                            } else if (entry.name.endsWith(".bin") || entry.name.endsWith(".gram")) {
+                                Toast.makeText(context, "不支持打开二进制文件", Toast.LENGTH_SHORT).show()
+                            } else {
+                                viewingFile = entry.file
+                            }
+                        },
                         onDelete = {
                             if (entry.isDirectory) {
                                 showDeleteDialog = entry.file
                             } else {
                                 showDeleteDialog = entry.file
                             }
+                        },
+                        onShare = {
+                            RimeExportManager.shareSingleFile(context, entry.file)
                         }
                     )
                 }
@@ -200,6 +235,90 @@ fun RimeFileBrowserContent(onBack: () -> Unit) {
                     Text("取消")
                 }
             }
+        )
+    }
+
+    if (showExportDialog) {
+        AlertDialog(
+            onDismissRequest = { showExportDialog = false },
+            title = { Text("导出 Rime 配置") },
+            text = {
+                Column {
+                    Text("选择导出范围：")
+                    Spacer(Modifier.height(12.dp))
+                    ExportMode.entries.forEach { mode ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { exportMode = mode }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = exportMode == mode,
+                                onClick = { exportMode = mode }
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(mode.label, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        if (exportMode == ExportMode.CONFIG_ONLY)
+                            "排除 build/ 目录和 .bin/.gram 等编译产物"
+                        else
+                            "包含 Rime 目录下所有文件和子目录",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showExportDialog = false
+                        exportInProgress = true
+                        scope.launch {
+                            val result = withContext(Dispatchers.IO) {
+                                RimeExportManager.exportArchive(context, exportMode)
+                            }
+                            exportInProgress = false
+                            result.fold(
+                                onSuccess = { exportResult ->
+                                    val msg = if (exportResult.savedToDownloads)
+                                        "已保存到 Downloads/${exportResult.fileName}"
+                                    else
+                                        "导出完成"
+                                    snackbarHostState.showSnackbar(msg)
+                                },
+                                onFailure = { error ->
+                                    snackbarHostState.showSnackbar("导出失败: ${error.message}")
+                                }
+                            )
+                        }
+                    },
+                    enabled = !exportInProgress
+                ) {
+                    Text(if (exportInProgress) "导出中..." else "开始导出")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showExportDialog = false },
+                    enabled = !exportInProgress
+                ) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+
+    if (exportInProgress) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("导出中") },
+            text = { Text("正在打包 Rime 配置…") },
+            confirmButton = {}
         )
     }
 }
@@ -373,7 +492,7 @@ private fun YamlEditor(file: File, onDeleted: () -> Unit, onBack: () -> Unit) {
 private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
 
 @Composable
-private fun FileEntryRow(entry: FileEntry, onView: () -> Unit, onDelete: () -> Unit) {
+private fun FileEntryRow(entry: FileEntry, onView: () -> Unit, onDelete: () -> Unit, onShare: () -> Unit = {}) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -425,6 +544,14 @@ private fun FileEntryRow(entry: FileEntry, onView: () -> Unit, onDelete: () -> U
             }
         }
         if (!entry.isDirectory) {
+            IconButton(onClick = onShare, modifier = Modifier.size(36.dp)) {
+                Icon(
+                    Icons.Default.Share,
+                    contentDescription = "分享",
+                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
+                    modifier = Modifier.size(20.dp)
+                )
+            }
             IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) {
                 Icon(
                     Icons.Default.Delete,

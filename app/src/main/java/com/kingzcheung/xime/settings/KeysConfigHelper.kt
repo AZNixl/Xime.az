@@ -69,6 +69,14 @@ data class KeyboardConfig(
 )
 
 /**
+ * 键盘行布局配置，从 xime.yaml keyboard.<section>.layout 加载。
+ * rows[i] 为第 i 行的按键 ID 列表。
+ */
+data class KeyboardLayoutConfig(
+    val rows: List<List<String>> = emptyList(),
+)
+
+/**
  * 键盘阴影配置，从 xime.yaml keyboard.shadow 加载。
  */
 data class KeyboardShadowConfig(
@@ -315,6 +323,26 @@ object KeysConfigHelper {
     private var _buttonLayoutEn: ButtonLayout = ButtonLayout.STANDARD
     fun getButtonLayout(isAsciiMode: Boolean): ButtonLayout =
         if (isAsciiMode) _buttonLayoutEn else _buttonLayoutZh
+
+    // 键盘行布局默认值
+    private val DEFAULT_ZH_ROWS: List<List<String>> = listOf(
+        listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p"),
+        listOf("a", "s", "d", "f", "g", "h", "j", "k", "l"),
+        listOf("z", "x", "c", "v", "b", "n", "m"),
+    )
+    private val DEFAULT_EN_ROWS: List<List<String>> = listOf(
+        listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p"),
+        listOf("a", "s", "d", "f", "g", "h", "j", "k", "l"),
+        listOf("z", "x", "c", "v", "b", "n", "m"),
+    )
+
+    // 键盘行布局缓存（中文 / 英文）
+    private var _zhRows: List<List<String>> = DEFAULT_ZH_ROWS
+    private var _enRows: List<List<String>> = DEFAULT_EN_ROWS
+
+    /** 获取键盘行布局，每个子 List 为一行的按键 ID 列表，索引 0=第一行 */
+    fun getKeyRows(isAsciiMode: Boolean): List<List<String>> =
+        if (isAsciiMode) _enRows else _zhRows
     
     /** 配置版本号，每次 loadConfig 时递增，用于 Compose 感知配置变更。 */
     private val _configVersion = MutableStateFlow(0)
@@ -348,6 +376,10 @@ object KeysConfigHelper {
             val parsedLayouts = parseButtonLayoutFromAssets(context)
             _buttonLayoutZh = parsedLayouts.first
             _buttonLayoutEn = parsedLayouts.second
+            // 键盘行布局
+            val parsedRows = parseKeyboardLayoutFromAssets(context)
+            _zhRows = parsedRows.first
+            _enRows = parsedRows.second
             // 校验配置版本兼容性
             val merged = try { loadMergedConfig(context) } catch (_: YamlException) { null }
             val meta = merged?.metadata
@@ -580,6 +612,43 @@ object KeysConfigHelper {
         return result
     }
 
+    /** 从 xime.yaml + xime.custom.yaml 合并解析键盘行布局。 */
+    private fun parseKeyboardLayoutFromAssets(context: Context): Pair<List<List<String>>, List<List<String>>> {
+        val defaultText = readAssetText(context, XIME_CONFIG_FILE) ?: return Pair(DEFAULT_ZH_ROWS, DEFAULT_EN_ROWS)
+
+        val defaultZh = parseKeyboardLayoutYamlText(defaultText, "qwerty")
+        val defaultEn = parseKeyboardLayoutYamlText(defaultText, "qwerty_en")
+
+        val customText = readUserDataText(context, XIME_CUSTOM_CONFIG_FILE)
+            ?: readAssetText(context, XIME_CUSTOM_CONFIG_FILE)
+
+        val customZh = customText?.let { parseKeyboardLayoutYamlText(it, "qwerty") }
+        val customEn = customText?.let { parseKeyboardLayoutYamlText(it, "qwerty_en") }
+
+        return Pair(
+            customZh ?: defaultZh ?: DEFAULT_ZH_ROWS,
+            customEn ?: defaultEn ?: DEFAULT_EN_ROWS,
+        )
+    }
+
+    /** 从 YAML 文本中提取 keyboard.<section>.layout.rows。 */
+    private fun parseKeyboardLayoutYamlText(yamlText: String, section: String): List<List<String>>? {
+        val root = yaml.parseToYamlNode(yamlText) as? YamlMap ?: return null
+        val keyboardNode = root["keyboard"] as? YamlMap ?: return null
+        val sectionNode = keyboardNode[section] as? YamlMap ?: return null
+        val layoutNode = sectionNode["layout"] as? YamlMap ?: return null
+        val rowsNode = layoutNode["rows"] as? YamlList ?: return null
+        val rows = mutableListOf<List<String>>()
+        for (rowNode in rowsNode.items) {
+            val rowList = rowNode as? YamlList ?: continue
+            val row = rowList.items.mapNotNull { (it as? YamlScalar)?.content }
+            if (row.isNotEmpty()) {
+                rows.add(row)
+            }
+        }
+        return rows.takeIf { it.isNotEmpty() }
+    }
+
     /** 从 YAML 文本中提取 keyboard.<section>.button_layout。 */
     private fun parseButtonLayoutYamlText(yamlText: String, section: String): ButtonLayout? {
         val root = yaml.parseToYamlNode(yamlText) as? YamlMap ?: return null
@@ -799,7 +868,6 @@ object KeysConfigHelper {
         val configMap = if (isAsciiMode) _keyGestureConfigEn.value else _keyGestureConfig.value
         return configMap[key.lowercase()]?.swipeUp?.display ?: DisplayMode.BOTH
     }
-
 
     private fun getDefaultSwipeUp(): Map<String, String> = mapOf(
         "q" to "1", "w" to "2", "e" to "3", "r" to "4", "t" to "5",
