@@ -122,7 +122,14 @@ class SchemaLocalViewModel(application: Application) : AndroidViewModel(applicat
             }
             _uiState.update { st -> st.copy(installingId = null) }
             if (result.success) {
-                showToast("已安装「${item.displayName}」，点「部署」生效")
+                val msg = buildString {
+                    append("已安装「${item.displayName}」，点「部署」生效")
+                    if (result.parseFailures.isNotEmpty()) {
+                        append("\n以下方案解析失败：")
+                        result.parseFailures.forEach { append("\n  · $it") }
+                    }
+                }
+                showToast(msg)
             } else {
                 showToast(result.failureReason ?: "安装失败")
             }
@@ -154,7 +161,14 @@ class SchemaLocalViewModel(application: Application) : AndroidViewModel(applicat
             }
             _uiState.update { st -> st.copy(installingId = null, conflictingSchemeIds = emptyList()) }
             if (result.success) {
-                showToast("已安装「${item.displayName}」，点「部署」生效")
+                val msg = buildString {
+                    append("已安装「${item.displayName}」，点「部署」生效")
+                    if (result.parseFailures.isNotEmpty()) {
+                        append("\n以下方案解析失败：")
+                        result.parseFailures.forEach { append("\n  · $it") }
+                    }
+                }
+                showToast(msg)
             } else {
                 showToast(result.failureReason ?: "安装失败")
             }
