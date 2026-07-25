@@ -93,7 +93,7 @@ fun CandidateBar(
     val context = LocalContext.current
     val showComments = SettingsPreferences.showCandidateComments(context)
     val inputTextLocation = SettingsPreferences.getInputTextLocation(context)
-    val inputTextInCandidateBar = inputTextLocation == SettingsPreferences.INPUT_TEXT_CANDIDATE_BAR
+    val showInputBoxStyle = inputTextLocation == SettingsPreferences.INPUT_TEXT_INPUT_BOX
 
     val density = LocalDensity.current
     val textMeasurer = rememberTextMeasurer()
@@ -211,7 +211,7 @@ fun CandidateBar(
     ) {
         val displayText = (state as? CandidateBarState.ChineseCandidates)?.preeditText
             ?: (state as? CandidateBarState.ChineseCandidates)?.inputText ?: ""
-        val showInputText = showInputTextRow && displayText.isNotEmpty() && inputTextInCandidateBar
+        val showInputText = showInputTextRow && displayText.isNotEmpty() && !showInputBoxStyle
 
         if (showInputText) {
             val inputTextInteractionSource = remember { MutableInteractionSource() }
