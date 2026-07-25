@@ -202,6 +202,7 @@ object SchemaManager {
         val newSchemaIds: List<String> = emptyList(),
         val unresolvedDeps: List<String> = emptyList(),
         val failureReason: String? = null,
+        val parseFailures: List<String> = emptyList(),
     )
 
     /**
@@ -240,6 +241,15 @@ object SchemaManager {
         val after = discoverSchemas(context).map { it.schemaId }.toSet()
         val newIds = (after - before).toList()
 
+        // 检查 target 中的 .schema.yaml 是否都解析成功
+        val targetSchemaIds = targetFiles
+            .filter { it.endsWith(".schema.yaml") }
+            .map { it.removeSuffix(".schema.yaml") }
+            .toSet()
+        val failedIds = targetSchemaIds - after
+        val parseFailures = if (failedIds.isEmpty()) emptyList()
+            else failedIds.map { "$it.schema.yaml 解析失败" }
+
         var unresolved = emptyList<String>()
         var dependencyIds = emptyList<String>()
         if (dependencies.isNotEmpty()) {
@@ -275,7 +285,7 @@ object SchemaManager {
             setEnabledSchemas(context, listOf(firstSchema))
         }
 
-        InstallFromDirResult(success = true, newSchemaIds = newIds, unresolvedDeps = unresolved)
+        InstallFromDirResult(success = true, newSchemaIds = newIds, unresolvedDeps = unresolved, parseFailures = parseFailures)
     }
 
     /** 解析单个归档（或普通文件）将被释放到 rime/ 的目标文件名列表。 */
@@ -550,10 +560,10 @@ object SchemaManager {
     internal fun parseSchemaYaml(file: File): SchemaMeta? {
         return try {
             val text = file.readText().trimStart('\uFEFF')
-            val entry = yaml.decodeFromString(SchemaYaml.serializer(), text).schema
+            val schemaBlock = extractSchemaBlock(text) ?: return null
+            val entry = yaml.decodeFromString(SchemaYaml.serializer(), schemaBlock).schema
             if (entry.schemaId.isEmpty()) return null
 
-            // author 可为标量或列表，从原始 YAML 节点手动提取
             val author = parseAuthorFromText(text)
 
             SchemaMeta(
@@ -564,9 +574,32 @@ object SchemaManager {
                 description = entry.description ?: ""
             )
         } catch (e: Exception) {
-            try { Log.w(TAG, "Failed to parse schema file: ${file.name}, skip") } catch (_: Exception) {}
+            try { Log.w(TAG, "Failed to parse schema file: ${file.name}, error=${e.message}, skip", e) } catch (_: Exception) {}
             null
         }
+    }
+
+    /**
+     * 从 YAML 文本中提取顶层 `schema:` 块及其子内容，返回一个可独立解析的 YAML 片段。
+     * 避免 kaml 因为文件的其他部分（重复 `__include`、锚点等）而报错。
+     */
+    internal fun extractSchemaBlock(yamlText: String): String? {
+        val lines = yamlText.lines()
+        val schemaLineIndex = lines.indexOfFirst {
+            it.trimStart().let { t -> t.startsWith("schema:") && (t.length == 7 || t[7] == ' ') }
+        }
+        if (schemaLineIndex < 0) return null
+
+        val schemaIndent = lines[schemaLineIndex].length - lines[schemaLineIndex].trimStart().length
+        val result = mutableListOf("schema:")
+        for (i in schemaLineIndex + 1 until lines.size) {
+            val line = lines[i]
+            if (line.isBlank()) continue
+            val indent = line.length - line.trimStart().length
+            if (indent <= schemaIndent) break
+            result.add(line)
+        }
+        return result.joinToString("\n")
     }
 
     private fun parseAuthorFromText(yamlText: String): String {
