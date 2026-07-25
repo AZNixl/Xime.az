@@ -73,6 +73,42 @@ fun LayoutDisplaySettingsContent(
         ) {
             item {
                 SettingsSection(title = "候选词", content = {
+                    val candidateTextSizePref = SettingsPreferences.getCandidateTextSize(context)
+                    var candidateTextSize by remember(candidateTextSizePref) {
+                        mutableStateOf(candidateTextSizePref.toFloat())
+                    }
+
+                    Column(
+                        modifier = Modifier.padding(16.dp)
+                    ) {
+                        Text(
+                            text = "候选字大小",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        CandidateTextSizeCard(
+                            candidateTextSize = candidateTextSize,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Slider(
+                            value = candidateTextSize,
+                            onValueChange = { candidateTextSize = it },
+                            onValueChangeFinished = {
+                                SettingsPreferences.setCandidateTextSize(context, candidateTextSize.toInt())
+                            },
+                            valueRange = 12f..22f,
+                            steps = 9
+                        )
+                    }
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = 16.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+
                     var showComments by remember {
                         mutableStateOf(SettingsPreferences.showCandidateComments(context))
                     }

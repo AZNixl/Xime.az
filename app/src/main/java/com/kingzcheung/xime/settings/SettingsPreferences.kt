@@ -80,6 +80,7 @@ object SettingsPreferences {
     private const val KEY_SHOW_CANDIDATE_COMMENTS = "show_candidate_comments"
     private const val KEY_INPUT_TEXT_LOCATION = "input_text_location"
     private const val KEY_PAGE_SIZE = "page_size"
+    private const val KEY_CANDIDATE_TEXT_SIZE = "candidate_text_size"
     const val INPUT_TEXT_INPUT_BOX = "input_box"
     const val INPUT_TEXT_CANDIDATE_BAR = "candidate_bar"
     const val DEFAULT_PAGE_SIZE = 0 // 0 表示使用 Rime schema 默认值
@@ -505,6 +506,16 @@ object SettingsPreferences {
 
     fun setPageSize(context: Context, pageSize: Int) {
         getPrefs(context).edit().putInt(KEY_PAGE_SIZE, pageSize).apply()
+    }
+
+    const val DEFAULT_CANDIDATE_TEXT_SIZE = 19
+
+    fun getCandidateTextSize(context: Context): Int {
+        return getPrefs(context).getInt(KEY_CANDIDATE_TEXT_SIZE, DEFAULT_CANDIDATE_TEXT_SIZE)
+    }
+
+    fun setCandidateTextSize(context: Context, size: Int) {
+        getPrefs(context).edit().putInt(KEY_CANDIDATE_TEXT_SIZE, size).apply()
     }
 
     // ── 方案市场「已安装」的持久记录 ──

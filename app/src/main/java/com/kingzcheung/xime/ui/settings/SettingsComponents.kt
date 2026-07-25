@@ -629,7 +629,7 @@ fun CodeDisplayCard(
                         ) {
                             Column(verticalArrangement = Arrangement.Center, modifier = Modifier.padding(vertical = 0.dp)) {
                                 Row(modifier = Modifier.padding(vertical = 2.dp)) {
-                                    Text("shu ru fa", fontSize = 9.sp, lineHeight = 1.sp, color = onSurface.copy(alpha = 0.6f))
+                                    Text("shu ru fa", fontSize = 10.sp, lineHeight = 1.sp, color = onSurface.copy(alpha = 0.6f))
                                 }
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
@@ -979,5 +979,73 @@ fun KeyboardThemeCard(
                 }
             }
         }
+    }
+}
+
+@Composable
+fun CandidateTextSizeCard(
+    candidateTextSize: Float,
+    modifier: Modifier = Modifier
+) {
+    val primary = MaterialTheme.colorScheme.primary
+    val onSurface = MaterialTheme.colorScheme.onSurface
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surface)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFFF0F2F4))
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+            ) {
+                Row(modifier = Modifier.padding(vertical = 2.dp)) {
+                    Text("shu ru fa", fontSize = 10.sp, lineHeight = 1.sp, color = onSurface.copy(alpha = 0.6f))
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(primary.copy(alpha = 0.2f))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = "输入法",
+                            fontSize = candidateTextSize.sp,
+                            color = primary,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "力学",
+                        fontSize = candidateTextSize.sp,
+                        color = onSurface,
+                        maxLines = 1
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Preview(name = "CandidateTextSizeCard - default")
+@Composable
+fun CandidateTextSizeCardPreview() {
+    XimeTheme {
+        CandidateTextSizeCard(
+            candidateTextSize = 19f,
+            modifier = Modifier.padding(16.dp).fillMaxWidth()
+        )
     }
 }
