@@ -589,7 +589,7 @@ fun CodeDisplayCard(
                             .fillMaxWidth()
                             .weight(1f)
                             .clip(RoundedCornerShape(6.dp))
-                            .background(Color(0xFFF0F2F4))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
                             .padding(6.dp)
                     ) {
                         Box(
@@ -597,8 +597,8 @@ fun CodeDisplayCard(
                                 .fillMaxWidth()
                                 .height(26.dp)
                                 .clip(RoundedCornerShape(4.dp))
-                                .background(Color.White)
-                                .border(0.5.dp, Color(0xFFDADCE0), RoundedCornerShape(4.dp))
+                                .background(MaterialTheme.colorScheme.surface)
+                                .border(0.5.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(4.dp))
                                 .padding(horizontal = 8.dp),
                             contentAlignment = Alignment.CenterStart
                         ) {
@@ -752,7 +752,7 @@ fun CommentDisplayCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFFF0F2F4))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
                             .padding(horizontal = 8.dp, vertical = 8.dp),
                         contentAlignment = Alignment.CenterStart
                     ) {
@@ -1005,7 +1005,7 @@ fun CandidateTextSizeCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xFFF0F2F4))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
                     .padding(horizontal = 12.dp, vertical = 10.dp),
             ) {
                 Row(modifier = Modifier.padding(vertical = 2.dp)) {
