@@ -40,7 +40,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.tooling.preview.Preview
 import com.kingzcheung.xime.settings.SchemaInfo
+import com.kingzcheung.xime.ui.theme.XimeTheme
 import com.kingzcheung.xime.ui.theme.KeyboardColorScheme
 
 @Composable
@@ -535,25 +538,315 @@ fun ThemeCard(
                         }
                     }
                 }
-                
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                    )
-                }
             }
         }
     }
 }
+
+@Composable
+fun CodeDisplayCard(
+    title: String,
+    isSelected: Boolean,
+    showCodeInInputBox: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val primary = MaterialTheme.colorScheme.primary
+    val onSurface = MaterialTheme.colorScheme.onSurface
+    val selectedBg = primary.copy(alpha = 0.15f)
+
+    Column(modifier = modifier) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .then(
+                    if (isSelected) {
+                        Modifier.border(
+                            width = 2.dp,
+                            color = primary,
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                    } else {
+                        Modifier
+                    }
+                )
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surface,
+                shadowElevation = 0.dp,
+                onClick = onClick
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(8.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .padding(6.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(26.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(MaterialTheme.colorScheme.surface)
+                                .border(0.5.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(4.dp))
+                                .padding(horizontal = 8.dp),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            if (showCodeInInputBox) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "曦码 shu ru fa",
+                                        fontSize = 12.sp,
+                                        color = onSurface,
+                                        maxLines = 1
+                                    )
+                                    Spacer(modifier = Modifier.width(1.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .width(1.dp)
+                                            .height(13.dp)
+                                            .background(primary)
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(3.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(4.dp))
+                                .padding(horizontal = 6.dp, vertical = 4.dp)
+                        ) {
+                            Column(verticalArrangement = Arrangement.Center, modifier = Modifier.padding(vertical = 0.dp)) {
+                                Row(modifier = Modifier.padding(vertical = 2.dp)) {
+                                    Text("shu ru fa", fontSize = 10.sp, lineHeight = 1.sp, color = onSurface.copy(alpha = 0.6f))
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(selectedBg)
+                                            .padding(horizontal = 4.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = "输入法",
+                                            fontSize = 13.sp,
+                                            color = primary,
+                                            fontWeight = FontWeight.Medium,
+                                            maxLines = 1
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "力学",
+                                        fontSize = 13.sp,
+                                        color = onSurface,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                color = if (isSelected) primary else onSurface
+            )
+        }
+    }
+}
+
+// ========== Previews ==========
+
+@Preview(name = "CodeDisplayCard - 选中+显示码")
+@Composable
+fun CodeDisplayCardPreview_SelectedWithCode() {
+    XimeTheme {
+        CodeDisplayCard(
+            title = "曦码",
+            isSelected = true,
+            showCodeInInputBox = true,
+            onClick = {},
+            modifier = Modifier.padding(16.dp).height(160.dp)
+        )
+    }
+}
+
+@Preview(name = "CodeDisplayCard - 不显示码")
+@Composable
+fun CodeDisplayCardPreview_NotSelectedNoCode() {
+    XimeTheme {
+        CodeDisplayCard(
+            title = "曦码",
+            isSelected = true,
+            showCodeInInputBox = false,
+            onClick = {},
+            modifier = Modifier.padding(16.dp).height(160.dp)
+        )
+    }
+}
+
+@Composable
+fun CommentDisplayCard(
+    title: String,
+    isSelected: Boolean,
+    showComment: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val primary = MaterialTheme.colorScheme.primary
+    val onSurface = MaterialTheme.colorScheme.onSurface
+
+    Box(modifier = modifier) {
+        Column {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surface)
+                    .clickable { onClick() }
+                    .then(
+                        if (isSelected) {
+                            Modifier.border(
+                                width = 2.dp,
+                                color = primary,
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                        } else {
+                            Modifier
+                        }
+                    )
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(10.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .padding(horizontal = 8.dp, vertical = 8.dp),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(primary.copy(alpha = 0.15f))
+                                    .padding(horizontal = 6.dp, vertical = 3.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "输入法",
+                                        fontSize = 14.sp,
+                                        color = primary,
+                                        fontWeight = FontWeight.Medium,
+                                        maxLines = 1
+                                    )
+                                    if (showComment) {
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Text(
+                                            text = "ltif",
+                                            fontSize = 9.sp,
+                                            color = onSurface.copy(alpha = 0.5f),
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "力学",
+                                fontSize = 14.sp,
+                                color = onSurface,
+                                maxLines = 1
+                            )
+                            if (showComment) {
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(
+                                    text = "lixue",
+                                    fontSize = 9.sp,
+                                    color = onSurface.copy(alpha = 0.5f),
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                    color = if (isSelected) primary else onSurface,
+                    maxLines = 1
+                )
+            }
+        }
+    }
+}
+
+@Preview(name = "CommentDisplayCard - 显示注释", heightDp = 120)
+@Composable
+fun CommentDisplayCardPreview_Show() {
+    XimeTheme {
+        CommentDisplayCard(
+            title = "显示",
+            isSelected = true,
+            showComment = true,
+            onClick = {},
+            modifier = Modifier.fillMaxWidth().height(100.dp).padding(10.dp)
+        )
+    }
+}
+
+@Preview(name = "CommentDisplayCard - 隐藏注释", heightDp = 120)
+@Composable
+fun CommentDisplayCardPreview_Hide() {
+    XimeTheme {
+        CommentDisplayCard(
+            title = "隐藏",
+            isSelected = false,
+            showComment = false,
+            onClick = {},
+            modifier = Modifier.fillMaxWidth().height(100.dp).padding(10.dp)
+        )
+    }
+}
+
 
 @Composable
 fun KeyboardThemeCard(
@@ -686,5 +979,73 @@ fun KeyboardThemeCard(
                 }
             }
         }
+    }
+}
+
+@Composable
+fun CandidateTextSizeCard(
+    candidateTextSize: Float,
+    modifier: Modifier = Modifier
+) {
+    val primary = MaterialTheme.colorScheme.primary
+    val onSurface = MaterialTheme.colorScheme.onSurface
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surface)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+            ) {
+                Row(modifier = Modifier.padding(vertical = 2.dp)) {
+                    Text("shu ru fa", fontSize = 10.sp, lineHeight = 1.sp, color = onSurface.copy(alpha = 0.6f))
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(primary.copy(alpha = 0.2f))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = "输入法",
+                            fontSize = candidateTextSize.sp,
+                            color = primary,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "力学",
+                        fontSize = candidateTextSize.sp,
+                        color = onSurface,
+                        maxLines = 1
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Preview(name = "CandidateTextSizeCard - default")
+@Composable
+fun CandidateTextSizeCardPreview() {
+    XimeTheme {
+        CandidateTextSizeCard(
+            candidateTextSize = 19f,
+            modifier = Modifier.padding(16.dp).fillMaxWidth()
+        )
     }
 }

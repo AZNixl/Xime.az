@@ -1695,6 +1695,9 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             hasNextPage = false,
             hasPrevPage = false
         )
+        if (SettingsPreferences.getInputTextLocation(this) == SettingsPreferences.INPUT_TEXT_INPUT_BOX) {
+            currentInputConnection?.finishComposingText()
+        }
     }
 
     override fun onDestroy() {
@@ -1731,6 +1734,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
 
     private fun applyComposition(composition: com.kingzcheung.xime.rime.RimeComposition) {
         val inputText = composition.input
+        val codeInInputBox = SettingsPreferences.getInputTextLocation(this) == SettingsPreferences.INPUT_TEXT_INPUT_BOX
         val preeditText = composition.preedit
         val candidatesWithComments = composition.candidates.toList()
         if (candidatesWithComments.isNotEmpty() || inputText.isNotEmpty()) {
@@ -1804,6 +1808,15 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                 withContext(Dispatchers.Main) {
                     candidateState.value = candidateState.value.copy(associationCandidates = candidates)
                 }
+            }
+        }
+
+        if (codeInInputBox) {
+            val ic = currentInputConnection
+            if (isComposing && displayText.isNotEmpty()) {
+                ic?.setComposingText(displayText, displayText.length)
+            } else {
+                ic?.finishComposingText()
             }
         }
     }
@@ -1885,7 +1898,15 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                 }
             }
         }
-        
+
+        if (SettingsPreferences.getInputTextLocation(this) == SettingsPreferences.INPUT_TEXT_INPUT_BOX) {
+            val ic = currentInputConnection
+            if (isComposing && displayText.isNotEmpty()) {
+                ic?.setComposingText(displayText, displayText.length)
+            } else {
+                ic?.finishComposingText()
+            }
+        }
     }
 
     private fun updateSchemaName() {

@@ -92,6 +92,9 @@ fun CandidateBar(
     val horizontalPadding = if (isLandscape) 50.dp else 8.dp
     val context = LocalContext.current
     val showComments = SettingsPreferences.showCandidateComments(context)
+    val inputTextLocation = SettingsPreferences.getInputTextLocation(context)
+    val showInputBoxStyle = inputTextLocation == SettingsPreferences.INPUT_TEXT_INPUT_BOX
+    val candidateTextSize = SettingsPreferences.getCandidateTextSize(context)
 
     val density = LocalDensity.current
     val textMeasurer = rememberTextMeasurer()
@@ -135,7 +138,7 @@ fun CandidateBar(
                     val measureText = { text: String ->
                         textMeasurer.measure(
                             text = AnnotatedString(text),
-                            style = TextStyle(fontSize = 19.sp)
+                            style = TextStyle(fontSize = candidateTextSize.sp)
                         ).size.width.toFloat()
                     }
                     val leftSidePx = with(density) { rowPaddingPx + 32.dp.toPx() }
@@ -209,7 +212,7 @@ fun CandidateBar(
     ) {
         val displayText = (state as? CandidateBarState.ChineseCandidates)?.preeditText
             ?: (state as? CandidateBarState.ChineseCandidates)?.inputText ?: ""
-        val showInputText = showInputTextRow && displayText.isNotEmpty()
+        val showInputText = showInputTextRow && displayText.isNotEmpty() && !showInputBoxStyle
 
         if (showInputText) {
             val inputTextInteractionSource = remember { MutableInteractionSource() }
@@ -345,7 +348,8 @@ fun CandidateBar(
                             }
                         } else "",
                         isSelected = index == 0,
-                        accentColor = visuals.accentColor
+                        accentColor = visuals.accentColor,
+                        fontSize = candidateTextSize.sp
                     )
                 }
 
@@ -369,7 +373,8 @@ fun CandidateBar(
                             textColor = visuals.textColor,
                             comment = displayComments.getOrElse(index) { "" },
                             isSelected = assocState?.highlightIndex == index,
-                            accentColor = visuals.accentColor
+                            accentColor = visuals.accentColor,
+                            fontSize = candidateTextSize.sp
                         )
                     }
                 }
@@ -548,7 +553,8 @@ fun CandidateItem(
     comment: String = "",
     isSelected: Boolean = false,
     accentColor: Color = Color(0xFF1A73E8),
-    @SuppressLint("ModifierParameter") modifier: Modifier = Modifier
+    @SuppressLint("ModifierParameter") modifier: Modifier = Modifier,
+    fontSize: androidx.compose.ui.unit.TextUnit = 19.sp
 ) {
     Row(
         modifier = modifier
@@ -564,7 +570,7 @@ fun CandidateItem(
         Text(
             text = text,
             color = if (isSelected) accentColor else textColor,
-            fontSize = 19.sp,
+            fontSize = fontSize,
             fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal,
             maxLines = 1
         )
@@ -573,7 +579,7 @@ fun CandidateItem(
             Text(
                 text = comment,
                 color = if (isSelected) accentColor.copy(alpha = 0.6f) else textColor.copy(alpha = 0.5f),
-                fontSize = 11.sp,
+                fontSize = (fontSize.value * 11f / 19f).sp,
                 fontWeight = FontWeight.Normal,
                 maxLines = 1
             )
