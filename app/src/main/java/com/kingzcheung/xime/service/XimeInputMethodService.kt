@@ -14,7 +14,6 @@ import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputContentInfo
-import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.compose.foundation.background
@@ -115,6 +114,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import android.os.Bundle
+import android.view.inputmethod.InlineSuggestion
+import android.view.inputmethod.InlineSuggestionsRequest
+import android.view.inputmethod.InlineSuggestionsResponse
+import androidx.annotation.RequiresApi
 import java.io.File
 import java.io.FileInputStream
 
@@ -249,6 +253,10 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     private var clipboardCollectorJob: kotlinx.coroutines.Job? = null
     
     private val feedbackManager = FeedbackManager(this)
+    
+    private val inlineSuggestionManager = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        InlineSuggestionManager()
+    } else null
     
     private fun loadDarkModePreference() {
         val isLandscape = resources.configuration.screenWidthDp > resources.configuration.screenHeightDp
@@ -1192,6 +1200,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                 viewModel = keyboardViewModel,
                                 state = kbState,
                                 callbacks = callbacks,
+                                inlineSuggestions = inlineSuggestionManager?.suggestions.orEmpty(),
                                 onCardPositioned = { _: Int, top: Int, _: Int, bottom: Int ->
                                     val cardHeightPx = bottom - top
                                     if (cardHeightPx > 0) {
@@ -1541,6 +1550,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                 InputConnection.CURSOR_UPDATE_MONITOR or InputConnection.CURSOR_UPDATE_IMMEDIATE
             )
         }
+        Log.d(TAG, "onStartInputView: inputType=0x${info?.inputType?.toString(16)} package=${info?.packageName}")
     }
 
     private var anchorCoords = floatArrayOf(0f, 0f, 0f, 0f)
@@ -1653,8 +1663,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
 
     override fun onFinishInput() {
         super.onFinishInput()
-        clipboardCollectorJob?.cancel()
-        clipboardCollectorJob = null
+        inlineSuggestionManager?.clear()
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
         clearInputState()
         recentClipboardItemsState.value = emptyList()
@@ -3094,6 +3103,53 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                 win.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.WHITE))
                 win.setDimAmount(0.2f)
             }
+        }
+    }
+
+    override fun onCreateInlineSuggestionsRequest(uiExtras: Bundle): InlineSuggestionsRequest? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
+        Log.d(TAG, "onCreateInlineSuggestionsRequest(Bundle) called, manager=${inlineSuggestionManager}")
+        if (inlineSuggestionManager == null) return null
+        updateInlineSuggestionTheme()
+        val result = inlineSuggestionManager.onCreateInlineSuggestionsRequest(uiExtras)
+        Log.d(TAG, "onCreateInlineSuggestionsRequest: returning ${if (result != null) "request" else "null"}")
+        return result
+    }
+
+    override fun onInlineSuggestionsResponse(response: InlineSuggestionsResponse): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
+        val count = response.inlineSuggestions.size
+        Log.d(TAG, "onInlineSuggestionsResponse: received $count suggestions")
+        return inlineSuggestionManager?.onInlineSuggestionsResponse(response) ?: false
+    }
+
+    @RequiresApi(Build.VERSION_CODES.R)
+    private fun updateInlineSuggestionTheme() {
+        val state = uiState.value
+        val isDark = when (state.darkMode) {
+            1 -> true
+            2 -> (resources.configuration.uiMode.and(
+                android.content.res.Configuration.UI_MODE_NIGHT_MASK
+            )) == android.content.res.Configuration.UI_MODE_NIGHT_YES
+            else -> false
+        }
+        val t = com.kingzcheung.xime.ui.theme.KeyboardThemes
+        inlineSuggestionManager?.apply {
+            val c = t.getCandidateTextColor(state.themeId, isDark)
+            candidateTextColorArgb = (c.alpha * 255).toInt() shl 24 or
+                (c.red * 255).toInt() shl 16 or
+                (c.green * 255).toInt() shl 8 or
+                (c.blue * 255).toInt()
+            val d = t.getDividerColor(state.themeId, isDark)
+            labelTextColorArgb = (d.alpha * 255).toInt() shl 24 or
+                (d.red * 255).toInt() shl 16 or
+                (d.green * 255).toInt() shl 8 or
+                (d.blue * 255).toInt()
+            val b = t.getCandidateBarBackgroundColor(state.themeId, isDark)
+            backgroundColorArgb = (b.alpha * 255).toInt() shl 24 or
+                (b.red * 255).toInt() shl 16 or
+                (b.green * 255).toInt() shl 8 or
+                (b.blue * 255).toInt()
         }
     }
 

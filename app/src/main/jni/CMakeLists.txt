@@ -105,6 +105,7 @@ include_directories(
     "${CMAKE_SOURCE_DIR}/boost/libs/move/include"
     "${CMAKE_SOURCE_DIR}/boost/libs/container/include"
     "${CMAKE_SOURCE_DIR}/boost/libs/container_hash/include"
+    "${CMAKE_SOURCE_DIR}/boost/libs/describe/include"
     "${CMAKE_SOURCE_DIR}/boost/libs/intrusive/include"
     "${CMAKE_SOURCE_DIR}/boost/libs/detail/include"
     "${CMAKE_SOURCE_DIR}/boost/libs/integer/include"

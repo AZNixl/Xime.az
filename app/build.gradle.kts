@@ -473,6 +473,9 @@ dependencies {
     // Kaml for YAML parsing
     implementation(libs.kaml)
 
+    // Autofill inline suggestions (API 30+)
+    implementation(libs.androidx.autofill)
+
     // exp4j for calculator expression evaluation
     implementation(libs.exp4j)
 

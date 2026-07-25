@@ -72,6 +72,7 @@ fun KeyboardView(
     state: KeyboardUiState,
     callbacks: KeyboardCallbacks,
     modifier: Modifier = Modifier,
+    inlineSuggestions: List<*> = listOf<Any>(),
     onCardPositioned: (left: Int, top: Int, right: Int, bottom: Int) -> Unit = { _: Int, _: Int, _: Int, _: Int -> },
 ) {
     val isShifted by viewModel.isShifted.collectAsStateWithLifecycle()
@@ -358,7 +359,8 @@ fun KeyboardView(
                             callbacks.onAssociationSelect?.invoke(index)
                         }
                     },
-                )
+                ),
+                inlineSuggestions = inlineSuggestions,
             )
 
             val isMainKeyboard = page is KeyboardPage.Main
