@@ -264,6 +264,27 @@ fun KeyboardView(
                 )
             }
 
+            val ctx = LocalContext.current
+            val showInputBox = remember { SettingsPreferences.getInputTextLocation(ctx) == SettingsPreferences.INPUT_TEXT_INPUT_BOX }
+            if (showInputBox) {
+                val inputBoxText = state.preeditText.takeIf { it.isNotEmpty() } ?: state.inputText
+                if (inputBoxText.isNotEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(candidateBarBg)
+                            .padding(horizontal = 12.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = inputBoxText,
+                            color = candidateTextColor,
+                            fontSize = 14.sp,
+                            maxLines = 1
+                        )
+                    }
+                }
+            }
+
             CandidateBar(
                 state = candidateBarState,
                 page = page,

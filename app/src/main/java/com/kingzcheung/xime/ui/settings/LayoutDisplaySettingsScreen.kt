@@ -109,6 +109,60 @@ fun LayoutDisplaySettingsContent(
                         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
                     )
 
+                    var inputTextLocation by remember {
+                        mutableStateOf(SettingsPreferences.getInputTextLocation(context))
+                    }
+
+                    Text(
+                        text = "编码显示",
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 8.dp)
+                    )
+                    Text(
+                        text = "选择输入编码的显示位置",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 16.dp, bottom = 12.dp)
+                    )
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(140.dp)
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        CodeDisplayCard(
+                            title = "显示在输入框",
+                            isSelected = inputTextLocation == SettingsPreferences.INPUT_TEXT_INPUT_BOX,
+                            showCodeInInputBox = true,
+                            onClick = {
+                                inputTextLocation = SettingsPreferences.INPUT_TEXT_INPUT_BOX
+                                SettingsPreferences.setInputTextLocation(context, SettingsPreferences.INPUT_TEXT_INPUT_BOX)
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+                        CodeDisplayCard(
+                            title = "显示在候选栏",
+                            isSelected = inputTextLocation == SettingsPreferences.INPUT_TEXT_CANDIDATE_BAR,
+                            showCodeInInputBox = false,
+                            onClick = {
+                                inputTextLocation = SettingsPreferences.INPUT_TEXT_CANDIDATE_BAR
+                                SettingsPreferences.setInputTextLocation(context, SettingsPreferences.INPUT_TEXT_CANDIDATE_BAR)
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = 16.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+
                     val pageSizePref = SettingsPreferences.getPageSize(context)
                     val effectiveValue = if (pageSizePref == 0) 20f else pageSizePref.toFloat()
                     var pageSizeSlider by remember(effectiveValue) {

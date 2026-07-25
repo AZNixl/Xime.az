@@ -78,7 +78,10 @@ object SettingsPreferences {
     private const val KEY_INSTALLED_MARKET_IDS = "installed_market_ids"
     private const val KEY_COMPACT_MODE = "compact_mode"
     private const val KEY_SHOW_CANDIDATE_COMMENTS = "show_candidate_comments"
+    private const val KEY_INPUT_TEXT_LOCATION = "input_text_location"
     private const val KEY_PAGE_SIZE = "page_size"
+    const val INPUT_TEXT_INPUT_BOX = "input_box"
+    const val INPUT_TEXT_CANDIDATE_BAR = "candidate_bar"
     const val DEFAULT_PAGE_SIZE = 0 // 0 表示使用 Rime schema 默认值
 
     fun isCompactModeEnabled(context: Context): Boolean {
@@ -95,6 +98,14 @@ object SettingsPreferences {
 
     fun setShowCandidateComments(context: Context, show: Boolean) {
         getPrefs(context).edit().putBoolean(KEY_SHOW_CANDIDATE_COMMENTS, show).apply()
+    }
+
+    fun getInputTextLocation(context: Context): String {
+        return getPrefs(context).getString(KEY_INPUT_TEXT_LOCATION, INPUT_TEXT_CANDIDATE_BAR) ?: INPUT_TEXT_CANDIDATE_BAR
+    }
+
+    fun setInputTextLocation(context: Context, location: String) {
+        getPrefs(context).edit().putString(KEY_INPUT_TEXT_LOCATION, location).apply()
     }
 
     private fun getPrefs(context: Context): SharedPreferences {

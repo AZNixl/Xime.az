@@ -92,6 +92,8 @@ fun CandidateBar(
     val horizontalPadding = if (isLandscape) 50.dp else 8.dp
     val context = LocalContext.current
     val showComments = SettingsPreferences.showCandidateComments(context)
+    val inputTextLocation = SettingsPreferences.getInputTextLocation(context)
+    val inputTextInCandidateBar = inputTextLocation == SettingsPreferences.INPUT_TEXT_CANDIDATE_BAR
 
     val density = LocalDensity.current
     val textMeasurer = rememberTextMeasurer()
@@ -209,7 +211,7 @@ fun CandidateBar(
     ) {
         val displayText = (state as? CandidateBarState.ChineseCandidates)?.preeditText
             ?: (state as? CandidateBarState.ChineseCandidates)?.inputText ?: ""
-        val showInputText = showInputTextRow && displayText.isNotEmpty()
+        val showInputText = showInputTextRow && displayText.isNotEmpty() && inputTextInCandidateBar
 
         if (showInputText) {
             val inputTextInteractionSource = remember { MutableInteractionSource() }
