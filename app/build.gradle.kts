@@ -480,7 +480,7 @@ dependencies {
     implementation(libs.exp4j)
 
     // ZXing for QR code generation
-    implementation("com.google.zxing:core:3.5.3")
+    implementation("com.google.zxing:core:3.5.4")
 
     // Ktor embedded server for wireless import
     implementation("io.ktor:ktor-server-core:3.5.1")
