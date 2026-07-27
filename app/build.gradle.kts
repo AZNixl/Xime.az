@@ -381,7 +381,7 @@ android {
             useLegacyPackaging = true
         }
     }
-    ndkVersion = "28.2.13676358"
+    ndkVersion = "29.0.14206865"
 
     // 测试 classpath 包含 main assets，使 T9Decoder() 无参构造可加载 pinyin_lm.bin
     sourceSets {
