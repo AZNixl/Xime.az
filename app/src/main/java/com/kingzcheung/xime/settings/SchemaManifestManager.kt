@@ -595,10 +595,26 @@ object SchemaManifestManager {
             if (allFiles.has(relPath)) return@forEach
             untracked[relPath] = f
         }
-        if (untracked.isEmpty()) return@withContext
 
         val existingManifest = loadManifest(context, BUILTIN_PACKAGE_ID)
         val fileEntries = existingManifest?.optJSONObject("files") ?: JSONObject()
+
+        // 同步 registry 中 builtin 声明的文件到 manifest（防止 manifest 与 registry 不同步）
+        val keysIt = allFiles.keys()
+        while (keysIt.hasNext()) {
+            val fn = keysIt.next() as String
+            if (fileEntries.has(fn)) continue
+            val entry = allFiles.optJSONObject(fn) ?: continue
+            val claimants = entry.optJSONArray("claimedBy")
+            if (claimants != null && jsonArrayToList(claimants).contains(BUILTIN_PACKAGE_ID)) {
+                fileEntries.put(fn, JSONObject().apply {
+                    put("sha256", entry.optString("sha256", ""))
+                    put("size", entry.optLong("size", 0))
+                })
+            }
+        }
+
+        if (untracked.isEmpty() && fileEntries.length() == (existingManifest?.optJSONObject("files")?.length() ?: 0)) return@withContext
 
         for ((relPath, file) in untracked) {
             val sha256 = SchemaManager.fileSha256(file) ?: continue

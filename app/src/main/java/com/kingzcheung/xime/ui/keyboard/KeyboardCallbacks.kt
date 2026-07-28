@@ -65,4 +65,9 @@ data class KeyboardCallbacks(
     val onHideQuickSendForm: (() -> Unit)? = null,
     val onQuickSendEditItem: ((Long, String) -> Unit)? = null,
     val onQuickSendFormFocusChange: ((Boolean) -> Unit)? = null,
+    /**
+     * 全键盘（中文/英文）切离至其他键盘（数字/符号）时调用。
+     * 服务层负责上屏首位候选词或待确认英文，再由键盘层切换布局。
+     */
+    val onCommitCandidateBeforeModeChange: (() -> Unit)? = null,
 )

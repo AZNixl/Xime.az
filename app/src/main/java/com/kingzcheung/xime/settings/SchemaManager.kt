@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.os.PowerManager
 import android.util.Log
+import com.kingzcheung.xime.util.FileLogger
 import com.charleskorn.kaml.Yaml
 import com.charleskorn.kaml.YamlConfiguration
 import com.charleskorn.kaml.YamlList
@@ -218,74 +219,95 @@ object SchemaManager {
         dependencies: List<String> = emptyList(),
         resolveDepUrl: (String) -> String? = { null },
     ): InstallFromDirResult = withContext(Dispatchers.IO) {
-        val dir = getMarketDir(context, packageId)
-        if (!dir.exists() || dir.listFiles()?.none { it.isFile } != false) {
-            return@withContext InstallFromDirResult(success = false, failureReason = "压缩包不存在")
-        }
+        try {
+            val dir = getMarketDir(context, packageId)
+            if (!dir.exists() || dir.listFiles()?.none { it.isFile } != false) {
+                FileLogger.w(TAG, "installPackageFromMarketDir: dir not found or empty: $dir")
+                return@withContext InstallFromDirResult(success = false, failureReason = "压缩包不存在")
+            }
 
-        val targetFiles = listInstallTargetFiles(context, packageId)
-        if (targetFiles.isEmpty()) {
-            return@withContext InstallFromDirResult(success = false, failureReason = "归档中没有文件")
-        }
+            val targetFiles = listInstallTargetFiles(context, packageId)
+            if (targetFiles.isEmpty()) {
+                FileLogger.w(TAG, "installPackageFromMarketDir: no target files in $packageId")
+                return@withContext InstallFromDirResult(success = false, failureReason = "归档中没有文件")
+            }
+            FileLogger.i(TAG, "installPackageFromMarketDir: found ${targetFiles.size} target files for $packageId")
 
-        val sha256Map = computeTargetSha256Map(context, packageId)
-        val conflicts = SchemaManifestManager.detectConflicts(context, packageId, targetFiles, sha256Map)
-        if (conflicts.isNotEmpty()) {
-            return@withContext InstallFromDirResult(success = false, conflicts = conflicts)
-        }
+            val sha256Map = computeTargetSha256Map(context, packageId)
+            FileLogger.i(TAG, "installPackageFromMarketDir: computed sha256 for ${sha256Map.size} files")
 
-        val before = discoverSchemas(context).map { it.schemaId }.toSet()
-        val ok = installFromMarketToRime(context, packageId)
-        if (!ok) return@withContext InstallFromDirResult(success = false, failureReason = "安装失败")
+            val conflicts = SchemaManifestManager.detectConflicts(context, packageId, targetFiles, sha256Map)
+            if (conflicts.isNotEmpty()) {
+                FileLogger.w(TAG, "installPackageFromMarketDir: conflicts detected: ${conflicts.map { "${it.fileName} (${it.claimedBy})" }}")
+                return@withContext InstallFromDirResult(success = false, conflicts = conflicts)
+            }
 
-        val after = discoverSchemas(context).map { it.schemaId }.toSet()
-        val newIds = (after - before).toList()
+            val before = discoverSchemas(context).map { it.schemaId }.toSet()
+            FileLogger.i(TAG, "installPackageFromMarketDir: schemas before install: $before")
 
-        // 检查 target 中的 .schema.yaml 是否都解析成功
-        val targetSchemaIds = targetFiles
-            .filter { it.endsWith(".schema.yaml") }
-            .map { it.removeSuffix(".schema.yaml") }
-            .toSet()
-        val failedIds = targetSchemaIds - after
-        val parseFailures = if (failedIds.isEmpty()) emptyList()
-            else failedIds.map { "$it.schema.yaml 解析失败" }
+            val ok = installFromMarketToRime(context, packageId)
+            if (!ok) {
+                FileLogger.e(TAG, "installPackageFromMarketDir: installFromMarketToRime returned false")
+                return@withContext InstallFromDirResult(success = false, failureReason = "安装失败")
+            }
 
-        var unresolved = emptyList<String>()
-        var dependencyIds = emptyList<String>()
-        if (dependencies.isNotEmpty()) {
-            val completion = RimeDependencyResolver.complete(
+            val after = discoverSchemas(context).map { it.schemaId }.toSet()
+            val newIds = (after - before).toList()
+            FileLogger.i(TAG, "installPackageFromMarketDir: schemas after install: $after, new: $newIds")
+
+            // 检查 target 中的 .schema.yaml 是否都解析成功
+            val targetSchemaIds = targetFiles
+                .filter { it.endsWith(".schema.yaml") }
+                .map { it.removeSuffix(".schema.yaml") }
+                .toSet()
+            val failedIds = targetSchemaIds - after
+            val parseFailures = if (failedIds.isEmpty()) emptyList()
+                else failedIds.map { "$it.schema.yaml 解析失败" }
+            if (parseFailures.isNotEmpty()) {
+                FileLogger.w(TAG, "installPackageFromMarketDir: some schemas failed to parse: $parseFailures")
+            }
+
+            var unresolved = emptyList<String>()
+            var dependencyIds = emptyList<String>()
+            if (dependencies.isNotEmpty()) {
+                val completion = RimeDependencyResolver.complete(
+                    context = context,
+                    schemaId = newIds.firstOrNull() ?: packageId,
+                    dependencies = dependencies,
+                    resolveUrl = resolveDepUrl,
+                )
+                unresolved = (completion.unresolved + completion.stillMissingFiles).distinct()
+                dependencyIds = completion.downloaded
+            }
+
+            SchemaManifestManager.createManifest(
                 context = context,
-                schemaId = newIds.firstOrNull() ?: packageId,
-                dependencies = dependencies,
-                resolveUrl = resolveDepUrl,
+                schemeId = packageId,
+                displayName = displayName,
+                version = version,
+                fromMarket = fromMarket,
+                extractedFiles = targetFiles,
+                dependencyIds = dependencyIds,
             )
-            unresolved = (completion.unresolved + completion.stillMissingFiles).distinct()
-            dependencyIds = completion.downloaded
+
+            if (fromMarket) {
+                SettingsPreferences.addInstalledMarketId(context, packageId)
+            }
+
+            // 至少启用一个新方案，避免 RimeEngine 因 schema_list 为空而挂起
+            val firstSchema = newIds.firstOrNull()
+                ?: targetFiles.firstOrNull { it.endsWith(".schema.yaml") }
+                    ?.removeSuffix(".schema.yaml")
+            if (firstSchema != null) {
+                setEnabledSchemas(context, listOf(firstSchema))
+            }
+
+            FileLogger.i(TAG, "installPackageFromMarketDir: success for $packageId, firstSchema=$firstSchema")
+            InstallFromDirResult(success = true, newSchemaIds = newIds, unresolvedDeps = unresolved, parseFailures = parseFailures)
+        } catch (e: Exception) {
+            FileLogger.e(TAG, "installPackageFromMarketDir: UNCAUGHT exception for $packageId", e)
+            return@withContext InstallFromDirResult(success = false, failureReason = "安装异常: ${e.message}")
         }
-
-        SchemaManifestManager.createManifest(
-            context = context,
-            schemeId = packageId,
-            displayName = displayName,
-            version = version,
-            fromMarket = fromMarket,
-            extractedFiles = targetFiles,
-            dependencyIds = dependencyIds,
-        )
-
-        if (fromMarket) {
-            SettingsPreferences.addInstalledMarketId(context, packageId)
-        }
-
-        // 至少启用一个新方案，避免 RimeEngine 因 schema_list 为空而挂起
-        val firstSchema = newIds.firstOrNull()
-            ?: targetFiles.firstOrNull { it.endsWith(".schema.yaml") }
-                ?.removeSuffix(".schema.yaml")
-        if (firstSchema != null) {
-            setEnabledSchemas(context, listOf(firstSchema))
-        }
-
-        InstallFromDirResult(success = true, newSchemaIds = newIds, unresolvedDeps = unresolved, parseFailures = parseFailures)
     }
 
     /** 解析单个归档（或普通文件）将被释放到 rime/ 的目标文件名列表。 */
@@ -351,7 +373,7 @@ object SchemaManager {
                 val isArchive = name.endsWith(".zip", ignoreCase = true) ||
                     name.endsWith(".tar.gz", ignoreCase = true) || name.endsWith(".tgz", ignoreCase = true)
                 if (isArchive && !validateArchive(file)) {
-                    Log.e(TAG, "installFromMarketToRime: ${file.name} is corrupted for $schemeId, deleting")
+                    FileLogger.e(TAG, "installFromMarketToRime: ${file.name} is corrupted for $schemeId, deleting")
                     file.delete()
                     allOk = false
                     continue
@@ -363,17 +385,17 @@ object SchemaManager {
                     else -> {
                         val target = File(rimeDir, file.name)
                         file.copyTo(target, overwrite = true)
-                        Log.i(TAG, "Copied ${file.name} to rime dir")
+                        FileLogger.i(TAG, "Copied ${file.name} to rime dir")
                         true
                     }
                 }
                 if (!ok) {
-                    Log.e(TAG, "installFromMarketToRime: failed to process ${file.name} for $schemeId, deleting")
+                    FileLogger.e(TAG, "installFromMarketToRime: failed to process ${file.name} for $schemeId, deleting")
                     file.delete()
                     allOk = false
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "installFromMarketToRime: error processing ${file.name} for $schemeId, deleting", e)
+                FileLogger.e(TAG, "installFromMarketToRime: error processing ${file.name} for $schemeId, deleting", e)
                 file.delete()
                 allOk = false
             }
@@ -778,10 +800,10 @@ object SchemaManager {
                 inputStream.use { input ->
                     archiveFile.outputStream().use { output -> input.copyTo(output) }
                 }
-                Log.i(TAG, "Imported $name -> $importId (not installed yet)")
+                FileLogger.i(TAG, "Imported $name -> $importId (not installed yet)")
                 ImportResult(true)
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to import archive $name", e)
+                FileLogger.e(TAG, "Failed to import archive $name", e)
                 try { if (pkgDir.exists()) pkgDir.deleteRecursively() } catch (_: Exception) {}
                 ImportResult(false)
             }
@@ -803,10 +825,10 @@ object SchemaManager {
                         setEnabledSchemas(context, enabled)
                     }
                 }
-                Log.i(TAG, "Imported $name -> rime/ (direct)")
+                FileLogger.i(TAG, "Imported $name -> rime/ (direct)")
                 ImportResult(true, installedDirect = true)
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to import $name directly", e)
+                FileLogger.e(TAG, "Failed to import $name directly", e)
                 ImportResult(false)
             }
         }
@@ -1039,7 +1061,7 @@ object SchemaManager {
                 else -> true // 非归档文件无法校验
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Archive validation failed for ${file.name}", e)
+            FileLogger.e(TAG, "Archive validation failed for ${file.name}", e)
             false
         }
     }
@@ -1159,21 +1181,21 @@ object SchemaManager {
                     val name = originalName.removePrefix(baseDir)
                     val file = if (isProtectedImportName(name)) null else safeChild(targetDir, name)
                     if (file == null) {
-                        Log.d(TAG, "Skip protected/unsafe entry: $name")
+                        FileLogger.d(TAG, "Skip protected/unsafe entry: $name")
                     } else {
                         file.parentFile?.mkdirs()
                         zip.getInputStream(entry).use { input ->
                             FileOutputStream(file).use { output -> input.copyTo(output) }
                         }
                         count++
-                        Log.d(TAG, "Extracted zip entry: $name")
+                        FileLogger.d(TAG, "Extracted zip entry: $name")
                     }
                 }
             }
-            Log.i(TAG, "Extracted $count files from zip stream")
+            FileLogger.i(TAG, "Extracted $count files from zip stream")
             count > 0
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to extract zip file", e)
+            FileLogger.e(TAG, "Failed to extract zip file", e)
             false
         }
     }
