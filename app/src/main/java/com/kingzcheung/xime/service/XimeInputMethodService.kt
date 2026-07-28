@@ -1153,6 +1153,27 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                             commitFirstCandidateAndClearT9()
                                         }
                                     },
+                                    onCommitCandidateBeforeModeChange = {
+                                        val cs = candidateState.value
+                                        if (cs.pendingEnglishText.isNotEmpty()) {
+                                            commitText(cs.pendingEnglishText)
+                                            candidateState.value = cs.copy(
+                                                pendingEnglishText = "",
+                                                associationCandidates = emptyList()
+                                            )
+                                        } else if (!isT9Schema(uiState.value.currentSchemaId)
+                                            && cs.isComposing) {
+                                            if (cs.candidates.isNotEmpty()) {
+                                                if (rimeEngine.selectCandidate(0)) {
+                                                    val text = rimeEngine.commit()
+                                                    if (text.isNotEmpty()) commitText(text)
+                                                }
+                                            } else if (cs.preeditText.isNotEmpty()) {
+                                                commitText(cs.preeditText)
+                                                rimeEngine.clearComposition()
+                                            }
+                                        }
+                                    },
                                     onShowQuickSendForm = {
                                         val current = uiState.value
                                         uiState.value = current.copy(
@@ -1778,11 +1799,9 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             displayComments = display.displayComments
             isComposing = display.isComposing
         } else {
-            val lowerInput = inputText.lowercase()
-            val hasExtraContent = preeditText.any { c ->
-                !c.isWhitespace() && c != '\'' && !lowerInput.contains(c.lowercaseChar())
-            }
-            displayText = if (preeditText.isNotEmpty() && hasExtraContent) preeditText else inputText
+            // 非 T9 方案（如双拼）使用原始输入文本显示，
+            // 避免显示 rime speller 展开后的编码（如双拼 vjv → zhan b）
+            displayText = inputText
             displayCandidates = filteredTexts
             displayComments = filteredComments
             isComposing = inputText.isNotEmpty()
@@ -2206,7 +2225,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                     calculatorEngine.clear()
                     updateCalculatorCandidates()
                     if (candState.isComposing) {
-                        val input = candState.inputText
+                        val input = rimeEngine.getInput()
                         if (input.isNotEmpty()) {
                             withContext(Dispatchers.Main) {
                                 commitText(input)

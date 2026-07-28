@@ -436,6 +436,7 @@ fun KeyboardView(
                                 "shift_single" -> viewModel.singleTapShift()
                                 "shift_caps" -> viewModel.doubleTapShift()
                                 "mode_change" -> {
+                                    callbacks.onCommitCandidateBeforeModeChange?.invoke()
                                     viewModel.setKeyboardState(keyboardState.transition(
                                         modeChangeTarget, state.isAsciiMode
                                     ))
@@ -443,11 +444,13 @@ fun KeyboardView(
                                 }
                                 "mode_change_symbol" -> viewModel.showOverlay(OverlayRoute.Symbol)
                                 "mode_change_number" -> {
+                                    callbacks.onCommitCandidateBeforeModeChange?.invoke()
                                     modeChangeTarget = KeyboardLayoutAction.SwitchToNumber
                                     SettingsPreferences.setModeChangeTargetIsNumber(context, true)
                                     viewModel.setKeyboardState(KeyboardLayoutState.Number)
                                 }
                                 "mode_change_common_symbol" -> {
+                                    callbacks.onCommitCandidateBeforeModeChange?.invoke()
                                     modeChangeTarget = KeyboardLayoutAction.SwitchToCommonSymbol
                                     SettingsPreferences.setModeChangeTargetIsNumber(context, false)
                                     viewModel.setKeyboardState(keyboardState.transition(
@@ -499,6 +502,7 @@ fun KeyboardView(
                                     initialKeyboardLayoutState(state.isAsciiMode, state.currentSchemaId)
                                 )
                                 "?123" -> {
+                                    callbacks.onCommitCandidateBeforeModeChange?.invoke()
                                     viewModel.setKeyboardState(keyboardState.transition(
                                         KeyboardLayoutAction.SwitchToNumber, state.isAsciiMode
                                     ))

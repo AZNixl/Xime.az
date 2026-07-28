@@ -3,8 +3,10 @@ package com.kingzcheung.xime.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.kingzcheung.xime.settings.FileConflictInfo
 import com.kingzcheung.xime.settings.SchemaManifestManager
 import com.kingzcheung.xime.settings.SchemaManager
+import com.kingzcheung.xime.settings.SchemaManager.InstallFromDirResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -111,14 +113,19 @@ class SchemaLocalViewModel(application: Application) : AndroidViewModel(applicat
             }
 
             // 直接安装（后续由 UI 提示用户部署）
-            val result = withContext(Dispatchers.IO) {
-                SchemaManager.installPackageFromMarketDir(
-                    context = context,
-                    packageId = item.packageId,
-                    displayName = item.displayName,
-                    version = item.version,
-                    fromMarket = !item.isImport,
-                )
+            val result = try {
+                withContext(Dispatchers.IO) {
+                    SchemaManager.installPackageFromMarketDir(
+                        context = context,
+                        packageId = item.packageId,
+                        displayName = item.displayName,
+                        version = item.version,
+                        fromMarket = !item.isImport,
+                    )
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("SchemaLocalViewModel", "installPackage exception", e)
+                InstallFromDirResult(success = false, failureReason = "安装异常: ${e.message}")
             }
             _uiState.update { st -> st.copy(installingId = null) }
             if (result.success) {
@@ -130,6 +137,25 @@ class SchemaLocalViewModel(application: Application) : AndroidViewModel(applicat
                     }
                 }
                 showToast(msg)
+            } else if (result.conflicts.isNotEmpty()) {
+                // 注册表冲突 → 进入冲突解决流程
+                val otherInstalled = withContext(Dispatchers.IO) {
+                    SchemaManifestManager.getInstalledPackages(context)
+                        .map { it.packageId }
+                        .filter { it != item.packageId }
+                }
+                val targetIds = result.conflicts
+                    .flatMap { it.claimedBy }
+                    .distinct()
+                    .filter { it != item.packageId }
+                    .ifEmpty { otherInstalled }
+                    .ifEmpty { listOf("builtin") }
+                _uiState.update {
+                    it.copy(
+                        conflictPackageId = item.packageId,
+                        conflictingSchemeIds = targetIds,
+                    )
+                }
             } else {
                 showToast(result.failureReason ?: "安装失败")
             }
@@ -150,14 +176,19 @@ class SchemaLocalViewModel(application: Application) : AndroidViewModel(applicat
                     SchemaManifestManager.uninstallWithManifest(context, sid)
                 }
             }
-            val result = withContext(Dispatchers.IO) {
-                SchemaManager.installPackageFromMarketDir(
-                    context = context,
-                    packageId = pkgId,
-                    displayName = item.displayName,
-                    version = item.version,
-                    fromMarket = !item.isImport,
-                )
+            val result = try {
+                withContext(Dispatchers.IO) {
+                    SchemaManager.installPackageFromMarketDir(
+                        context = context,
+                        packageId = pkgId,
+                        displayName = item.displayName,
+                        version = item.version,
+                        fromMarket = !item.isImport,
+                    )
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("SchemaLocalViewModel", "confirmInstallWithUninstall exception", e)
+                InstallFromDirResult(success = false, failureReason = "安装异常: ${e.message}")
             }
             _uiState.update { st -> st.copy(installingId = null, conflictingSchemeIds = emptyList()) }
             if (result.success) {
@@ -170,7 +201,14 @@ class SchemaLocalViewModel(application: Application) : AndroidViewModel(applicat
                 }
                 showToast(msg)
             } else {
-                showToast(result.failureReason ?: "安装失败")
+                val reason = if (result.failureReason != null) {
+                    result.failureReason
+                } else if (result.conflicts.isNotEmpty()) {
+                    result.conflicts.joinToString("、") { "${it.fileName}（已被 ${it.claimedBy.joinToString("、")} 使用）" }
+                } else {
+                    "安装失败"
+                }
+                showToast(reason)
             }
             loadLocalPackages()
         }

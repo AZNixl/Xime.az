@@ -137,18 +137,23 @@ class WirelessImportHelper(private val context: Context) {
                     name.endsWith(".tar.gz", ignoreCase = true) ||
                     name.endsWith(".tgz", ignoreCase = true) ||
                     name.endsWith(".yaml") || name.endsWith(".schema.yaml") || name.endsWith(".dict.yaml") -> {
-                        // 先读到内存再调用统一 saveImportedFile（因 raf 需 seek 回内容起始）
-                        raf.seek(contentStart)
-                        val buf = ByteArray(contentLen.toInt())
-                        raf.readFully(buf)
-                        val result = SchemaManager.saveImportedFile(
-                            context, name, buf.inputStream(), autoEnable = false
-                        )
-                        saved = result.success
-                        _uploadResults.trySend(
-                            if (result.success) UploadResult(fileName = name, success = true)
-                            else UploadResult(fileName = name, success = false, error = "保存失败")
-                        )
+                        // 经临时文件传递给 saveImportedFile，避免大文件 ByteArray OOM
+                        val partFile = File.createTempFile("part_", "_$name", context.cacheDir)
+                        try {
+                            partFile.outputStream().use { out ->
+                                raf.channel.transferTo(contentStart, contentLen, out.channel)
+                            }
+                            val result = SchemaManager.saveImportedFile(
+                                context, name, partFile.inputStream(), autoEnable = false
+                            )
+                            saved = result.success
+                            _uploadResults.trySend(
+                                if (result.success) UploadResult(fileName = name, success = true)
+                                else UploadResult(fileName = name, success = false, error = "保存失败")
+                            )
+                        } finally {
+                            partFile.delete()
+                        }
                     }
                     else -> {
                         _uploadResults.trySend(UploadResult(fileName = name, success = false, error = "不支持的文件类型"))
