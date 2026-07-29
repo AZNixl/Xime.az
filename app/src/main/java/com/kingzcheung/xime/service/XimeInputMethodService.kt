@@ -1145,7 +1145,14 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                         }
                                     },
                                     onT9RightCommitUndone = { count ->
-                                        currentInputConnection?.deleteSurroundingText(count, 0)
+                                        // 半提交文本在 composing 区域时无法用 deleteSurroundingText 删除，
+                                        // 需通过 endComposingInputBox 清空，交由后续 applyComposition 重建。
+                                        if (SettingsPreferences.getInputTextLocation(this@XimeInputMethodService)
+                                            == SettingsPreferences.INPUT_TEXT_INPUT_BOX) {
+                                            endComposingInputBox()
+                                        } else {
+                                            currentInputConnection?.deleteSurroundingText(count, 0)
+                                        }
                                         t9PartialCommitTexts.removeLastOrNull()
                                     },
                                     onT9SwitchAway = {
@@ -1716,8 +1723,15 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             hasNextPage = false,
             hasPrevPage = false
         )
-        if (SettingsPreferences.getInputTextLocation(this) == SettingsPreferences.INPUT_TEXT_INPUT_BOX) {
-            currentInputConnection?.finishComposingText()
+        endComposingInputBox()
+    }
+
+    /** 结束输入框中的 composing span，先清空内容再结束，避免转为 committed text。 */
+    private fun endComposingInputBox() {
+        if (SettingsPreferences.getInputTextLocation(this) != SettingsPreferences.INPUT_TEXT_INPUT_BOX) return
+        currentInputConnection?.let {
+            it.setComposingText("", 0)
+            it.finishComposingText()
         }
     }
 
@@ -1835,7 +1849,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             if (isComposing && displayText.isNotEmpty()) {
                 ic?.setComposingText(displayText, displayText.length)
             } else {
-                ic?.finishComposingText()
+                endComposingInputBox()
             }
         }
     }
@@ -1923,7 +1937,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             if (isComposing && displayText.isNotEmpty()) {
                 ic?.setComposingText(displayText, displayText.length)
             } else {
-                ic?.finishComposingText()
+                endComposingInputBox()
             }
         }
     }
@@ -2196,7 +2210,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                     )
                     withContext(Dispatchers.Main) {
                         currentInputConnection?.let {
-                            it.finishComposingText()
+                            endComposingInputBox()
                             // 删除输入框中所有文字
                             val textLen = inputFieldText.length
                             if (textLen > 0) {
@@ -2225,13 +2239,25 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                     calculatorEngine.clear()
                     updateCalculatorCandidates()
                     if (candState.isComposing) {
-                        val input = rimeEngine.getInput()
-                        if (input.isNotEmpty()) {
-                            withContext(Dispatchers.Main) {
-                                commitText(input)
-                            }
+                        // T9 模式提交完整预编辑（含 partial commit 累积），非 T9 模式用 RIME input。
+                        val isT9 = isT9Schema(state.currentSchemaId)
+                        val input = if (isT9 && candState.preeditText.isNotEmpty()) {
+                            candState.preeditText
+                        } else {
+                            rimeEngine.getInput()
                         }
-                        rimeEngine.clearComposition()
+                        if (input.isNotEmpty()) {
+                            withContext(Dispatchers.Main) { commitText(input) }
+                        }
+                        if (isT9) {
+                            // 内联 CLEAR_ALL 逻辑：同步清空，避免异步 postRimeJob 延迟导致后续 backspace 拿到旧状态。
+                            t9PartialCommitTexts.clear()
+                            rimeEngine.setInput("")
+                            rimeEngine.clearComposition()
+                        } else {
+                            rimeEngine.clearComposition()
+                        }
+                        withContext(Dispatchers.Main) { endComposingInputBox() }
                         needsUIUpdate = true
                     } else {
                         rimeEngine.clearComposition()
@@ -2240,22 +2266,14 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                             val action = imeOptions and EditorInfo.IME_MASK_ACTION
                             val noEnterAction = imeOptions and EditorInfo.IME_FLAG_NO_ENTER_ACTION != 0
                             when {
-                                // 如果设置了 IME_FLAG_NO_ENTER_ACTION，必须插入换行符
-                                // 不能走 performEditorAction，否则某些应用收到 Done/Send 等
-                                // 动作后会收起键盘，但按键标签显示的是"换行"
-                                noEnterAction -> {
-                                    sendDownUpKeyEvents(KeyEvent.KEYCODE_ENTER)
-                                }
+                                noEnterAction -> sendDownUpKeyEvents(KeyEvent.KEYCODE_ENTER)
                                 action == EditorInfo.IME_ACTION_GO ||
                                 action == EditorInfo.IME_ACTION_SEARCH ||
                                 action == EditorInfo.IME_ACTION_SEND ||
                                 action == EditorInfo.IME_ACTION_NEXT ||
-                                action == EditorInfo.IME_ACTION_DONE -> {
+                                action == EditorInfo.IME_ACTION_DONE ->
                                     currentInputConnection?.performEditorAction(action)
-                                }
-                                else -> {
-                                    sendDownUpKeyEvents(KeyEvent.KEYCODE_ENTER)
-                                }
+                                else -> sendDownUpKeyEvents(KeyEvent.KEYCODE_ENTER)
                             }
                         }
                     }
@@ -2268,10 +2286,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                             associationCandidates = emptyList(),
                             isComposing = false
                         )
-                        // T9 模式：同步重置 T9 控制器状态并清空 partial commit 累积文本，
-                        // 否则左侧候选区残留、下一轮输入会拼接旧 partial commit。
                         if (isT9Schema(state.currentSchemaId)) {
-                            keyboardCallbacks?.onT9ReplaceFullPinyin?.invoke(T9InputController.CLEAR_ALL)
                             uiState.value = uiState.value.copy(
                                 t9ResetSignal = uiState.value.t9ResetSignal + 1,
                                 t9RightCandidateSelectedCount = 0,
