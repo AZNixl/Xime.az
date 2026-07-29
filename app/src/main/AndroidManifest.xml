@@ -86,6 +86,12 @@
             android:name=".provider.HostProvider"
             android:authorities="com.kingzcheung.xime.plugin.proxy"
             android:exported="true" />
+
+        <!-- AI 模型推理服务（独立进程，crash 不影响 IME） -->
+        <service
+            android:name=".service.InferenceService"
+            android:exported="false"
+            android:process=":inference" />
         
     </application>
 

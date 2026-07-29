@@ -169,6 +169,8 @@ Java_com_kingzcheung_xime_association_NativeOnnxEngine_nativeInitialize(
         return JNI_FALSE;
     }
 
+    OnnxTryEnableNnapi(session_options);
+
     status = api->CreateSession(ort_env, modelPathStr, session_options, &g_session);
     api->ReleaseSessionOptions(session_options);
     env->ReleaseStringUTFChars(model_path, modelPathStr);

@@ -14,92 +14,158 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
-val onnxVersion = "1.20.0"
-val onnxAarUrl = "https://repo1.maven.org/maven2/com/microsoft/onnxruntime/onnxruntime-android/${onnxVersion}/onnxruntime-android-${onnxVersion}.aar"
+val onnxVersion = "1.28.0"
+val onnxSrcUrl = "https://github.com/microsoft/onnxruntime/archive/refs/tags/v${onnxVersion}.tar.gz"
 
 val downloadOnnx by tasks.registering {
     val cppDir = file("src/main/jni/onnxruntime")
     val jniLibsDir = file("src/main/jniLibs")
-    
+    val srcDir = file("$buildDir/onnxruntime-src")
+    val buildOutDir = file("$buildDir/onnxruntime-build-android")
+    val nnapiMarker = file("$buildDir/onnxruntime-nnapi-marker")
+
     outputs.dir(cppDir)
     outputs.dir(jniLibsDir)
-    
+    outputs.file(nnapiMarker)
+
     doLast {
-        val tmpDir = temporaryDir
-        val aarFile = File(tmpDir, "onnxruntime.aar")
-        
-        val universalSo = file("src/main/jniLibs/arm64-v8a/libonnxruntime.so")
-        if (universalSo.exists()) {
-            println("ONNX Runtime files already exist, skipping download")
+        if (nnapiMarker.exists() && file("$cppDir/include/onnxruntime_c_api.h").exists()) {
+            println("ONNX Runtime with NNAPI already built, skipping")
             return@doLast
         }
-        
-        println("Downloading ONNX Runtime ${onnxVersion}...")
-        
-        ant.invokeMethod("get", mapOf("src" to onnxAarUrl, "dest" to aarFile))
-        
-        copy {
-            from(zipTree(aarFile))
-            into(tmpDir)
+
+        // 1. Download & extract source tarball
+        if (!srcDir.exists()) {
+            println("Downloading ONNX Runtime v${onnxVersion} source...")
+            val tarball = file("$buildDir/onnxruntime-${onnxVersion}.tar.gz")
+            val curl = ProcessBuilder(
+                "curl.exe", "--ssl-no-revoke", "-L", "-o", tarball.absolutePath, onnxSrcUrl
+            ).directory(buildDir).redirectErrorStream(true).start()
+            val curlOut = curl.inputStream.bufferedReader().readText()
+            if (curl.waitFor() != 0) throw GradleException("Download failed: $curlOut")
+
+            println("Extracting source...")
+            val tar = ProcessBuilder("tar", "-xzf", tarball.absolutePath, "-C", buildDir.absolutePath)
+                .directory(buildDir).redirectErrorStream(true).start()
+            val tarOut = tar.inputStream.bufferedReader().readText()
+            if (tar.waitFor() != 0) throw GradleException("Extract failed: $tarOut")
+
+            File(buildDir, "onnxruntime-${onnxVersion}").renameTo(srcDir)
+            tarball.delete()
+            println("Source ready: $srcDir")
         }
-        
-        copy {
-            from(File(tmpDir, "headers"))
-            into(File(cppDir, "include"))
-        }
-        
-        val abis = listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
-        abis.forEach { abi ->
-            copy {
-                from(File(File(tmpDir, "jni"), abi))
-                include("libonnxruntime.so")
-                into(File(File(cppDir, "lib"), abi))
+
+        // 2. Locate NDK + SDK
+        fun findDir(vararg envs: String, fallbackDir: String, subDir: String): String {
+            for (env in envs) {
+                System.getenv(env)?.let { if (File(it).exists()) return it }
             }
-            copy {
-                from(File(File(tmpDir, "jni"), abi))
-                include("libonnxruntime.so")
-                into(File(jniLibsDir, abi))
+            val base = File(fallbackDir)
+            if (base.exists()) {
+                val candidates = File(base, subDir).listFiles()
+                    ?.filter { it.isDirectory }?.sortedByDescending { it.name }
+                if (!candidates.isNullOrEmpty()) return candidates.first().absolutePath
             }
+            return ""
         }
-        
-        println("ONNX Runtime downloaded successfully")
+        val ndkDir = findDir("ANDROID_NDK", "ANDROID_NDK_HOME",
+            fallbackDir = "${System.getenv("LOCALAPPDATA")}/Android/Sdk", subDir = "ndk")
+        val sdkDir = findDir("ANDROID_HOME", "ANDROID_SDK_ROOT",
+            fallbackDir = "${System.getenv("LOCALAPPDATA")}/Android/Sdk", subDir = "")
+        if (ndkDir.isEmpty() || sdkDir.isEmpty())
+            throw GradleException("Cannot locate Android SDK/NDK. Set ANDROID_HOME and ANDROID_NDK.")
+        println("SDK: $sdkDir")
+        println("NDK: $ndkDir")
+
+        // 3. Build arm64-v8a with NNAPI
+        println("Building ONNX Runtime with NNAPI for arm64-v8a (30-60 min)...")
+        buildOutDir.mkdirs()
+        val buildProc = ProcessBuilder(
+            "cmd.exe", "/c",
+            "\"${srcDir.absoluteFile}\\build.bat\"",
+            "--android", "--android_sdk_path", sdkDir, "--android_ndk_path", ndkDir,
+            "--android_abi", "arm64-v8a", "--android_api", "27",
+            "--cmake_generator", "Ninja", "--use_nnapi",
+            "--config", "Release", "--build_dir", buildOutDir.absolutePath,
+            "--parallel", "--skip_onnx_tests"
+        ).directory(srcDir).redirectErrorStream(true).start()
+        buildProc.inputStream.bufferedReader().use { r ->
+            var line: String?; while (r.readLine().also { line = it } != null) { println(line) }
+        }
+        if (buildProc.waitFor() != 0) throw GradleException("Build failed")
+
+        // 4. Locate built .so
+        val allSos = fileTree(buildOutDir).matching { include("**/libonnxruntime.so") }.files
+        if (allSos.isEmpty()) throw GradleException("No libonnxruntime.so in $buildOutDir")
+        val builtSo = allSos.first()
+        println("Built: ${builtSo.absolutePath} (${builtSo.length()} bytes)")
+
+        // 5. Copy headers from source
+        copy {
+            from("${srcDir.absolutePath}/include/onnxruntime")
+            into("${cppDir.absolutePath}/include")
+        }
+
+        // 6. Copy .so to jni link dir and jniLibs
+        val arm64Lib = file("${cppDir.absolutePath}/lib/arm64-v8a")
+        val arm64Jni = file("${jniLibsDir.absolutePath}/arm64-v8a")
+        arm64Lib.mkdirs(); arm64Jni.mkdirs()
+        builtSo.copyTo(File(arm64Lib, "libonnxruntime.so"), overwrite = true)
+        builtSo.copyTo(File(arm64Jni, "libonnxruntime.so"), overwrite = true)
+
+        // 7. Marker
+        nnapiMarker.parentFile.mkdirs()
+        nnapiMarker.writeText("NNAPI v${onnxVersion} built on ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Date())}")
+        println("ONNX Runtime with NNAPI deployed to arm64-v8a")
     }
 }
 
 val buildSherpaOnnx by tasks.registering {
     val jniLibsDir = file("src/main/jniLibs")
-    val sherpaOnnxSoArm64 = file("src/main/jniLibs/arm64-v8a/libsherpa-onnx-jni.so")
-    val sherpaOnnxSoArmV7 = file("src/main/jniLibs/armeabi-v7a/libsherpa-onnx-jni.so")
-    
+    val arm64Dir = file("$jniLibsDir/arm64-v8a")
+    val sherpaOnnxSoArm64 = file("$arm64Dir/libsherpa-onnx-jni.so")
+
     outputs.file(sherpaOnnxSoArm64)
-    outputs.file(sherpaOnnxSoArmV7)
-    
+
     dependsOn(downloadOnnx)
-    
+
     doLast {
-        if (sherpaOnnxSoArm64.exists() && sherpaOnnxSoArmV7.exists()) {
-            println("sherpa-onnx JNI libraries already exist, skipping build")
+        if (sherpaOnnxSoArm64.exists()) {
+            println("sherpa-onnx JNI library already exists, skipping")
             return@doLast
         }
-        
-        println("Building sherpa-onnx JNI libraries...")
-        
-        val buildScript = File(rootDir, "build-sherpa-onnx.sh")
-        if (!buildScript.exists()) {
-            println("ERROR: build script not found: ${buildScript.absolutePath}")
-            return@doLast
-        }
-        
-        val process = ProcessBuilder("bash", buildScript.absolutePath)
-            .directory(rootDir)
+
+        println("Downloading prebuilt sherpa-onnx JNI library...")
+
+        arm64Dir.mkdirs()
+
+        val url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.0/sherpa-onnx-v1.13.0-android.tar.bz2"
+        val tarball = File(temporaryDir, "sherpa-onnx-android.tar.bz2")
+
+        val curlCmd = mutableListOf("curl.exe", "--ssl-no-revoke", "-L", "-o", tarball.absolutePath, url)
+        val proc = ProcessBuilder(curlCmd)
+            .directory(temporaryDir)
             .redirectErrorStream(true)
             .start()
-        
-        val output = process.inputStream.bufferedReader().readText()
-        println(output)
-        
-        if (process.waitFor() != 0) {
-            println("WARNING: sherpa-onnx build failed. ASR will use online mode only.")
+        val curlOut = proc.inputStream.bufferedReader().readText()
+        if (proc.waitFor() != 0) {
+            println("curl download failed: $curlOut")
+            return@doLast
+        }
+
+        copy {
+            from(tarTree(tarball)) {
+                include("**/arm64-v8a/libsherpa-onnx-jni.so")
+                eachFile { relativePath = RelativePath(true, name) }
+                includeEmptyDirs = false
+            }
+            into(arm64Dir)
+        }
+
+        if (sherpaOnnxSoArm64.exists()) {
+            println("sherpa-onnx JNI downloaded: ${sherpaOnnxSoArm64.length()} bytes")
+        } else {
+            println("WARNING: sherpa-onnx JNI download failed. ASR will use online mode only.")
         }
     }
 }
@@ -365,6 +431,7 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+        aidl = true
     }
     
     // NDK 构建配置

@@ -13,7 +13,7 @@ import androidx.annotation.RequiresPermission
 import com.kingzcheung.xime.model.ModelRuntime
 import com.kingzcheung.xime.settings.SettingsPreferences
 import com.kingzcheung.xime.speech.funasr.FunAsrAsrBackend
-import com.kingzcheung.xime.speech.sherpa.SherpaAsrBackend
+import com.kingzcheung.xime.speech.sherpa.IpcSherpaAsrBackend
 import com.kingzcheung.xime.util.FileLogger
 
 class SpeechRecognitionManager(private val context: Context) {
@@ -84,7 +84,7 @@ class SpeechRecognitionManager(private val context: Context) {
 
             if (!newBackend.initialize()) {
                 val msg = when {
-                    newBackend is SherpaAsrBackend -> "本地模型未下载或引擎未编译"
+                    newBackend is IpcSherpaAsrBackend -> "本地模型未下载"
                     newBackend is FunAsrAsrBackend -> "初始化在线引擎失败，请检查 API Key"
                     else -> "引擎初始化失败"
                 }
@@ -255,7 +255,7 @@ class SpeechRecognitionManager(private val context: Context) {
 
     private fun createBackend(): AsrBackend {
         return if (SettingsPreferences.isSttUseLocal(context)) {
-            SherpaAsrBackend(context)
+            IpcSherpaAsrBackend(context)
         } else {
             FunAsrAsrBackend(context)
         }

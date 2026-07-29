@@ -173,6 +173,8 @@ Java_com_kingzcheung_xime_handwriting_HandwritingNativeEngine_nativeInitialize(
         return JNI_FALSE;
     }
 
+    OnnxTryEnableNnapi(session_options);
+
     status = api->CreateSession(ort_env, modelPathStr, session_options, &g_hw_session);
     api->ReleaseSessionOptions(session_options);
     env->ReleaseStringUTFChars(model_path, modelPathStr);

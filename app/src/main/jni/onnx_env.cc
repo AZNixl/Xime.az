@@ -1,6 +1,7 @@
 #include "onnx_env.h"
 #include <android/log.h>
 #include <mutex>
+#include <dlfcn.h>
 
 static OrtEnv* g_shared_env = nullptr;
 static std::mutex g_env_mutex;
@@ -8,6 +9,7 @@ static bool g_env_created = false;
 
 #define LOG_TAG "OnnxEnv"
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
+#define LOGW(...) __android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
 const OrtApi* OnnxGetApi() {
@@ -50,4 +52,31 @@ void OnnxReleaseSharedEnv() {
             LOGD("Onnx shared env released");
         }
     }
+}
+
+bool OnnxTryEnableNnapi(OrtSessionOptions* options) {
+    const OrtApi* api = OnnxGetApi();
+    if (!api || !options) return false;
+
+    typedef OrtStatus* (*NnapiProviderFn)(OrtSessionOptions*, uint32_t);
+    NnapiProviderFn nnapi_fn = (NnapiProviderFn)dlsym(
+        RTLD_DEFAULT, "OrtSessionOptionsAppendExecutionProvider_Nnapi");
+
+    if (!nnapi_fn) {
+        LOGD("NNAPI EP not available in this libonnxruntime.so (CPU-only build)");
+        return false;
+    }
+
+    uint32_t nnapi_flags = 0;
+    nnapi_flags |= 0x001;  // NNAPI_FLAG_USE_FP16
+
+    OrtStatus* status = nnapi_fn(options, nnapi_flags);
+    if (status) {
+        LOGW("NNAPI EP initialization failed: %s", api->GetErrorMessage(status));
+        api->ReleaseStatus(status);
+        return false;
+    }
+
+    LOGD("NNAPI execution provider enabled successfully");
+    return true;
 }
