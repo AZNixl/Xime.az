@@ -40,7 +40,6 @@ data class InputUIState(
     val cursorX: Int = 0,
     val cursorY: Int = 0,
     val cursorVisible: Boolean = false,
-    val isGlassEffectEnabled: Boolean = false,
     val showQuickSendForm: Boolean = false,
     val quickSendFormFocused: Boolean = false,
     val quickSendEditingItemId: Long? = null,

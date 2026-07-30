@@ -67,7 +67,7 @@ fun ModelManagementContent(
     }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
             TopAppBar(
                 title = { Text("模型管理") },
@@ -80,8 +80,8 @@ fun ModelManagementContent(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 ),
             )
         }

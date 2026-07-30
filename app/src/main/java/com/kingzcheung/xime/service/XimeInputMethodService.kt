@@ -294,7 +294,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             isFloatingMode = isFloatingMode,
             floatingOffsetX = clampedX,
             floatingOffsetY = clampedY,
-            isGlassEffectEnabled = SettingsPreferences.isGlassEffectEnabled(this@XimeInputMethodService),
         )
     }
     
@@ -830,7 +829,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
 
                 val quickSendFormExtra = if (state.showQuickSendForm) 200 else 0
 
-                XimeTheme(darkTheme = isDarkTheme, themeId = state.themeId) {
+                XimeTheme(darkTheme = isDarkTheme) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()

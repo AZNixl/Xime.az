@@ -85,15 +85,15 @@ fun SettingsMainContent(
     
     Scaffold(
         modifier = Modifier.fillMaxSize(),
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
             MediumTopAppBar(
                 title = { Text("曦码输入法设置") },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    scrolledContainerColor = MaterialTheme.colorScheme.background,
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
                     navigationIconContentColor = Color.Unspecified,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface,
                     actionIconContentColor = Color.Unspecified
                 ),
                 scrollBehavior = scrollBehavior

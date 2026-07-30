@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.BlurOn
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -39,7 +38,7 @@ fun ThemeSettingsContent(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
             TopAppBar(
                 title = { Text("主题与定制") },
@@ -52,8 +51,8 @@ fun ThemeSettingsContent(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
         }
@@ -161,26 +160,6 @@ fun ThemeSettingsContent(
                 }
             }
             
-            item {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "玻璃效果",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-            }
-
-            item {
-                SettingsToggleItem(
-                    icon = Icons.Filled.BlurOn,
-                    title = "琉璃质感",
-                    subtitle = "键盘背景叠加高光与折射渐变，模拟半透玻璃效果",
-                    checked = uiState.isGlassEffectEnabled,
-                    onCheckedChange = { viewModel.setGlassEffectEnabled(it) }
-                )
-            }
-
             item {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(

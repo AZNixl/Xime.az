@@ -99,7 +99,7 @@ fun DictionarySettingsContent(
                     ) {
                         val schema = uiState.availableSchemas.find { it.schemaId == uiState.selectedSchema }
                         Text(schema?.name ?: uiState.selectedSchema, style = MaterialTheme.typography.bodyMedium)
-                        Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = MaterialTheme.colorScheme.onBackground)
+                        Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
                     }
                     DropdownMenu(
                         expanded = showSchemaMenu,
@@ -116,8 +116,8 @@ fun DictionarySettingsContent(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
         },

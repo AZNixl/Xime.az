@@ -61,7 +61,7 @@ fun SettingsSection(
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp),
-            color = MaterialTheme.colorScheme.surface,
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
             shadowElevation = 0.dp
         ) {
             Column(content = content)
@@ -89,7 +89,7 @@ fun SettingsItem(
             modifier = Modifier
                 .size(40.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.1f)),
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
             contentAlignment = Alignment.Center
         ) {
             Icon(
@@ -146,7 +146,7 @@ fun SettingsToggleItem(
             modifier = Modifier
                 .size(40.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.1f)),
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
             contentAlignment = Alignment.Center
         ) {
             Icon(
@@ -373,7 +373,7 @@ fun ThemeCard(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(1f)
+                .aspectRatio(1.3f)
                 .then(
                     if (isSelected) {
                         Modifier.border(
@@ -386,7 +386,7 @@ fun ThemeCard(
                     }
                 ),
             shape = RoundedCornerShape(12.dp),
-            color = MaterialTheme.colorScheme.surface,
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
             shadowElevation = 0.dp,
             onClick = onClick
         ) {
@@ -521,15 +521,15 @@ fun ThemeCard(
                                         .padding(vertical = 1.dp),
                                     horizontalArrangement = Arrangement.spacedBy(2.dp)
                                 ) {
-                                    val keysInRow = if (rowIndex == 2) 4 else 10
+                                    val keysInRow = if (rowIndex == 2) 3 else 10
                                     repeat(keysInRow) { keyIndex ->
-                                        val isSpecialKey = (rowIndex == 0 && keyIndex == 0) ||
-                                                (rowIndex == 2 && (keyIndex == 0 || keyIndex == 3))
+                                        val isSpecialKey = (rowIndex == 2 && (keyIndex == 0 || keyIndex == 2))
+                                        val isSpaceKey = (rowIndex == 2 && keyIndex == 1)
                                         Box(
                                             modifier = Modifier
-                                                .weight(if (isSpecialKey) 1.5f else 1f)
+                                                .weight(if (isSpaceKey) 4f else 1f)
                                                 .fillMaxHeight()
-                                                .clip(RoundedCornerShape(3.dp))
+                                                .clip(RoundedCornerShape(2.dp))
                                                 .background(if (isSpecialKey) specialKeyColor else keyColor)
                                         )
                                     }
@@ -921,27 +921,27 @@ fun KeyboardThemeCard(
                         
                         Spacer(modifier = Modifier.height(4.dp))
                         
-                        repeat(3) { rowIndex ->
-                            Row(
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                            horizontalArrangement = Arrangement.spacedBy(3.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .weight(1f)
-                                    .padding(vertical = 1.dp),
-                                horizontalArrangement = Arrangement.spacedBy(2.dp)
-                            ) {
-                                val keysInRow = if (rowIndex == 2) 4 else 10
-                                repeat(keysInRow) { keyIndex ->
-                                    val isSpecialKey = (rowIndex == 0 && keyIndex == 0) ||
-                                            (rowIndex == 2 && (keyIndex == 0 || keyIndex == 3))
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(if (isSpecialKey) 1.5f else 1f)
-                                            .fillMaxHeight()
-                                            .clip(RoundedCornerShape(3.dp))
-                                            .background(if (isSpecialKey) specialKeyColor else keyColor)
-                                    )
-                                }
-                            }
+                                    .weight(4f)
+                                    .fillMaxHeight(0.55f)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(keyColor)
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .weight(1.5f)
+                                    .fillMaxHeight(0.55f)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(specialKeyColor)
+                            )
                         }
                     }
                 }
@@ -967,15 +967,6 @@ fun KeyboardThemeCard(
                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                         color = if (isSelected) accentColor else MaterialTheme.colorScheme.onSurface
                     )
-//                    if (isSelected) {
-//                        Spacer(modifier = Modifier.width(4.dp))
-//                        Icon(
-//                            imageVector = Icons.Default.Check,
-//                            contentDescription = null,
-//                            tint = accentColor,
-//                            modifier = Modifier.size(16.dp)
-//                        )
-//                    }
                 }
             }
         }

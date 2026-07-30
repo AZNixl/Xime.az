@@ -121,7 +121,7 @@ class MainActivity : ComponentActivity() {
                 else -> false
             }
 
-            XimeTheme(darkTheme = isDarkTheme, themeId = keyboardTheme) {
+            XimeTheme(darkTheme = isDarkTheme) {
                 val view = LocalView.current
                 if (!view.isInEditMode) {
                     DisposableEffect(darkMode) {

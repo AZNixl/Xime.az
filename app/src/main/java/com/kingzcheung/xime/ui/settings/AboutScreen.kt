@@ -131,7 +131,7 @@ fun AboutContent(
     val uriHandler = LocalUriHandler.current
     
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
             TopAppBar(
                 title = { Text("关于") },
@@ -144,8 +144,8 @@ fun AboutContent(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
         }
@@ -444,7 +444,7 @@ fun PrivacyPolicyContent(
     onBack: () -> Unit
 ) {
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
             TopAppBar(
                 title = { Text("隐私策略") },
@@ -457,8 +457,8 @@ fun PrivacyPolicyContent(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
         }
@@ -554,7 +554,7 @@ fun LicensesContent(
     val uriHandler = LocalUriHandler.current
     
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
             TopAppBar(
                 title = { Text("开源许可证") },
@@ -567,8 +567,8 @@ fun LicensesContent(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
         }
