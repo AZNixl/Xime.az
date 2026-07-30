@@ -19,8 +19,12 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Backspace
+import androidx.compose.material.icons.twotone.KeyboardControlKey
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -36,6 +40,8 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -63,7 +69,7 @@ fun ThemePreviewSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
         Column(
             modifier = Modifier
@@ -75,6 +81,7 @@ fun ThemePreviewSheet(
                 text = theme.name,
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.padding(bottom = 16.dp),
             )
 
@@ -89,14 +96,14 @@ fun ThemePreviewSheet(
                 OutlinedButton(
                     onClick = onDismiss,
                     modifier = Modifier.weight(1f).height(48.dp),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(24.dp),
                 ) {
                     Text("取消", fontSize = 16.sp)
                 }
                 Button(
                     onClick = onApply,
                     modifier = Modifier.weight(1f).height(48.dp),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(24.dp),
                 ) {
                     Text("应用", fontSize = 16.sp)
                 }
@@ -227,7 +234,10 @@ private fun ThemeKeyboardPreview(
                     Row(
                         modifier = Modifier.weight(1f).fillMaxWidth().fillMaxHeight(),
                     ) {
-                        PreviewKey("⇧", specialKeyColor, textColor, 1.4f,
+                        PreviewKey(
+                            label = "",
+                            icon = rememberVectorPainter(Icons.TwoTone.KeyboardControlKey),
+                            color = specialKeyColor, textColor = textColor, weight = 1.4f,
                             extraModifier = Modifier.padding(2.dp, 4.dp))
 
                         Row(
@@ -238,7 +248,10 @@ private fun ThemeKeyboardPreview(
                             }
                         }
 
-                        PreviewKey("⌫", specialKeyColor, textColor, 1.4f,
+                        PreviewKey(
+                            label = "",
+                            icon = rememberVectorPainter(Icons.AutoMirrored.Filled.Backspace),
+                            color = specialKeyColor, textColor = textColor, weight = 1.4f,
                             extraModifier = Modifier.padding(2.dp, 0.dp))
                     }
 
@@ -264,27 +277,43 @@ private fun CandidateBarPreview(
     accent: Color,
     textColor: Color,
 ) {
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .height(26.dp)
-            .clip(RoundedCornerShape(4.dp))
+            .height(50.dp)
             .background(bgColor)
-            .padding(horizontal = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(horizontal = 8.dp),
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            PreviewCandidate(text = "曦码", isSelected = true, accent = accent, textColor = textColor)
+            Spacer(modifier = Modifier.width(4.dp))
+            PreviewCandidate(text = "输入法", isSelected = false, accent = accent, textColor = textColor)
+        }
+    }
+}
+
+@Composable
+private fun PreviewCandidate(
+    text: String,
+    isSelected: Boolean,
+    accent: Color,
+    textColor: Color,
+) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(5.dp))
+            .background(if (isSelected) accent.copy(alpha = 0.2f) else Color.Transparent)
+            .padding(horizontal = 6.dp, vertical = 4.dp),
     ) {
         Text(
-            text = "输入法",
-            fontSize = 11.sp,
-            color = accent,
-            fontWeight = FontWeight.Medium,
-            maxLines = 1,
-        )
-        Spacer(modifier = Modifier.width(10.dp))
-        Text(
-            text = "shu ru fa",
-            fontSize = 9.sp,
-            color = textColor.copy(alpha = 0.5f),
+            text = text,
+            color = if (isSelected) accent else textColor,
+            fontSize = 17.sp,
+            fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal,
             maxLines = 1,
         )
     }
@@ -296,6 +325,7 @@ private fun RowScope.PreviewKey(
     color: Color,
     textColor: Color,
     weight: Float,
+    icon: Painter? = null,
     fontSize: androidx.compose.ui.unit.TextUnit = 10.sp,
     extraModifier: Modifier = Modifier,
 ) {
@@ -317,21 +347,36 @@ private fun RowScope.PreviewKey(
     }
 
     Box(
-        modifier = Modifier
+        modifier = extraModifier
             .weight(weight)
             .fillMaxHeight()
-            .then(extraModifier)
-            .padding(LocalKeyVisualPadding.current)
-            .then(shadowModifier)
-            .clip(RoundedCornerShape(LocalKeyCornerRadius.current))
-            .background(color),
+            .fillMaxWidth(),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            text = label,
-            fontSize = fontSize,
-            color = textColor,
-            maxLines = 1,
-        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(LocalKeyVisualPadding.current)
+                .then(shadowModifier)
+                .clip(RoundedCornerShape(LocalKeyCornerRadius.current))
+                .background(color),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (icon != null) {
+                Icon(
+                    painter = icon,
+                    contentDescription = null,
+                    tint = textColor,
+                    modifier = Modifier.size(20.dp),
+                )
+            } else {
+                Text(
+                    text = label,
+                    fontSize = fontSize,
+                    color = textColor,
+                    maxLines = 1,
+                )
+            }
+        }
     }
 }

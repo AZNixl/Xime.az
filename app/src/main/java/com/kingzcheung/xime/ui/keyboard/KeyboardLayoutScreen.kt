@@ -31,7 +31,7 @@ fun KeyboardLayoutScreen(
     t9Controller: T9InputController? = null,
 ) {
     val kbColors = KeysConfigHelper.getKeyboardColors()
-    val longToColor: (Long) -> Color = { Color(0xFF000000 or it) }
+    val longToColor: (Long) -> Color = { if (it > 0xFFFFFF) Color(it) else Color(0xFF000000 or it) }
     val themeScheme = KeyboardThemes.getThemeById(uiState.themeId)
     val themeBgColor = themeScheme.keyboardBackground?.let { resolveSolidColor(it, uiState.isDarkTheme) }
     val keyboardBgColor = themeBgColor ?: if (uiState.isDarkTheme) longToColor(KeyboardColorsConfig.FALLBACK_BG_DARK) else longToColor(KeyboardColorsConfig.FALLBACK_BG_LIGHT)

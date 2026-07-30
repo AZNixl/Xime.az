@@ -193,6 +193,8 @@ object KeyboardThemes {
         android.util.Log.d("KeyboardTheme", "reload: themesCache ids=${themesCache.map { it.id }}")
     }
 
+
+
     /** 根据配置项创建全新的 KeyboardColorScheme。 */
     private fun buildSchemeFromConfig(id: String, entry: ColorSchemeEntry): KeyboardColorScheme {
         val cfgColor = longToColor(entry.primaryColor)
@@ -202,7 +204,7 @@ object KeyboardThemes {
         val kbdBg = resolveBgColor(entry, isDark = false) ?: Color.White
         val kbdBgDark = resolveBgColor(entry, isDark = true) ?: Color(0xFF1C1B1F)
         val keyBg = resolveKeyBgColor(entry, isDark = false) ?: Color.White
-        val keyBgDark = resolveKeyBgColor(entry, isDark = true) ?: Color(0xFF4A4A4A)
+        val keyBgDark = resolveKeyBgColor(entry, isDark = true) ?: lightenColor(kbdBgDark, 0.25f)
         val txtColor = entry.keyTextColor?.let { longToColor(it) } ?: Color(0xFF202124)
         val txtColorDark = entry.keyTextColor?.let { longToColor(it).let { lightenColor(it) } } ?: Color(0xFFE8EAED)
 
@@ -277,9 +279,9 @@ object KeyboardThemes {
         }
     }
 
-    /** 将 hex long (0xRRGGBB) 转为 Color，补上 FF alpha。 */
+    /** 将 hex long 转为 Color。0xRRGGBB 补上 FF alpha，0xAARRGGBB 保留 alpha。 */
     private fun longToColor(hex: Long): Color {
-        return Color(0xFF000000 or (hex and 0xFFFFFF))
+        return if (hex > 0xFFFFFF) Color(hex) else Color(0xFF000000 or (hex and 0xFFFFFF))
     }
 
     /** 将颜色调亮（向白色混合），用于生成暗色主题下的亮色变体。 */

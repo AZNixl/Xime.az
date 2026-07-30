@@ -158,7 +158,7 @@ fun KeyboardView(
     val kbColors = KeysConfigHelper.getKeyboardColors()
     val kbShadow = KeysConfigHelper.getKeyboardShadow()
     val kbKey = KeysConfigHelper.getKeyboardKeyConfig()
-    val longToColor: (Long) -> androidx.compose.ui.graphics.Color = { androidx.compose.ui.graphics.Color(0xFF000000 or it) }
+    val longToColor: (Long) -> androidx.compose.ui.graphics.Color = { if (it > 0xFFFFFF) androidx.compose.ui.graphics.Color(it) else androidx.compose.ui.graphics.Color(0xFF000000 or it) }
     val keyboardBgColor = if (state.isDarkTheme) longToColor(KeyboardColorsConfig.FALLBACK_BG_DARK)
         else longToColor(KeyboardColorsConfig.FALLBACK_BG_LIGHT)
     val keyBgColor = if (state.isDarkTheme) longToColor(kbColors.keyBgColorDark)
