@@ -93,7 +93,7 @@ fun PluginsSettingsContent(
     val loadedPlugins by viewModel.loadedPlugins.collectAsState()
     
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
             TopAppBar(
                 title = { Text("插件管理") },
@@ -114,8 +114,8 @@ fun PluginsSettingsContent(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 ),
             )
         }
@@ -124,7 +124,7 @@ fun PluginsSettingsContent(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .background(MaterialTheme.colorScheme.background),
+                .background(MaterialTheme.colorScheme.surface),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
         ) {

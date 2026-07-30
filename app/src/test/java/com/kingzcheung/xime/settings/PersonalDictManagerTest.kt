@@ -556,6 +556,7 @@ speller:
   alphabet: abcdefghijklmnopqrstuvwxyz
   max_code_length: 4
 """.trimIndent())
+        java.io.File(rimeDir, "wubi86.dict.yaml").writeText("name: wubi86\nversion: \"1.0\"\nsort: original\n...\n", Charsets.UTF_8)
         runBlocking { PersonalDictManager.ensureSchemaPack(context, "wubi86") }
         assertTrue("merged dict should be created", java.io.File(rimeDir, "wubi86_merged.dict.yaml").exists())
         val customFile = java.io.File(rimeDir, "wubi86.custom.yaml")
@@ -640,6 +641,7 @@ speller:
     @Test
     fun `applyMergedDictConfig creates merged dict and custom for schema WITHOUT algebra`() {
         val rimeDir = createTempDir()
+        java.io.File(rimeDir, "wubi86.dict.yaml").writeText("name: wubi86\nversion: \"1.0\"\nsort: original\n...\n", Charsets.UTF_8)
         PersonalDictManager.applyMergedDictConfig(rimeDir, "wubi86")
         val dictFile = File(rimeDir, "wubi86_merged.dict.yaml")
         assertTrue(dictFile.exists())
@@ -657,6 +659,7 @@ speller:
     @Test
     fun `applyMergedDictConfig is idempotent`() {
         val rimeDir = createTempDir()
+        java.io.File(rimeDir, "wubi86.dict.yaml").writeText("name: wubi86\nversion: \"1.0\"\nsort: original\n...\n", Charsets.UTF_8)
         PersonalDictManager.applyMergedDictConfig(rimeDir, "wubi86")
         PersonalDictManager.applyMergedDictConfig(rimeDir, "wubi86")
         val text = File(rimeDir, "wubi86.custom.yaml").readText(Charsets.UTF_8)
@@ -760,6 +763,7 @@ patch:
     @Test
     fun `applyMergedDictConfig preserves existing content in custom yaml`() {
         val dir = createTempDir()
+        java.io.File(dir, "wubi86.dict.yaml").writeText("name: wubi86\nversion: \"1.0\"\nsort: original\n...\n", Charsets.UTF_8)
         val file = File(dir, "wubi86.custom.yaml")
         file.writeText("""patch:
   engine/filters/@before/0:
@@ -851,6 +855,7 @@ speller:
   alphabet: abcdefghijklmnopqrstuvwxyz
   max_code_length: 4
 """.trimIndent())
+        java.io.File(rimeDir, "wubi86.dict.yaml").writeText("name: wubi86\nversion: \"1.0\"\nsort: original\n...\n", Charsets.UTF_8)
         java.io.File(rimeDir, "wubi86.custom.yaml").writeText("""patch:
   engine/filters/@before/0:
     - lua_filter@custom_filter

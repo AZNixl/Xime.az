@@ -96,7 +96,6 @@ fun CommonSymbolKeyboardLayout(
         modifier = modifier
             .fillMaxWidth()
             .fillMaxHeight()
-            .background(keyboardBackgroundColor)
             .onGloballyPositioned { coordinates ->
                 keyboardBounds = coordinates.boundsInRoot()
             }

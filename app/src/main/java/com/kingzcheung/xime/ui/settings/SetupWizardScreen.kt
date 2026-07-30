@@ -60,7 +60,7 @@ fun SetupWizardScreen(
 
     if (visible) {
         Scaffold(
-            containerColor = MaterialTheme.colorScheme.background,
+            containerColor = MaterialTheme.colorScheme.surface,
             topBar = {
                 TopAppBar(
                     title = { Text("设置向导") },

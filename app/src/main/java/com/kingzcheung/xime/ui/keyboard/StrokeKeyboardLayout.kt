@@ -159,7 +159,6 @@ private fun StrokeKeyboardSwipeOverlay(
     CompositionLocalProvider(LocalKeyCornerRadius provides keyCornerRadius) {
     Box(
         modifier = modifier
-            .background(keyboardBackgroundColor)
             .onGloballyPositioned { coordinates ->
                 keyboardBounds = coordinates.boundsInRoot()
             }

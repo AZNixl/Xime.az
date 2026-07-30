@@ -56,7 +56,7 @@ internal data class SchemaEntry(
 object SchemaManager {
     private const val TAG = "SchemaManager"
     private const val CUSTOM_YAML = "default.custom.yaml"
-    internal val yaml = Yaml(configuration = YamlConfiguration(strictMode = false))
+    internal val yaml = Yaml(configuration = YamlConfiguration(strictMode = false, anchorsAndAliases = com.charleskorn.kaml.AnchorsAndAliases.Permitted(maxAliasCount = UInt.MAX_VALUE)))
 
     private val downloadClient = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
