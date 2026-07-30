@@ -139,8 +139,7 @@ fun CommonSymbolKeyboardLayout(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .fillMaxHeight()
-                            .padding(start = 4.dp, end = 4.dp, bottom = 8.dp),
+                            .fillMaxHeight(),
                     ) {
                         Row(
                             modifier = Modifier
