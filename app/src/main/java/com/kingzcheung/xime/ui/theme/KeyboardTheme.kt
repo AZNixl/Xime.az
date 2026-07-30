@@ -204,7 +204,7 @@ object KeyboardThemes {
         val kbdBg = resolveBgColor(entry, isDark = false) ?: Color.White
         val kbdBgDark = resolveBgColor(entry, isDark = true) ?: Color(0xFF1C1B1F)
         val keyBg = resolveKeyBgColor(entry, isDark = false) ?: Color.White
-        val keyBgDark = resolveKeyBgColor(entry, isDark = true) ?: lightenColor(kbdBgDark, 0.25f)
+        val keyBgDark = resolveKeyBgColor(entry, isDark = true) ?: Color(0xFF4A4A4A)
         val txtColor = entry.keyTextColor?.let { longToColor(it) } ?: Color(0xFF202124)
         val txtColorDark = entry.keyTextColor?.let { longToColor(it).let { lightenColor(it) } } ?: Color(0xFFE8EAED)
 

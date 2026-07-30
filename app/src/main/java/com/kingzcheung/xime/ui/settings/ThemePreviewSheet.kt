@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -49,7 +48,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kingzcheung.xime.settings.KeysConfigHelper
 import com.kingzcheung.xime.ui.keyboard.LocalKeyCornerRadius
-import com.kingzcheung.xime.ui.keyboard.LocalKeyVisualPadding
 import com.kingzcheung.xime.ui.keyboard.crispShadowColor
 import com.kingzcheung.xime.ui.theme.KeyboardColorScheme
 
@@ -95,14 +93,18 @@ fun ThemePreviewSheet(
             ) {
                 OutlinedButton(
                     onClick = onDismiss,
-                    modifier = Modifier.weight(1f).height(48.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp),
                     shape = RoundedCornerShape(24.dp),
                 ) {
                     Text("取消", fontSize = 16.sp)
                 }
                 Button(
                     onClick = onApply,
-                    modifier = Modifier.weight(1f).height(48.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp),
                     shape = RoundedCornerShape(24.dp),
                 ) {
                     Text("应用", fontSize = 16.sp)
@@ -128,7 +130,9 @@ private fun ThemePreviewPager(
     Column(modifier = Modifier.fillMaxWidth()) {
         HorizontalPager(
             state = pagerState,
-            modifier = Modifier.fillMaxWidth().height(240.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(240.dp),
         ) { page ->
             val preview = PREVIEW_PAGES[page]
             Box(
@@ -138,7 +142,9 @@ private fun ThemePreviewPager(
                 ThemeKeyboardPreview(
                     theme = theme,
                     isDark = preview.isDark,
-                    modifier = Modifier.fillMaxSize().padding(horizontal = 2.dp),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 2.dp),
                 )
             }
         }
@@ -188,16 +194,18 @@ private fun ThemeKeyboardPreview(
     val bgColor = if (isDark) theme.keyboardBgDark else theme.keyboardBgLight
     val cBarColor = if (isDark) theme.candidateBarBgDark else theme.candidateBarBgLight
     val accent = if (isDark) theme.accentDark else theme.accentLight
-    val keyColor = if (isDark) theme.keyBgDark else theme.keyBgLight
     val specialKeyColor = if (isDark) theme.specialKeyDark else theme.specialKeyLight
     val textColor = if (isDark) theme.keyTextColorDark else theme.keyTextColorLight
 
+    val kbColors = KeysConfigHelper.getKeyboardColors()
+    val longToColor: (Long) -> Color = { if (it > 0xFFFFFF) Color(it) else Color(0xFF000000 or it) }
+    val keyColor =
+        if (isDark) longToColor(kbColors.keyBgColorDark) else longToColor(kbColors.keyBgColor)
+
     val cornerRadius = KeysConfigHelper.getKeyboardKeyConfig().cornerRadius.dp
-    val keyVisualPadding = PaddingValues(horizontal = 2.dp, vertical = 4.25.dp)
 
     CompositionLocalProvider(
         LocalKeyCornerRadius provides cornerRadius,
-        LocalKeyVisualPadding provides keyVisualPadding,
     ) {
         Box(
             modifier = modifier
@@ -211,40 +219,74 @@ private fun ThemeKeyboardPreview(
             ) {
                 CandidateBarPreview(cBarColor, accent, textColor)
 
-                Column(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                Column(modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)) {
                     // Row 1: QWERTYUIOP
                     Box(modifier = Modifier.weight(1f)) {
-                        Row(modifier = Modifier.fillMaxSize()) {
+                        Row(
+                            modifier = Modifier.fillMaxSize(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
                             QWERTY_ROW0.forEach { key ->
-                                PreviewKey(key, keyColor, textColor, 1f)
+                                PreviewKey(
+                                    key,
+                                    keyColor,
+                                    textColor,
+                                    1f,
+                                    extraModifier = Modifier.padding(1.dp, 2.dp)
+                                )
                             }
                         }
                     }
 
                     // Row 2: ASDFGHJKL
                     Box(modifier = Modifier.weight(1f)) {
-                        Row(modifier = Modifier.fillMaxSize()) {
+                        Row(
+                            modifier = Modifier.fillMaxSize(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
                             QWERTY_ROW1.forEach { key ->
-                                PreviewKey(key, keyColor, textColor, 1f)
+                                PreviewKey(
+                                    key,
+                                    keyColor,
+                                    textColor,
+                                    1f,
+                                    extraModifier = Modifier.padding(1.dp, 2.dp)
+                                )
                             }
                         }
                     }
 
                     // Row 3: Shift ZXCVBNM Backspace
                     Row(
-                        modifier = Modifier.weight(1f).fillMaxWidth().fillMaxHeight(),
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .fillMaxHeight(),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         PreviewKey(
                             label = "",
                             icon = rememberVectorPainter(Icons.TwoTone.KeyboardControlKey),
                             color = specialKeyColor, textColor = textColor, weight = 1.4f,
-                            extraModifier = Modifier.padding(2.dp, 4.dp))
+                            extraModifier = Modifier.padding(1.dp, 2.dp)
+                        )
 
                         Row(
-                            modifier = Modifier.weight(7f).fillMaxHeight(),
+                            modifier = Modifier
+                                .weight(7f)
+                                .fillMaxHeight(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
                             QWERTY_ROW2.forEach { key ->
-                                PreviewKey(key, keyColor, textColor, 1f)
+                                PreviewKey(
+                                    key,
+                                    keyColor,
+                                    textColor,
+                                    1f,
+                                    extraModifier = Modifier.padding(1.dp, 2.dp)
+                                )
                             }
                         }
 
@@ -252,18 +294,22 @@ private fun ThemeKeyboardPreview(
                             label = "",
                             icon = rememberVectorPainter(Icons.AutoMirrored.Filled.Backspace),
                             color = specialKeyColor, textColor = textColor, weight = 1.4f,
-                            extraModifier = Modifier.padding(2.dp, 0.dp))
+                            extraModifier = Modifier.padding(1.dp, 2.dp)
+                        )
                     }
 
                     // Row 4: ?123 , 空格 中/En 确定
                     Row(
-                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        PreviewKey("?123", specialKeyColor, textColor, 1.2f)
-                        PreviewKey("，", keyColor, textColor, 0.8f)
-                        PreviewKey("空格", keyColor, textColor, 3f, fontSize = 9.sp)
-                        PreviewKey("中/En", specialKeyColor, textColor, 0.8f, fontSize = 8.sp)
-                        PreviewKey("确定", specialKeyColor, textColor, 1.2f)
+                        PreviewKey("?123", specialKeyColor, textColor, 1.2f,extraModifier = Modifier.padding(1.dp, 2.dp))
+                        PreviewKey("，", keyColor, textColor, 0.8f,extraModifier = Modifier.padding(1.dp, 2.dp))
+                        PreviewKey("空格", keyColor, textColor, 3f, fontSize = 9.sp,extraModifier = Modifier.padding(1.dp, 2.dp))
+                        PreviewKey("中/En", specialKeyColor, textColor, 0.8f, fontSize = 8.sp,extraModifier = Modifier.padding(1.dp, 2.dp))
+                        PreviewKey("确定", specialKeyColor, textColor, 1.2f,extraModifier = Modifier.padding(1.dp, 2.dp))
                     }
                 }
             }
@@ -289,9 +335,19 @@ private fun CandidateBarPreview(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            PreviewCandidate(text = "曦码", isSelected = true, accent = accent, textColor = textColor)
+            PreviewCandidate(
+                text = "曦码",
+                isSelected = true,
+                accent = accent,
+                textColor = textColor
+            )
             Spacer(modifier = Modifier.width(4.dp))
-            PreviewCandidate(text = "输入法", isSelected = false, accent = accent, textColor = textColor)
+            PreviewCandidate(
+                text = "输入法",
+                isSelected = false,
+                accent = accent,
+                textColor = textColor
+            )
         }
     }
 }
@@ -350,33 +406,26 @@ private fun RowScope.PreviewKey(
         modifier = extraModifier
             .weight(weight)
             .fillMaxHeight()
-            .fillMaxWidth(),
+            .fillMaxWidth()
+            .then(shadowModifier)
+            .clip(RoundedCornerShape(LocalKeyCornerRadius.current))
+            .background(color),
         contentAlignment = Alignment.Center,
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(LocalKeyVisualPadding.current)
-                .then(shadowModifier)
-                .clip(RoundedCornerShape(LocalKeyCornerRadius.current))
-                .background(color),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (icon != null) {
-                Icon(
-                    painter = icon,
-                    contentDescription = null,
-                    tint = textColor,
-                    modifier = Modifier.size(20.dp),
-                )
-            } else {
-                Text(
-                    text = label,
-                    fontSize = fontSize,
-                    color = textColor,
-                    maxLines = 1,
-                )
-            }
+        if (icon != null) {
+            Icon(
+                painter = icon,
+                contentDescription = null,
+                tint = textColor,
+                modifier = Modifier.size(20.dp),
+            )
+        } else {
+            Text(
+                text = label,
+                fontSize = fontSize,
+                color = textColor,
+                maxLines = 1,
+            )
         }
     }
 }

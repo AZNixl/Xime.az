@@ -44,6 +44,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.tooling.preview.Preview
 import com.kingzcheung.xime.settings.SchemaInfo
 import com.kingzcheung.xime.ui.theme.XimeTheme
+import com.kingzcheung.xime.settings.KeysConfigHelper
+import com.kingzcheung.xime.settings.KeyboardColorsConfig
 import com.kingzcheung.xime.ui.theme.KeyboardColorScheme
 
 @Composable
@@ -858,6 +860,10 @@ fun KeyboardThemeCard(
     modifier: Modifier = Modifier,
     title: String? = null,
 ) {
+    val kbColors = KeysConfigHelper.getKeyboardColors()
+    val longToColor: (Long) -> Color = { if (it > 0xFFFFFF) Color(it) else Color(0xFF000000 or it) }
+    val globalKeyBgLight = longToColor(kbColors.keyBgColor)
+    val globalKeyBgDark = longToColor(kbColors.keyBgColorDark)
     Column(
         modifier = modifier
     ) {
@@ -894,7 +900,7 @@ fun KeyboardThemeCard(
                         bgColor = theme.keyboardBgLight,
                         candidateBarColor = theme.candidateBarBgLight,
                         accentColor = theme.accentLight,
-                        keyColor = theme.keyBgLight,
+                        keyColor = globalKeyBgLight,
                         specialKeyColor = theme.specialKeyLight,
                         isLeft = true,
                     )
@@ -905,7 +911,7 @@ fun KeyboardThemeCard(
                         bgColor = theme.keyboardBgDark,
                         candidateBarColor = theme.candidateBarBgDark,
                         accentColor = theme.accentDark,
-                        keyColor = theme.keyBgDark,
+                        keyColor = globalKeyBgDark,
                         specialKeyColor = theme.specialKeyDark,
                         isLeft = false,
                     )
