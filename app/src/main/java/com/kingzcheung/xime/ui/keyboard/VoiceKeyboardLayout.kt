@@ -70,8 +70,7 @@ fun VoiceKeyboardLayout(
     
     Column(
         modifier = modifier
-            .fillMaxSize()
-            .background(keyboardBackgroundColor),
+            .fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Column(

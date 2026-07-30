@@ -93,7 +93,6 @@ fun NumberKeyboardLayout(
     CompositionLocalProvider(LocalKeyCornerRadius provides keyCornerRadius) {
     Box(
         modifier = modifier
-            .background(keyboardBackgroundColor)
             .onGloballyPositioned { coordinates ->
                 keyboardBounds = coordinates.boundsInRoot()
             }
@@ -192,7 +191,6 @@ fun NumberKeyboardLayout(
                 modifier = Modifier
                     .fillMaxWidth()
                     .fillMaxHeight()
-                    .background(keyboardBackgroundColor)
                     .padding(start = 4.dp, end = 4.dp, bottom = 8.dp),
             ) {
                 NumberRows(

@@ -19,6 +19,7 @@ import androidx.core.graphics.ColorUtils
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
+import com.kingzcheung.xime.settings.KeysConfigHelper
 import com.kingzcheung.xime.settings.SettingsPreferences
 
 private fun hclColor(hue: Float, chroma: Float, lightness: Float): Color {
@@ -131,6 +132,7 @@ fun XimeTheme(
 ) {
     val context = LocalContext.current
     var themeId by remember { mutableStateOf(SettingsPreferences.getKeyboardTheme(context)) }
+    var configDarkThemeId by remember { mutableStateOf(KeysConfigHelper.loadThemeIdForMode(context, true)) }
 
     DisposableEffect(context) {
         val prefs = SettingsPreferences.getPrefsPublic(context)
@@ -143,7 +145,12 @@ fun XimeTheme(
         onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
     }
 
-    val scheme = KeyboardThemes.getThemeById(themeId)
+    val effectiveThemeId = if (darkTheme) {
+        configDarkThemeId.takeIf { it.isNotEmpty() } ?: themeId
+    } else {
+        themeId
+    }
+    val scheme = KeyboardThemes.getThemeById(effectiveThemeId)
     val seed = if (darkTheme) scheme.primaryDark else scheme.primaryLight
     val container = if (darkTheme) scheme.primaryContainerDark else scheme.primaryContainerLight
     val colorScheme = generateColorScheme(seed, container, darkTheme)

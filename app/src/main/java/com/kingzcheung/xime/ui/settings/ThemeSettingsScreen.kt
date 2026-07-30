@@ -74,25 +74,28 @@ fun ThemeSettingsContent(
             }
             
             item {
+                val currentTheme = uiState.colorThemes.firstOrNull { it.id == uiState.colorTheme }
+                    ?: uiState.colorThemes.first()
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    ThemeCard(
-                        title = "跟随系统",
+                    KeyboardThemeCard(
+                        theme = currentTheme,
                         isSelected = uiState.darkMode == 2,
-                        isDark = false,
-                        isSystem = true,
                         onClick = {
                             viewModel.setDarkMode(2)
                             onThemeChanged()
                         },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        title = "跟随系统"
                     )
                     ThemeCard(
                         title = "浅色",
                         isSelected = uiState.darkMode == 0,
                         isDark = false,
+                        accentColor = currentTheme.accentLight,
+                        keyBgColor = currentTheme.keyBgLight,
                         onClick = {
                             viewModel.setDarkMode(0)
                             onThemeChanged()
@@ -103,6 +106,8 @@ fun ThemeSettingsContent(
                         title = "深色",
                         isSelected = uiState.darkMode == 1,
                         isDark = true,
+                        accentColor = currentTheme.accentDark,
+                        keyBgColor = currentTheme.keyBgDark,
                         onClick = {
                             viewModel.setDarkMode(1)
                             onThemeChanged()
@@ -118,20 +123,20 @@ fun ThemeSettingsContent(
                     text = "配色方案",
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(bottom = 8.dp)
+                    modifier = Modifier.padding(bottom = 6.dp)
                 )
             }
             
             item {
                 Text(
-                    text = "选择特殊按键及设置页面的配色",
+                    text = "左右分栏显示浅色与深色预览",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 8.dp)
+                    modifier = Modifier.padding(bottom = 6.dp)
                 )
             }
             
-            uiState.colorThemes.chunked(4).forEach { rowThemes ->
+            uiState.colorThemes.chunked(3).forEach { rowThemes ->
                 item {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -141,7 +146,6 @@ fun ThemeSettingsContent(
                             KeyboardThemeCard(
                                 theme = theme,
                                 isSelected = uiState.colorTheme == theme.id,
-                                isDark = uiState.darkMode == 1,
                                 onClick = {
                                     viewModel.setColorTheme(theme.id)
                                     onThemeChanged()
@@ -149,14 +153,14 @@ fun ThemeSettingsContent(
                                 modifier = Modifier.weight(1f)
                             )
                         }
-                        repeat(4 - rowThemes.size) {
+                        repeat(3 - rowThemes.size) {
                             Spacer(modifier = Modifier.weight(1f))
                         }
                     }
                 }
                 
                 item {
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
                 }
             }
             

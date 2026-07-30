@@ -113,7 +113,6 @@ fun EnglishKeyboardLayout(
 
     Box(
         modifier = modifier
-            .background(keyboardBackgroundColor)
             .onGloballyPositioned { coordinates ->
                 keyboardBounds = coordinates.boundsInRoot()
             }
@@ -142,7 +141,6 @@ fun EnglishKeyboardLayout(
                 modifier = Modifier
                     .fillMaxWidth()
                     .fillMaxHeight()
-                    .background(keyboardBackgroundColor)
                     .padding(start = 4.dp, end = 4.dp, bottom = 8.dp)
             ) {
                 Column(
@@ -211,8 +209,7 @@ fun EnglishKeyboardLayout(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .weight(1f)
-                            .background(keyboardBackgroundColor),
+                            .weight(1f),
                     ) {
                         // Shift 键
                         IconKeyButton(
@@ -228,7 +225,7 @@ fun EnglishKeyboardLayout(
                             shadowShapeRadius = shadowShapeRadius,
                         )
                         Row(
-                            modifier = Modifier.weight(7f).fillMaxHeight().background(keyboardBackgroundColor),
+                            modifier = Modifier.weight(7f).fillMaxHeight(),
                         ) {
                             row3.forEach { key ->
                                 val swipeText = swipeSymbols[key]
@@ -278,8 +275,7 @@ fun EnglishKeyboardLayout(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .weight(1f)
-                            .background(keyboardBackgroundColor),
+                            .weight(1f),
                     ) {
                         KeyButton(
                             text = "?123",

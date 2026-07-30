@@ -94,6 +94,7 @@ import com.kingzcheung.xime.settings.SettingsPreferences
 import com.kingzcheung.xime.ui.keyboard.KeyboardView
 import com.kingzcheung.xime.ui.keyboard.isT9Schema
 import com.kingzcheung.xime.ui.theme.KeyboardThemes
+import com.kingzcheung.xime.ui.theme.keyboardBackground
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import com.kingzcheung.xime.settings.KeysConfigHelper
@@ -853,7 +854,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                         val kbColors = KeysConfigHelper.getKeyboardColors()
                         val longToColor: (Long) -> androidx.compose.ui.graphics.Color = { if (it == 0L)  { androidx.compose.ui.graphics.Color(0xE61E1E1E) } else { androidx.compose.ui.graphics.Color(0xFF000000 or it) } }
                         val isDark = isDarkTheme
-                        val cardBg = if (isDark) longToColor(kbColors.keyboardBgColorDark) else longToColor(kbColors.keyboardBgColor)
+                        val cardBg = if (isDark) longToColor(com.kingzcheung.xime.settings.KeyboardColorsConfig.FALLBACK_BG_DARK) else longToColor(com.kingzcheung.xime.settings.KeyboardColorsConfig.FALLBACK_BG_LIGHT)
                         val candidateTextCol = if (isDark) longToColor(kbColors.candidateTextColorDark) else longToColor(kbColors.candidateTextColor)
                         val accentCol = com.kingzcheung.xime.ui.theme.KeyboardThemes.getAccentColor(state.themeId, isDark)
                         if (state.isCompact && (cand.candidates.isNotEmpty() || cand.isShowingRecentClipboard || cand.inputText.isNotEmpty())) {
@@ -875,10 +876,11 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                             Box(modifier = Modifier.fillMaxSize())
                         } else {
                         val keyboardBgColor = cardBg
+                        val rootTheme = com.kingzcheung.xime.ui.theme.KeyboardThemes.getThemeById(state.themeId)
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .then(if (!state.isFloatingMode) Modifier.background(keyboardBgColor) else Modifier)
+                                .then(if (!state.isFloatingMode) Modifier.keyboardBackground(rootTheme.keyboardBackground, isDark, keyboardBgColor) else Modifier)
                     ) {
                         Box(
                             modifier = Modifier

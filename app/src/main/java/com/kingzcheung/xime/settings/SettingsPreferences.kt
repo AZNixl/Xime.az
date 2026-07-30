@@ -33,6 +33,10 @@ object SettingsPreferences {
     /** 默认主题 ID，可从 xime.yaml 的 style.color_scheme 初始化。 */
     @JvmStatic
     var defaultKeyboardTheme: String = "lavender_purple"
+
+    /** 默认显示模式，可从 xime.yaml 的 style.dark_mode 初始化。 */
+    @JvmStatic
+    var defaultDarkMode: Int = 2
     
     const val KEY_SWIPE_UP_HINTS_ENABLED = "swipe_up_hints_enabled"
     const val KEY_SWIPE_DOWN_HINTS_ENABLED = "swipe_down_hints_enabled"
@@ -150,7 +154,7 @@ object SettingsPreferences {
 
     fun getDarkMode(context: Context): Int {
         // 0 = 浅色, 1 = 深色, 2 = 跟随系统（默认）
-        return getPrefs(context).getInt(KEY_DARK_MODE, 2)
+        return getPrefs(context).getInt(KEY_DARK_MODE, defaultDarkMode)
     }
     
     fun setDarkMode(context: Context, mode: Int) {

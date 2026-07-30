@@ -2,6 +2,7 @@ package com.kingzcheung.xime.ui.theme
 
 import android.content.Context
 import androidx.compose.ui.graphics.Color
+import com.kingzcheung.xime.settings.BackgroundConfig
 import com.kingzcheung.xime.settings.ColorSchemeEntry
 import com.kingzcheung.xime.settings.KeysConfigHelper
 
@@ -36,6 +37,10 @@ data class KeyboardColorScheme(
     // 分隔线颜色
     val dividerColorLight: Color = Color(0xFFDADCE0),
     val dividerColorDark: Color = Color(0xFF3C4043),
+    // 背景配置（纯色/渐变/图片），比上方 flat color 字段优先级更高
+    val keyboardBackground: BackgroundConfig? = null,
+    val keyBackground: BackgroundConfig? = null,
+    val candidateBarBackground: BackgroundConfig? = null,
 )
 
 object KeyboardThemes {
@@ -194,10 +199,10 @@ object KeyboardThemes {
         val lightened = lightenColor(cfgColor)
         val veryLight = lightenColor(cfgColor, 0.8f)
 
-        val kbdBg = entry.keyboardBgColor?.let { longToColor(it) } ?: Color.White
-        val kbdBgDark = entry.keyboardBgColor?.let { longToColor(it).let { darkenColor(it) } } ?: Color(0xFF1C1B1F)
-        val keyBg = entry.keyBgColor?.let { longToColor(it) } ?: Color.White
-        val keyBgDark = entry.keyBgColor?.let { longToColor(it).let { darkenColor(it) } } ?: Color(0xFF4A4A4A)
+        val kbdBg = resolveBgColor(entry, isDark = false) ?: Color.White
+        val kbdBgDark = resolveBgColor(entry, isDark = true) ?: Color(0xFF1C1B1F)
+        val keyBg = resolveKeyBgColor(entry, isDark = false) ?: Color.White
+        val keyBgDark = resolveKeyBgColor(entry, isDark = true) ?: Color(0xFF4A4A4A)
         val txtColor = entry.keyTextColor?.let { longToColor(it) } ?: Color(0xFF202124)
         val txtColorDark = entry.keyTextColor?.let { longToColor(it).let { lightenColor(it) } } ?: Color(0xFFE8EAED)
 
@@ -224,7 +229,52 @@ object KeyboardThemes {
             keyTextColorDark = txtColorDark,
             candidateTextColorLight = entry.candidateTextColor?.let { longToColor(it) } ?: cfgColor,
             candidateTextColorDark = entry.candidateTextColor?.let { longToColor(it).let { lightenColor(it) } } ?: lightened,
+            keyboardBackground = entry.keyboardBackground,
+            keyBackground = entry.keyBackground,
+            candidateBarBackground = entry.candidateBarBackground,
         )
+    }
+
+    /** 从 BackgroundConfig（solid/gradient fallback）或旧 keyboardBgColor 字段解析键盘背景色。 */
+    private fun resolveBgColor(entry: ColorSchemeEntry, isDark: Boolean): Color? {
+        val bg = entry.keyboardBackground
+        if (bg != null) {
+            when (bg.type) {
+                "solid" -> {
+                    val hex = if (isDark) bg.colorDark ?: bg.color else bg.color
+                    if (hex != null) return longToColor(hex)
+                }
+                "gradient" -> {
+                    val hexes = if (isDark) bg.colorsDark ?: bg.colors else bg.colors
+                    if (!hexes.isNullOrEmpty()) return longToColor(hexes[0])
+                }
+            }
+        }
+        return entry.keyboardBgColor?.let {
+            val c = longToColor(it)
+            if (isDark) darkenColor(c) else c
+        }
+    }
+
+    /** 从 BackgroundConfig 或旧 keyBgColor 字段解析按键背景色。 */
+    private fun resolveKeyBgColor(entry: ColorSchemeEntry, isDark: Boolean): Color? {
+        val bg = entry.keyBackground
+        if (bg != null) {
+            when (bg.type) {
+                "solid" -> {
+                    val hex = if (isDark) bg.colorDark ?: bg.color else bg.color
+                    if (hex != null) return longToColor(hex)
+                }
+                "gradient" -> {
+                    val hexes = if (isDark) bg.colorsDark ?: bg.colors else bg.colors
+                    if (!hexes.isNullOrEmpty()) return longToColor(hexes[0])
+                }
+            }
+        }
+        return entry.keyBgColor?.let {
+            val c = longToColor(it)
+            if (isDark) darkenColor(c) else c
+        }
     }
 
     /** 将 hex long (0xRRGGBB) 转为 Color，补上 FF alpha。 */
@@ -259,16 +309,19 @@ object KeyboardThemes {
             accentDark = lightened,
             primaryLight = cfgColor,
             primaryDark = lightened,
-            keyboardBgLight = entry.keyboardBgColor?.let { longToColor(it) } ?: scheme.keyboardBgLight,
-            keyboardBgDark = entry.keyboardBgColor?.let { longToColor(it).let { darkenColor(it) } } ?: scheme.keyboardBgDark,
-            keyBgLight = entry.keyBgColor?.let { longToColor(it) } ?: scheme.keyBgLight,
-            keyBgDark = entry.keyBgColor?.let { longToColor(it).let { darkenColor(it) } } ?: scheme.keyBgDark,
-            candidateBarBgLight = entry.candidateBarBgColor?.let { longToColor(it) } ?: scheme.candidateBarBgLight,
-            candidateBarBgDark = entry.candidateBarBgColor?.let { longToColor(it).let { darkenColor(it) } } ?: scheme.candidateBarBgDark,
+            keyboardBgLight = resolveBgColor(entry, isDark = false) ?: scheme.keyboardBgLight,
+            keyboardBgDark = resolveBgColor(entry, isDark = true) ?: scheme.keyboardBgDark,
+            keyBgLight = resolveKeyBgColor(entry, isDark = false) ?: scheme.keyBgLight,
+            keyBgDark = resolveKeyBgColor(entry, isDark = true) ?: scheme.keyBgDark,
+            candidateBarBgLight = resolveBgColor(entry, isDark = false) ?: scheme.candidateBarBgLight,
+            candidateBarBgDark = resolveBgColor(entry, isDark = true) ?: scheme.candidateBarBgDark,
             keyTextColorLight = entry.keyTextColor?.let { longToColor(it) } ?: scheme.keyTextColorLight,
             keyTextColorDark = entry.keyTextColor?.let { longToColor(it).let { lightenColor(it) } } ?: scheme.keyTextColorDark,
             candidateTextColorLight = entry.candidateTextColor?.let { longToColor(it) } ?: scheme.candidateTextColorLight,
             candidateTextColorDark = entry.candidateTextColor?.let { longToColor(it).let { lightenColor(it) } } ?: scheme.candidateTextColorDark,
+            keyboardBackground = entry.keyboardBackground ?: scheme.keyboardBackground,
+            keyBackground = entry.keyBackground ?: scheme.keyBackground,
+            candidateBarBackground = entry.candidateBarBackground ?: scheme.candidateBarBackground,
         )
     }
 
