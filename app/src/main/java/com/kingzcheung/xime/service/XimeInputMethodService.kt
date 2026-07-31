@@ -1057,6 +1057,19 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                     onCursorMove = { direction ->
                                         val ic = currentInputConnection
                                         if (ic != null && direction != 0) {
+                                            if (SettingsPreferences.getInputTextLocation(this@XimeInputMethodService) == SettingsPreferences.INPUT_TEXT_INPUT_BOX &&
+                                                candidateState.value.isComposing
+                                            ) {
+                                                // 输入框模式：移动光标前先结束 composing 并清空 RIME 组成，
+                                                // 避免再次输入时 composing 区域与光标位置错乱
+                                                ic.finishComposingText()
+                                                postRimeJob {
+                                                    rimeEngine.clearComposition()
+                                                    withContext(Dispatchers.Main) {
+                                                        mainHandler.post { updateUI() }
+                                                    }
+                                                }
+                                            }
                                             var movedBySelection = false
                                             try {
                                                 val req = android.view.inputmethod.ExtractedTextRequest()
@@ -1849,10 +1862,22 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         if (codeInInputBox) {
             val ic = currentInputConnection
             if (isComposing && displayText.isNotEmpty()) {
-                ic?.setComposingText(displayText, displayText.length)
+                showInputBoxComposition(ic, displayText)
             } else {
                 endComposingInputBox()
             }
+        }
+    }
+
+    /** 在输入框模式向编辑器写入编码文本。 */
+    private fun showInputBoxComposition(ic: android.view.inputmethod.InputConnection, displayText: String) {
+        // 第二参数为 1：光标相对编码起始偏移 1 个字符，使光标落在编码末尾，
+        // 避免传 displayText.length 时被 AOSP 钳制到整段文本末尾（光标跑到最右边）。
+        ic.beginBatchEdit()
+        try {
+            ic.setComposingText(displayText, 1)
+        } finally {
+            ic.endBatchEdit()
         }
     }
 
@@ -1937,7 +1962,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         if (SettingsPreferences.getInputTextLocation(this) == SettingsPreferences.INPUT_TEXT_INPUT_BOX) {
             val ic = currentInputConnection
             if (isComposing && displayText.isNotEmpty()) {
-                ic?.setComposingText(displayText, displayText.length)
+                showInputBoxComposition(ic, displayText)
             } else {
                 endComposingInputBox()
             }
