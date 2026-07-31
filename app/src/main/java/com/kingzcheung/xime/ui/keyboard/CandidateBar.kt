@@ -38,10 +38,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.rememberTextMeasurer
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -91,6 +92,18 @@ fun CandidateBar(
     val isLandscape = !isFloatingMode && configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
     val horizontalPadding = if (isLandscape) 50.dp else 8.dp
     val context = LocalContext.current
+
+    // M3 角色色：图标按钮背景用 surface 与 primary 的混合色调（带种子色但不过于强烈），
+    // 按压态用 onSurface 12% state layer
+    val iconButtonContainer = androidx.compose.ui.graphics.lerp(
+        MaterialTheme.colorScheme.surface,
+        MaterialTheme.colorScheme.primary,
+        0.35f
+    )
+    val iconButtonPressedContainer = iconButtonContainer.compositeOver(
+        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+    )
+    val iconButtonTint = MaterialTheme.colorScheme.onSurfaceVariant
     val showComments = SettingsPreferences.showCandidateComments(context)
     val inputTextLocation = SettingsPreferences.getInputTextLocation(context)
     val showInputBoxStyle = inputTextLocation == SettingsPreferences.INPUT_TEXT_INPUT_BOX
@@ -261,7 +274,7 @@ fun CandidateBar(
                                 modifier = Modifier
                                     .size(32.dp)
                                     .clip(RoundedCornerShape(16.dp))
-                                    .background(if (visuals.isDarkTheme) Color(0xFF374151) else Color(0xFFF3F4F6))
+                                    .background(iconButtonContainer)
                                     .clickable { callbacks.onBack() },
                                 contentAlignment = Alignment.Center
                             ) {
@@ -277,7 +290,7 @@ fun CandidateBar(
                                 modifier = Modifier
                                     .size(32.dp)
                                     .clip(RoundedCornerShape(16.dp))
-                                    .background(if (visuals.isDarkTheme) Color(0xFF374151) else Color(0xFFF3F4F6))
+                                    .background(iconButtonContainer)
                                     .clickable { callbacks.onLogoClick?.invoke() },
                                 contentAlignment = Alignment.Center
                             ) {
@@ -394,10 +407,8 @@ fun CandidateBar(
                                     .size(32.dp)
                                     .clip(CircleShape)
                                     .background(
-                                        if (isPressed) (if (visuals.isDarkTheme) Color.White.copy(
-                                            alpha = 0.15f
-                                        ) else Color.Black.copy(alpha = 0.1f))
-                                        else (if (visuals.isDarkTheme) Color(0xFF374151) else Color(0xFFF3F4F6))
+                                        if (isPressed) iconButtonPressedContainer
+                                        else iconButtonContainer
                                     )
                                     .clickable(
                                         interactionSource = interactionSource,
@@ -409,7 +420,7 @@ fun CandidateBar(
                                 Icon(
                                     imageVector = action.button.icon,
                                     contentDescription = action.button.label,
-                                    tint = if (isPressed) visuals.textColor.copy(alpha = 0.6f) else if (visuals.isDarkTheme) visuals.textColor else visuals.textColor.copy(alpha = 0.65f),
+                                    tint = if (isPressed) iconButtonTint.copy(alpha = 0.6f) else iconButtonTint,
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
@@ -427,10 +438,8 @@ fun CandidateBar(
                                 .size(32.dp)
                                 .clip(CircleShape)
                                 .background(
-                                    if (isHideKeyboardPressed) (if (visuals.isDarkTheme) Color.White.copy(
-                                        alpha = 0.15f
-                                    ) else Color.Black.copy(alpha = 0.1f))
-                                    else (if (visuals.isDarkTheme) Color(0xFF374151) else Color(0xFFF3F4F6))
+                                    if (isHideKeyboardPressed) iconButtonPressedContainer
+                                    else iconButtonContainer
                                 )
                                 .clickable(
                                     interactionSource = hideKeyboardInteractionSource,
@@ -442,7 +451,7 @@ fun CandidateBar(
                             Icon(
                                 imageVector = Icons.Default.KeyboardArrowDown,
                                 contentDescription = "收起键盘",
-                                tint = if (isHideKeyboardPressed) visuals.textColor.copy(alpha = 0.6f) else visuals.textColor,
+                                tint = if (isHideKeyboardPressed) iconButtonTint.copy(alpha = 0.6f) else iconButtonTint,
                                 modifier = Modifier.size(20.dp)
                             )
                         }
@@ -454,7 +463,7 @@ fun CandidateBar(
                             modifier = Modifier
                                 .size(28.dp)
                                 .clip(RoundedCornerShape(14.dp))
-                                .background(if (visuals.isDarkTheme) Color(0xFF374151) else Color(0xFFF3F4F6))
+                                .background(iconButtonContainer)
                                 .clickable { callbacks.onBack() },
                             contentAlignment = Alignment.Center
                         ) {
@@ -508,12 +517,6 @@ fun CandidateBar(
                     val isMorePressed by moreInteractionSource.collectIsPressedAsState()
 
                     Spacer(modifier = Modifier.width(4.dp))
-                    Box(
-                        modifier = Modifier
-                            .width(1.dp)
-                            .height(28.dp)
-                            .background(visuals.dividerColor).padding(end = 1.dp)
-                    )
                     Box(
                         modifier = Modifier
                             .width(30.dp)

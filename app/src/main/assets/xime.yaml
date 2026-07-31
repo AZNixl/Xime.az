@@ -116,6 +116,90 @@ color_schemes:
     candidate_text_color: 0x9c7452
     candidate_text_color_dark: 0x9c7452
 
+  sakura_pink:
+    name: "樱花粉"
+    primary_color: 0xe91e63
+    keyboard_background:
+      type: solid
+      color: 0xfdf0f4
+      color_dark: 0xfdf0f4
+    key_bg_color: 0xfff8fb
+    key_bg_color_dark: 0xfff8fb
+    key_text_color: 0x7d3a52
+    key_text_color_dark: 0x7d3a52
+    candidate_text_color: 0x7d3a52
+    candidate_text_color_dark: 0x7d3a52
+
+  sky_blue:
+    name: "晴空浅蓝"
+    primary_color: 0x0288d1
+    keyboard_background:
+      type: solid
+      color: 0xe8f4fd
+      color_dark: 0xe8f4fd
+    key_bg_color: 0xf7fcff
+    key_bg_color_dark: 0xf7fcff
+    key_text_color: 0x2d5f7a
+    key_text_color_dark: 0x2d5f7a
+    candidate_text_color: 0x2d5f7a
+    candidate_text_color_dark: 0x2d5f7a
+
+  mint_green:
+    name: "薄荷浅绿"
+    primary_color: 0x2e7d32
+    keyboard_background:
+      type: solid
+      color: 0xe9f5ec
+      color_dark: 0xe9f5ec
+    key_bg_color: 0xf6fbf7
+    key_bg_color_dark: 0xf6fbf7
+    key_text_color: 0x3c5c44
+    key_text_color_dark: 0x3c5c44
+    candidate_text_color: 0x3c5c44
+    candidate_text_color_dark: 0x3c5c44
+
+  lilac_purple:
+    name: "丁香浅紫"
+    primary_color: 0x8e24aa
+    keyboard_background:
+      type: solid
+      color: 0xf3edf8
+      color_dark: 0xf3edf8
+    key_bg_color: 0xfbf8fd
+    key_bg_color_dark: 0xfbf8fd
+    key_text_color: 0x5d4a70
+    key_text_color_dark: 0x5d4a70
+    candidate_text_color: 0x5d4a70
+    candidate_text_color_dark: 0x5d4a70
+
+  peach_orange:
+    name: "蜜桃浅橙"
+    primary_color: 0xef6c00
+    keyboard_background:
+      type: solid
+      color: 0xfdf0e3
+      color_dark: 0xfdf0e3
+    key_bg_color: 0xfffaf3
+    key_bg_color_dark: 0xfffaf3
+    key_text_color: 0x7a5130
+    key_text_color_dark: 0x7a5130
+    candidate_text_color: 0x7a5130
+    candidate_text_color_dark: 0x7a5130
+
+  cream_beige:
+    name: "奶油米白"
+    primary_color: 0x8d6e63
+    keyboard_background:
+      type: solid
+      color: 0xfaf5ee
+      color_dark: 0xfaf5ee
+    key_bg_color: 0xfffdf8
+    key_bg_color_dark: 0xfffdf8
+    key_text_color: 0x5d4037
+    key_text_color_dark: 0x5d4037
+    candidate_text_color: 0x5d4037
+    candidate_text_color_dark: 0x5d4037
+
 # ── 26 键全键盘手势配置 ──
 # 每个按键可定义 4 个手势：
 #   tap:        点按

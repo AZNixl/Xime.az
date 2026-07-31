@@ -48,7 +48,6 @@ import com.kingzcheung.xime.settings.SettingsPreferences
 import com.kingzcheung.xime.settings.DisplayMode
 import com.kingzcheung.xime.settings.ButtonLayout
 import com.kingzcheung.xime.settings.KeysConfigHelper
-import com.kingzcheung.xime.settings.KeyboardColorsConfig
 import com.kingzcheung.xime.keyboard.GestureAction
 
 /** 半角 → 全角标点映射，中文模式下键帽显示用。提交仍走半角由 Rime 处理。 */
@@ -122,7 +121,7 @@ fun KeyboardLayout(
     val context = LocalContext.current
     val kbColors = KeysConfigHelper.getKeyboardColors()
     val longToColor: (Long) -> Color = { if (it > 0xFFFFFF) Color(it) else Color(0xFF000000 or it) }
-    val keyboardBackgroundColor = if (uiState.isDarkTheme) longToColor(KeyboardColorsConfig.FALLBACK_BG_DARK) else longToColor(KeyboardColorsConfig.FALLBACK_BG_LIGHT)
+    val keyboardBackgroundColor = KeyboardThemes.getKeyboardBackgroundColor(uiState.themeId, uiState.isDarkTheme)
     val themeScheme = KeyboardThemes.getThemeById(uiState.themeId)
     val themeSpecialKeyColor = KeyboardThemes.getSpecialKeyColor(uiState.themeId, uiState.isDarkTheme)
     val keyBackgroundColor = KeyboardThemes.getKeyBgColorOverride(uiState.themeId, uiState.isDarkTheme)
@@ -1185,7 +1184,7 @@ private fun LandscapeKeyboardContent(
 
     val kbColors = KeysConfigHelper.getKeyboardColors()
     val longToColor: (Long) -> Color = { if (it > 0xFFFFFF) Color(it) else Color(0xFF000000 or it) }
-    val keyboardBackgroundColor = if (uiState.isDarkTheme) longToColor(KeyboardColorsConfig.FALLBACK_BG_DARK) else longToColor(KeyboardColorsConfig.FALLBACK_BG_LIGHT)
+    val keyboardBackgroundColor = KeyboardThemes.getKeyboardBackgroundColor(uiState.themeId, uiState.isDarkTheme)
     val themeScheme = KeyboardThemes.getThemeById(uiState.themeId)
     val themeSpecialKeyColor = KeyboardThemes.getSpecialKeyColor(uiState.themeId, uiState.isDarkTheme)
     val keyBackgroundColor = KeyboardThemes.getKeyBgColorOverride(uiState.themeId, uiState.isDarkTheme)

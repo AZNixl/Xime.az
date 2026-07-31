@@ -72,7 +72,12 @@ fun ToolbarCustomizeView(
 
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-    val isDarkTheme = keyTextColor == Color(0xFFE8EAED)
+    // 图标按钮容器色：surface 与 primary 的混合色调（带种子色但不过于强烈）
+    val iconButtonContainer = androidx.compose.ui.graphics.lerp(
+        MaterialTheme.colorScheme.surface,
+        MaterialTheme.colorScheme.primary,
+        0.35f
+    )
 
     val itemsPerPage = 8
     val pages = allButtons.chunked(itemsPerPage).map { page ->
@@ -97,7 +102,7 @@ fun ToolbarCustomizeView(
                 modifier = Modifier
                     .size(28.dp)
                     .clip(CircleShape)
-                    .background(if (isDarkTheme) Color(0xFF374151) else Color(0xFFF3F4F6))
+                    .background(iconButtonContainer)
                     .clickable { onDismiss() },
                 contentAlignment = Alignment.Center
             ) {
@@ -126,7 +131,7 @@ fun ToolbarCustomizeView(
                                 .padding(horizontal = 3.dp)
                                 .size(28.dp)
                                 .clip(CircleShape)
-                                .background(if (isDarkTheme) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.1f)),
+                                .background(iconButtonContainer),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(

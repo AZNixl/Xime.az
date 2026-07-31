@@ -4,6 +4,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -18,7 +19,6 @@ fun QuickSendFormArea(
     backgroundColor: Color,
     textColor: Color,
     accentColor: Color,
-    isDarkTheme: Boolean,
     isFocused: Boolean,
     initialText: String = "",
     cardBgColor: Color,
@@ -26,7 +26,11 @@ fun QuickSendFormArea(
     onClose: (text: String) -> Unit,
     onFocusChange: (Boolean) -> Unit,
 ) {
-    val closeButtonBg = if (isDarkTheme) Color(0xFF374151) else Color(0xFFF3F4F6)
+    val closeButtonBg = androidx.compose.ui.graphics.lerp(
+        MaterialTheme.colorScheme.surface,
+        MaterialTheme.colorScheme.primary,
+        0.35f
+    )
     val title = if (editingItemId != null) "编辑快捷发送" else "添加快捷发送"
 
     CandidateBarOverlayPanel(

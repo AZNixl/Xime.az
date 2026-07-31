@@ -8,7 +8,6 @@ import com.kingzcheung.xime.keyboard.GestureAction
 import com.kingzcheung.xime.keyboard.OverlayRoute
 import com.kingzcheung.xime.handwriting.HandwritingCandidate
 import com.kingzcheung.xime.rime.T9InputController
-import com.kingzcheung.xime.settings.KeyboardColorsConfig
 import com.kingzcheung.xime.settings.KeysConfigHelper
 import com.kingzcheung.xime.ui.theme.KeyboardThemes
 import com.kingzcheung.xime.ui.theme.resolveSolidColor
@@ -34,7 +33,7 @@ fun KeyboardLayoutScreen(
     val longToColor: (Long) -> Color = { if (it > 0xFFFFFF) Color(it) else Color(0xFF000000 or it) }
     val themeScheme = KeyboardThemes.getThemeById(uiState.themeId)
     val themeBgColor = themeScheme.keyboardBackground?.let { resolveSolidColor(it, uiState.isDarkTheme) }
-    val keyboardBgColor = themeBgColor ?: if (uiState.isDarkTheme) longToColor(KeyboardColorsConfig.FALLBACK_BG_DARK) else longToColor(KeyboardColorsConfig.FALLBACK_BG_LIGHT)
+    val keyboardBgColor = themeBgColor ?: KeyboardThemes.getKeyboardBackgroundColor(uiState.themeId, uiState.isDarkTheme)
     val themeSpecialKeyColor = KeyboardThemes.getSpecialKeyColor(uiState.themeId, uiState.isDarkTheme)
     val keyBgColor = KeyboardThemes.getKeyBgColorOverride(uiState.themeId, uiState.isDarkTheme)
         ?: if (uiState.isDarkTheme) longToColor(kbColors.keyBgColorDark) else longToColor(kbColors.keyBgColor)

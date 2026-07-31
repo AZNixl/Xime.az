@@ -830,7 +830,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
 
                 val quickSendFormExtra = if (state.showQuickSendForm) 200 else 0
 
-                XimeTheme(darkTheme = isDarkTheme) {
+                XimeTheme(darkTheme = isDarkTheme, themeId = state.themeId) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()

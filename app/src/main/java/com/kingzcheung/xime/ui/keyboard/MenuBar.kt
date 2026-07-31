@@ -31,6 +31,7 @@ import androidx.compose.material.icons.twotone.Rotate90DegreesCcw
 import androidx.compose.material.icons.twotone.Settings
 import androidx.compose.material.icons.twotone.SettingsOverscan
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -57,6 +58,8 @@ data class MenuBarState(
     val isDarkTheme: Boolean,
     val darkMode: Int = 2,
     val backgroundColor: Color,
+    val keyBgColor: Color = Color.White,
+    val keyTextColor: Color = Color(0xFF202124),
     val isFloatingMode: Boolean = false,
 )
 
@@ -82,8 +85,15 @@ fun MenuBar(
 ) {
     if (!state.isVisible) return
     
-    val textColor = if (state.isDarkTheme) Color(0xFFE8EAED) else Color(0xFF202124)
-    val itemBgColor = if (state.isDarkTheme) Color(0xFF45474A) else Color.White
+    val textColor = state.keyTextColor
+    // 功能 item 背景：与键盘按键背景一致（keyBgColor，浅色纯白、深色跟随 keyboard.colors）
+    val itemBgColor = state.keyBgColor
+    // 图标按钮容器色：surface 与 primary 的混合色调（带种子色但不过于强烈）
+    val iconButtonContainer = androidx.compose.ui.graphics.lerp(
+        MaterialTheme.colorScheme.surface,
+        MaterialTheme.colorScheme.primary,
+        0.35f
+    )
     val configuration = LocalConfiguration.current
     val isLandscape = !state.isFloatingMode && configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
     
@@ -142,7 +152,7 @@ fun MenuBar(
                 modifier = Modifier
                     .size(28.dp)
                     .clip(CircleShape)
-                    .background(if (state.isDarkTheme) Color(0xFF374151) else Color(0xFFF3F4F6))
+                    .background(iconButtonContainer)
                     .clickable { callbacks.onDismiss() },
                 contentAlignment = Alignment.Center
             ) {
