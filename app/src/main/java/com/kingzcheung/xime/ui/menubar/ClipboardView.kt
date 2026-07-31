@@ -65,8 +65,8 @@ fun ClipboardView(
     clipboardItems: List<ClipboardItem>,
     quickSendItems: List<ClipboardItem>,
     selectedTab: Int,
-    isDarkTheme: Boolean,
     backgroundColor: Color,
+    keyTextColor: Color,
     viewModel: KeyboardViewModel,
     onSelectItem: (String) -> Unit,
     onSplitWords: (String, Long) -> Unit,
@@ -78,9 +78,15 @@ fun ClipboardView(
     onQuickSendEditItem: ((Long, String) -> Unit)? = null,
 ) {
     val itemBgColor = MaterialTheme.colorScheme.surfaceContainerLow
-    val textColor = MaterialTheme.colorScheme.onSurface
-    val subTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val textColor = keyTextColor
+    val subTextColor = keyTextColor.copy(alpha = 0.65f)
     val accentColor = MaterialTheme.colorScheme.primary
+    // 图标按钮容器色：surface 与 primary 的混合色调（带种子色但不过于强烈）
+    val iconButtonContainer = androidx.compose.ui.graphics.lerp(
+        MaterialTheme.colorScheme.surface,
+        MaterialTheme.colorScheme.primary,
+        0.35f
+    )
     val configuration = LocalConfiguration.current
     val isLandscape =
         configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
@@ -100,7 +106,7 @@ fun ClipboardView(
                 modifier = Modifier
                     .size(28.dp)
                     .clip(RoundedCornerShape(16.dp))
-                    .background(if (isDarkTheme) Color(0xFF374151) else Color(0xFFF3F4F6))
+                    .background(iconButtonContainer)
                     .clickable { onBack?.invoke() },
                 contentAlignment = Alignment.Center
             ) {
@@ -118,7 +124,7 @@ fun ClipboardView(
                 modifier = Modifier
                     .height(28.dp)
                     .clip(RoundedCornerShape(13.dp))
-                    .background(if (isDarkTheme) Color(0xFF374151) else Color(0xFFF3F4F6))
+                    .background(iconButtonContainer)
                     .padding(2.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -169,7 +175,7 @@ fun ClipboardView(
                     modifier = Modifier
                         .size(28.dp)
                         .clip(CircleShape)
-                        .background(if (isDarkTheme) Color(0xFF374151) else Color(0xFFF3F4F6))
+                        .background(iconButtonContainer)
                         .clickable(onClick = onQuickSendAddClick),
                     contentAlignment = Alignment.Center
                 ) {

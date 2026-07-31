@@ -565,6 +565,8 @@ object SchemaManifestManager {
         if (relPath == "installation.yaml") return true
         if (relPath == "custom_phrase.txt") return true
         if (relPath == "xime.custom.yaml") return true
+        // themes/ 存放用户导入或自定义的背景图片，不应被清单追踪
+        if (relPath.startsWith("themes/")) return true
         return false
     }
 

@@ -52,7 +52,6 @@ import com.kingzcheung.xime.keyboard.ToolbarAction
 import com.kingzcheung.xime.keyboard.ToolbarButton
 import com.kingzcheung.xime.rime.T9InputController
 import com.kingzcheung.xime.rime.filterCandidatesBySelectionHistory
-import com.kingzcheung.xime.settings.KeyboardColorsConfig
 import com.kingzcheung.xime.settings.KeysConfigHelper
 import com.kingzcheung.xime.settings.SettingsPreferences
 import com.kingzcheung.xime.ui.menubar.ClipboardView
@@ -60,7 +59,6 @@ import com.kingzcheung.xime.ui.menubar.SchemaListView
 import com.kingzcheung.xime.ui.menubar.ToolbarCustomizeView
 import com.kingzcheung.xime.ui.theme.KeyboardThemes
 import com.kingzcheung.xime.ui.theme.keyboardBackground
-import com.kingzcheung.xime.ui.theme.resolveSolidColor
 import com.kingzcheung.xime.viewmodel.KeyboardUiState
 import com.kingzcheung.xime.viewmodel.KeyboardViewModel
 import kotlin.math.abs
@@ -158,12 +156,13 @@ fun KeyboardView(
     val kbColors = KeysConfigHelper.getKeyboardColors()
     val kbShadow = KeysConfigHelper.getKeyboardShadow()
     val kbKey = KeysConfigHelper.getKeyboardKeyConfig()
-    val longToColor: (Long) -> androidx.compose.ui.graphics.Color = { androidx.compose.ui.graphics.Color(0xFF000000 or it) }
-    val keyboardBgColor = if (state.isDarkTheme) longToColor(KeyboardColorsConfig.FALLBACK_BG_DARK)
-        else longToColor(KeyboardColorsConfig.FALLBACK_BG_LIGHT)
-    val keyBgColor = if (state.isDarkTheme) longToColor(kbColors.keyBgColorDark)
+    val longToColor: (Long) -> androidx.compose.ui.graphics.Color = { if (it > 0xFFFFFF) androidx.compose.ui.graphics.Color(it) else androidx.compose.ui.graphics.Color(0xFF000000 or it) }
+    val keyboardBgColor = KeyboardThemes.getKeyboardBackgroundColor(state.themeId, state.isDarkTheme)
+    val keyBgColor = KeyboardThemes.getKeyBgColorOverride(state.themeId, state.isDarkTheme)
+        ?: if (state.isDarkTheme) longToColor(kbColors.keyBgColorDark)
         else longToColor(kbColors.keyBgColor)
-    val keyTextColor = if (state.isDarkTheme) longToColor(kbColors.keyTextColorDark)
+    val keyTextColor = KeyboardThemes.getKeyTextColorOverride(state.themeId, state.isDarkTheme)
+        ?: if (state.isDarkTheme) longToColor(kbColors.keyTextColorDark)
         else longToColor(kbColors.keyTextColor)
     val accentColor = KeyboardThemes.getAccentColor(state.themeId, state.isDarkTheme)
     val themeScheme = KeyboardThemes.getThemeById(state.themeId)
@@ -173,10 +172,8 @@ fun KeyboardView(
         else kbColors.specialKeyBgColor?.let { longToColor(it) } ?: themeSpecialKeyColor
     val specialKeyTextColor = if (state.isDarkTheme) androidx.compose.ui.graphics.Color.White
         else KeyboardThemes.getSpecialKeyTextColor(state.themeId, false)
-    val candidateBarBg = (themeScheme.candidateBarBackground?.let { resolveSolidColor(it, state.isDarkTheme) })
-        ?: if (state.isDarkTheme) themeScheme.candidateBarBgDark
-        else themeScheme.candidateBarBgLight
-    val candidateTextColor = if (state.isDarkTheme) longToColor(kbColors.candidateTextColorDark)
+    val candidateTextColor = KeyboardThemes.getCandidateTextColorOverride(state.themeId, state.isDarkTheme)
+        ?: if (state.isDarkTheme) longToColor(kbColors.candidateTextColorDark)
         else longToColor(kbColors.candidateTextColor)
     val dividerColor = if (state.isDarkTheme) androidx.compose.ui.graphics.Color(0xFF3C4043) else androidx.compose.ui.graphics.Color(0xFFDADCE0)
 
@@ -244,10 +241,9 @@ fun KeyboardView(
 
             if (state.showQuickSendForm) {
                 QuickSendFormArea(
-                    backgroundColor = candidateBarBg,
+                    backgroundColor = Color.Transparent,
                     textColor = keyTextColor,
                     accentColor = accentColor,
-                    isDarkTheme = state.isDarkTheme,
                     isFocused = state.quickSendFormFocused,
                     initialText = state.quickSendEditingItemText,
                     cardBgColor = keyBgColor,
@@ -298,7 +294,7 @@ fun KeyboardView(
                     ToolbarAction(button, onClick)
                 },
                 visuals = CandidateBarVisuals(
-                    backgroundColor = candidateBarBg,
+                    backgroundColor = Color.Transparent,
                     textColor = candidateTextColor,
                     dividerColor = dividerColor,
                     accentColor = accentColor,
@@ -705,6 +701,7 @@ fun KeyboardView(
                         keyBackgroundColor = keyBgColor,
                         keyTextColor = keyTextColor,
                         specialKeyBackgroundColor = specialKeyBgColor,
+                        bubbleBackgroundColor = themeSpecialKeyColor,
                         keyboardBackgroundColor = keyboardBgColor,
                         shadowEnabled = kbShadow.enabled,
                         shadowElevation = kbShadow.elevation.dp,
@@ -730,6 +727,7 @@ fun KeyboardView(
                         keyBackgroundColor = keyBgColor,
                         keyTextColor = keyTextColor,
                         specialKeyBackgroundColor = specialKeyBgColor,
+                        bubbleBackgroundColor = themeSpecialKeyColor,
                         keyboardBackgroundColor = keyboardBgColor,
                         shadowEnabled = kbShadow.enabled,
                         shadowElevation = kbShadow.elevation.dp,
@@ -805,6 +803,8 @@ fun KeyboardView(
                             isDarkTheme = state.isDarkTheme,
                             darkMode = state.darkMode,
                             backgroundColor = keyboardBgColor,
+                            keyBgColor = keyBgColor,
+                            keyTextColor = keyTextColor,
                             isFloatingMode = state.isFloatingMode,
                         ),
                         callbacks = MenuBarCallbacks(
@@ -825,9 +825,10 @@ fun KeyboardView(
                     is OverlayRoute.SchemaList -> SchemaListView(
                         schemas = state.schemas,
                         currentSchemaId = state.currentSchemaId,
-                        isDarkTheme = state.isDarkTheme,
                         backgroundColor = keyboardBgColor,
                         accentColor = accentColor,
+                        keyTextColor = keyTextColor,
+                        keyBgColor = keyBgColor,
                         onSelectSchema = { schemaId ->
                             callbacks.onSwitchSchema?.invoke(schemaId)
                             viewModel.closeOverlay()
@@ -839,8 +840,8 @@ fun KeyboardView(
                         clipboardItems = state.clipboardItems,
                         quickSendItems = state.quickSendItems,
                         selectedTab = p.route.tab,
-                        isDarkTheme = state.isDarkTheme,
                         backgroundColor = keyboardBgColor,
+                        keyTextColor = keyTextColor,
                         viewModel = viewModel,
                         onSelectItem = { text ->
                             callbacks.onClipboardSelect?.invoke(text)
@@ -881,9 +882,10 @@ fun KeyboardView(
                         EditKeyboardLayout(
                             onAction = editAction,
                             onBack = { viewModel.closeOverlay() },
-                            backgroundColor = candidateBarBg,
+                            backgroundColor = Color.Transparent,
                             textColor = keyTextColor,
                             accentColor = accentColor,
+                            keyBgColor = keyBgColor,
                             bottomPaddingDp = state.keyboardBottomPaddingDp,
                             modifier = Modifier.fillMaxWidth().fillMaxHeight()
                         )
@@ -898,7 +900,7 @@ fun KeyboardView(
                         },
                         onImageEmojiSelect = callbacks.onCommitImage,
                         onBack = { viewModel.closeOverlay() },
-                        backgroundColor = candidateBarBg,
+                        backgroundColor = Color.Transparent,
                         textColor = keyTextColor,
                         accentColor = accentColor,
                         bottomPaddingDp = state.keyboardBottomPaddingDp,
@@ -913,7 +915,7 @@ fun KeyboardView(
                             }
                         },
                         onBack = { viewModel.closeOverlay() },
-                        backgroundColor = candidateBarBg,
+                        backgroundColor = Color.Transparent,
                         textColor = keyTextColor,
                         accentColor = accentColor,
                         modifier = Modifier.fillMaxWidth().fillMaxHeight()
@@ -923,7 +925,7 @@ fun KeyboardView(
                             candidates = state.candidates.toList(),
                             candidateComments = state.candidateComments.toList(),
                             associationCandidates = state.associationCandidates.toList(),
-                            backgroundColor = candidateBarBg,
+                            backgroundColor = Color.Transparent,
                             textColor = candidateTextColor,
                             hasNextPage = state.hasNextPage,
                             hasPrevPage = state.hasPrevPage,

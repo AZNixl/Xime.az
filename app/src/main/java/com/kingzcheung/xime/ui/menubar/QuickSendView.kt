@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -35,7 +36,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -75,7 +75,6 @@ fun QuickSendTabContent(
             items(items, key = { it.id }) { item ->
                 QuickSendCard(
                     item = item,
-                    bgColor = itemBgColor,
                     textColor = textColor,
                     accentColor = accentColor,
                     viewModel = viewModel,
@@ -90,7 +89,6 @@ fun QuickSendTabContent(
 @Composable
 fun QuickSendCard(
     item: ClipboardItem,
-    bgColor: Color,
     textColor: Color,
     accentColor: Color,
     viewModel: KeyboardViewModel,
@@ -98,7 +96,7 @@ fun QuickSendCard(
     onQuickSendEditItem: ((Long, String) -> Unit)? = null,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    val cardBg = remember(bgColor) { lerp(bgColor, Color.White, 0.15f) }
+    val cardBg = MaterialTheme.colorScheme.surfaceContainerHigh
 
     Column(
         modifier = Modifier
@@ -190,7 +188,7 @@ fun QuickSendCard(
                     }
                 }
 
-                val deleteColor = Color(0xFFE53935)
+                val deleteColor = MaterialTheme.colorScheme.error
                 Row(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))

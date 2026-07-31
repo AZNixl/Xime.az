@@ -1,10 +1,34 @@
 package com.kingzcheung.xime.ui.theme
 
 import android.content.Context
+import android.graphics.BitmapFactory
 import androidx.compose.ui.graphics.Color
+import androidx.core.graphics.ColorUtils
 import com.kingzcheung.xime.settings.BackgroundConfig
 import com.kingzcheung.xime.settings.ColorSchemeEntry
 import com.kingzcheung.xime.settings.KeysConfigHelper
+import java.io.File
+import java.io.FileInputStream
+import java.io.InputStream
+import kotlin.math.max
+
+/**
+ * 打开主题背景图片流。
+ * 优先读取用户数据目录（context.filesDir/rime/<src>，用户可自行放入或通过分享导入），
+ * 找不到再回退到内置 assets/<src>。
+ */
+fun openThemeImageStream(context: Context, src: String): InputStream? {
+    val rimeBase = File(context.filesDir, "rime").canonicalFile
+    val userFile = File(rimeBase, src).canonicalFile
+    if (userFile.isFile && userFile.path.startsWith(rimeBase.path + File.separator)) {
+        return FileInputStream(userFile)
+    }
+    return try {
+        context.assets.open(src)
+    } catch (e: Exception) {
+        null
+    }
+}
 
 data class KeyboardColorScheme(
     val id: String,
@@ -51,7 +75,7 @@ object KeyboardThemes {
     private var themesCache: List<KeyboardColorScheme> = emptyList()
     private var themesMapCache: Map<String, KeyboardColorScheme> = emptyMap()
 
-    /** 硬编码的默认主题列表。 */
+    /** 硬编码的默认主题列表（兜底，其余主题由 xime.yaml color_schemes 提供）。 */
     private val defaultThemes = listOf(
         KeyboardColorScheme(
             id = "lavender_purple",
@@ -66,104 +90,6 @@ object KeyboardThemes {
             primaryContainerDark = Color(0xFF4F378B),
             surfaceLight = Color(0xFFFAF8FC),
             surfaceDark = Color(0xFF2B2930)
-        ),
-        KeyboardColorScheme(
-            id = "ocean_blue",
-            name = "海洋蔚蓝",
-            specialKeyLight = Color(0xFFD3E3FD),
-            specialKeyDark = Color(0xFF4A90D9),
-            accentLight = Color(0xFF1A73E8),
-            accentDark = Color(0xFF8AB4F8),
-            primaryLight = Color(0xFF1A73E8),
-            primaryDark = Color(0xFF8AB4F8),
-            primaryContainerLight = Color(0xFFD3E3FD),
-            primaryContainerDark = Color(0xFF4A90D9),
-            surfaceLight = Color(0xFFF8F9FA),
-            surfaceDark = Color(0xFF2D2D2D)
-        ),
-        KeyboardColorScheme(
-            id = "forest_green",
-            name = "森林翠绿",
-            specialKeyLight = Color(0xFFC8E6C9),
-            specialKeyDark = Color(0xFF4CAF50),
-            accentLight = Color(0xFF2E7D32),
-            accentDark = Color(0xFF81C784),
-            primaryLight = Color(0xFF2E7D32),
-            primaryDark = Color(0xFF81C784),
-            primaryContainerLight = Color(0xFFC8E6C9),
-            primaryContainerDark = Color(0xFF4CAF50),
-            surfaceLight = Color(0xFFF5F9F5),
-            surfaceDark = Color(0xFF2B2D2B)
-        ),
-        KeyboardColorScheme(
-            id = "sunset_orange",
-            name = "落日橙光",
-            specialKeyLight = Color(0xFFFFE0B2),
-            specialKeyDark = Color(0xFFFF9800),
-            accentLight = Color(0xFFE65100),
-            accentDark = Color(0xFFFFB74D),
-            primaryLight = Color(0xFFE65100),
-            primaryDark = Color(0xFFFFB74D),
-            primaryContainerLight = Color(0xFFFFE0B2),
-            primaryContainerDark = Color(0xFFFF9800),
-            surfaceLight = Color(0xFFFFFAF5),
-            surfaceDark = Color(0xFF2D2B29)
-        ),
-        KeyboardColorScheme(
-            id = "coral_red",
-            name = "珊瑚绯红",
-            specialKeyLight = Color(0xFFFFCDD2),
-            specialKeyDark = Color(0xFFE57373),
-            accentLight = Color(0xFFC62828),
-            accentDark = Color(0xFFEF9A9A),
-            primaryLight = Color(0xFFC62828),
-            primaryDark = Color(0xFFEF9A9A),
-            primaryContainerLight = Color(0xFFFFCDD2),
-            primaryContainerDark = Color(0xFFE57373),
-            surfaceLight = Color(0xFFFFF8F8),
-            surfaceDark = Color(0xFF2D2929)
-        ),
-        KeyboardColorScheme(
-            id = "slate_gray",
-            name = "沉稳石墨",
-            specialKeyLight = Color(0xFFE0E0E0),
-            specialKeyDark = Color(0xFF616161),
-            accentLight = Color(0xFF424242),
-            accentDark = Color(0xFF9E9E9E),
-            primaryLight = Color(0xFF424242),
-            primaryDark = Color(0xFF9E9E9E),
-            primaryContainerLight = Color(0xFFE0E0E0),
-            primaryContainerDark = Color(0xFF616161),
-            surfaceLight = Color(0xFFF5F5F5),
-            surfaceDark = Color(0xFF2D2D2D)
-        ),
-        KeyboardColorScheme(
-            id = "rose_pink",
-            name = "浪漫玫瑰",
-            specialKeyLight = Color(0xFFF8BBD9),
-            specialKeyDark = Color(0xFFE91E63),
-            accentLight = Color(0xFFAD1457),
-            accentDark = Color(0xFFF48FB1),
-            primaryLight = Color(0xFFAD1457),
-            primaryDark = Color(0xFFF48FB1),
-            primaryContainerLight = Color(0xFFF8BBD9),
-            primaryContainerDark = Color(0xFFE91E63),
-            surfaceLight = Color(0xFFFFF8FA),
-            surfaceDark = Color(0xFF2D2B2C)
-        ),
-        KeyboardColorScheme(
-            id = "teal_cyan",
-            name = "青碧如水",
-            specialKeyLight = Color(0xFFB2DFDB),
-            specialKeyDark = Color(0xFF009688),
-            accentLight = Color(0xFF00796B),
-            accentDark = Color(0xFF80CBC4),
-            primaryLight = Color(0xFF00796B),
-            primaryDark = Color(0xFF80CBC4),
-            primaryContainerLight = Color(0xFFB2DFDB),
-            primaryContainerDark = Color(0xFF009688),
-            surfaceLight = Color(0xFFF8FAF9),
-            surfaceDark = Color(0xFF2B2D2D)
         )
     )
 
@@ -182,29 +108,39 @@ object KeyboardThemes {
         configOverrides = KeysConfigHelper.loadColorSchemes(context)
         android.util.Log.d("KeyboardTheme", "reload: configOverrides=${configOverrides.keys}")
         // 1) 对硬编码主题应用配置覆盖
-        val overridden = defaultThemes.map { applyConfigOverrides(it) }
+        val overridden = defaultThemes.map { applyConfigOverrides(context, it) }
         // 2) 把配置中有但硬编码列表中没有的新主题也加入缓存
         val existingIds = overridden.map { it.id }.toSet()
         val newThemes = configOverrides
             .filterKeys { it !in existingIds }
-            .map { (id, entry) -> buildSchemeFromConfig(id, entry) }
+            .map { (id, entry) -> buildSchemeFromConfig(context, id, entry) }
         themesCache = overridden + newThemes
         themesMapCache = themesCache.associateBy { it.id }
         android.util.Log.d("KeyboardTheme", "reload: themesCache ids=${themesCache.map { it.id }}")
     }
 
+
+
     /** 根据配置项创建全新的 KeyboardColorScheme。 */
-    private fun buildSchemeFromConfig(id: String, entry: ColorSchemeEntry): KeyboardColorScheme {
-        val cfgColor = longToColor(entry.primaryColor)
+    private fun buildSchemeFromConfig(context: Context, id: String, entry: ColorSchemeEntry): KeyboardColorScheme {
+        val primary = if (entry.primaryColor != 0L) entry.primaryColor
+        else extractImageSeedColor(context, entry)
+        val cfgColor = longToColor(primary)
         val lightened = lightenColor(cfgColor)
         val veryLight = lightenColor(cfgColor, 0.8f)
+        val global = KeysConfigHelper.getKeyboardColors()
 
         val kbdBg = resolveBgColor(entry, isDark = false) ?: Color.White
         val kbdBgDark = resolveBgColor(entry, isDark = true) ?: Color(0xFF1C1B1F)
-        val keyBg = resolveKeyBgColor(entry, isDark = false) ?: Color.White
-        val keyBgDark = resolveKeyBgColor(entry, isDark = true) ?: Color(0xFF4A4A4A)
-        val txtColor = entry.keyTextColor?.let { longToColor(it) } ?: Color(0xFF202124)
-        val txtColorDark = entry.keyTextColor?.let { longToColor(it).let { lightenColor(it) } } ?: Color(0xFFE8EAED)
+        val keyBg = resolveKeyBgColor(entry, isDark = false) ?: longToColor(global.keyBgColor)
+        val keyBgDark = resolveKeyBgColor(entry, isDark = true) ?: longToColor(global.keyBgColorDark)
+        val txtColor = entry.keyTextColor?.let { longToColor(it) } ?: longToColor(global.keyTextColor)
+        val txtColorDark = entry.keyTextColorDark?.let { longToColor(it) }
+            ?: longToColor(global.keyTextColorDark)
+        val candColorLight = entry.candidateTextColor?.let { longToColor(it) }
+            ?: longToColor(global.candidateTextColor)
+        val candColorDark = entry.candidateTextColorDark?.let { longToColor(it) }
+            ?: longToColor(global.candidateTextColorDark)
 
         return KeyboardColorScheme(
             id = id,
@@ -227,8 +163,8 @@ object KeyboardThemes {
             candidateBarBgDark = kbdBgDark,
             keyTextColorLight = txtColor,
             keyTextColorDark = txtColorDark,
-            candidateTextColorLight = entry.candidateTextColor?.let { longToColor(it) } ?: cfgColor,
-            candidateTextColorDark = entry.candidateTextColor?.let { longToColor(it).let { lightenColor(it) } } ?: lightened,
+            candidateTextColorLight = candColorLight,
+            candidateTextColorDark = candColorDark,
             keyboardBackground = entry.keyboardBackground,
             keyBackground = entry.keyBackground,
             candidateBarBackground = entry.candidateBarBackground,
@@ -271,15 +207,110 @@ object KeyboardThemes {
                 }
             }
         }
-        return entry.keyBgColor?.let {
-            val c = longToColor(it)
-            if (isDark) darkenColor(c) else c
+        if (isDark) {
+            return entry.keyBgColorDark?.let { longToColor(it) }
+        }
+        return entry.keyBgColor?.let { longToColor(it) }
+    }
+
+    /** 将 hex long 转为 Color。0xRRGGBB 补上 FF alpha，0xAARRGGBB 保留 alpha。 */
+    /**
+     * 从图片背景提取主色作为种子色。参考 Material 3 动态配色思路：
+     * 解码小图 → 转 HSL → 排除接近黑白灰的像素 → 分桶统计 → 取权重最高的桶平均色。
+     * 取色结果按 src+文件大小/修改时间缓存到 SharedPreferences，
+     * 避免每次冷启动在主线程重复解码（图片主题没有 primary_color 时）。
+     * 取色失败返回默认薰衣草紫。
+     */
+    private fun extractImageSeedColor(context: Context, entry: ColorSchemeEntry): Long {
+        val src = entry.keyboardBackground?.takeIf { it.type == "image" }?.src
+        if (src.isNullOrBlank()) return 0xFF8F73E2
+        val cacheKey = themeSeedCacheKey(context, src)
+        val cached = context.getSharedPreferences("theme_seed_cache", Context.MODE_PRIVATE)
+            .getLong(cacheKey, 0L)
+        if (cached != 0L) return cached
+        val result = doExtractImageSeedColor(context, src)
+        if (result != 0xFF8F73E2) {
+            context.getSharedPreferences("theme_seed_cache", Context.MODE_PRIVATE)
+                .edit().putLong(cacheKey, result).apply()
+        }
+        return result
+    }
+
+    /** 生成种子色缓存键：src + 文件大小/修改时间，文件变化后自动失效。 */
+    private fun themeSeedCacheKey(context: Context, src: String): String {
+        val userFile = File(context.filesDir, "rime/$src")
+        val file = if (userFile.isFile) userFile else null
+        val size = file?.length() ?: -1L
+        val mtime = file?.lastModified() ?: -1L
+        return "seed_$src|$size|$mtime"
+    }
+
+    private fun doExtractImageSeedColor(context: Context, src: String): Long {
+        return try {
+            val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            openThemeImageStream(context, src)?.use { BitmapFactory.decodeStream(it, null, options) }
+            var sampleSize = 1
+            var maxDim = max(options.outWidth, options.outHeight)
+            while (maxDim / sampleSize > 64) sampleSize *= 2
+            val decodeOptions = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+            val bitmap = openThemeImageStream(context, src)?.use { BitmapFactory.decodeStream(it, null, decodeOptions) }
+                ?: return 0xFF8F73E2
+            try {
+                val width = bitmap.width
+                val height = bitmap.height
+                val pixels = IntArray(width * height)
+                bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+                val hueBuckets = 16
+                val satBuckets = 4
+                val count = LongArray(hueBuckets * satBuckets)
+                val sumR = DoubleArray(hueBuckets * satBuckets)
+                val sumG = DoubleArray(hueBuckets * satBuckets)
+                val sumB = DoubleArray(hueBuckets * satBuckets)
+                val hsl = FloatArray(3)
+                for (pixel in pixels) {
+                    val r = (pixel shr 16) and 0xFF
+                    val g = (pixel shr 8) and 0xFF
+                    val b = pixel and 0xFF
+                    ColorUtils.RGBToHSL(r, g, b, hsl)
+                    val hue = hsl[0]
+                    val sat = hsl[1]
+                    val light = hsl[2]
+                    if (sat < 0.12f || light < 0.08f || light > 0.92f) continue
+                    val hi = (hue / 360f * hueBuckets).toInt().coerceIn(0, hueBuckets - 1)
+                    val si = (sat * satBuckets).toInt().coerceIn(0, satBuckets - 1)
+                    val idx = hi * satBuckets + si
+                    count[idx]++
+                    sumR[idx] += r
+                    sumG[idx] += g
+                    sumB[idx] += b
+                }
+                var bestIdx = -1
+                var bestScore = 0L
+                for (i in count.indices) {
+                    if (count[i] == 0L) continue
+                    val sat = (i % satBuckets + 1) / satBuckets.toFloat()
+                    val score = count[i] * (1L + (sat * 4).toLong())
+                    if (score > bestScore) {
+                        bestScore = score
+                        bestIdx = i
+                    }
+                }
+                if (bestIdx < 0) return 0xFF8F73E2
+                val r = (sumR[bestIdx] / count[bestIdx]).toInt().toLong()
+                val g = (sumG[bestIdx] / count[bestIdx]).toInt().toLong()
+                val b = (sumB[bestIdx] / count[bestIdx]).toInt().toLong()
+                (r shl 16) or (g shl 8) or b
+            } finally {
+                bitmap.recycle()
+            }
+        } catch (e: Exception) {
+            0xFF8F73E2
         }
     }
 
-    /** 将 hex long (0xRRGGBB) 转为 Color，补上 FF alpha。 */
+    /** 将 hex long 转为 Color。0xRRGGBB 补上 FF alpha，0xAARRGGBB 保留 alpha。 */
     private fun longToColor(hex: Long): Color {
-        return Color(0xFF000000 or (hex and 0xFFFFFF))
+        return if (hex > 0xFFFFFF) Color(hex) else Color(0xFF000000 or (hex and 0xFFFFFF))
     }
 
     /** 将颜色调亮（向白色混合），用于生成暗色主题下的亮色变体。 */
@@ -299,10 +330,13 @@ object KeyboardThemes {
     }
 
     /** 应用配置覆盖，返回覆盖后的 KeyboardColorScheme。 */
-    private fun applyConfigOverrides(scheme: KeyboardColorScheme): KeyboardColorScheme {
+    private fun applyConfigOverrides(context: Context, scheme: KeyboardColorScheme): KeyboardColorScheme {
         val entry = configOverrides[scheme.id] ?: return scheme
-        val cfgColor = longToColor(entry.primaryColor)
+        val primary = if (entry.primaryColor != 0L) entry.primaryColor
+        else extractImageSeedColor(context, entry)
+        val cfgColor = longToColor(primary)
         val lightened = lightenColor(cfgColor)
+        val global = KeysConfigHelper.getKeyboardColors()
         return scheme.copy(
             name = entry.name.ifEmpty { scheme.name },
             accentLight = cfgColor,
@@ -311,14 +345,17 @@ object KeyboardThemes {
             primaryDark = lightened,
             keyboardBgLight = resolveBgColor(entry, isDark = false) ?: scheme.keyboardBgLight,
             keyboardBgDark = resolveBgColor(entry, isDark = true) ?: scheme.keyboardBgDark,
-            keyBgLight = resolveKeyBgColor(entry, isDark = false) ?: scheme.keyBgLight,
-            keyBgDark = resolveKeyBgColor(entry, isDark = true) ?: scheme.keyBgDark,
+            keyBgLight = resolveKeyBgColor(entry, isDark = false) ?: longToColor(global.keyBgColor),
+            keyBgDark = resolveKeyBgColor(entry, isDark = true) ?: longToColor(global.keyBgColorDark),
             candidateBarBgLight = resolveBgColor(entry, isDark = false) ?: scheme.candidateBarBgLight,
             candidateBarBgDark = resolveBgColor(entry, isDark = true) ?: scheme.candidateBarBgDark,
-            keyTextColorLight = entry.keyTextColor?.let { longToColor(it) } ?: scheme.keyTextColorLight,
-            keyTextColorDark = entry.keyTextColor?.let { longToColor(it).let { lightenColor(it) } } ?: scheme.keyTextColorDark,
-            candidateTextColorLight = entry.candidateTextColor?.let { longToColor(it) } ?: scheme.candidateTextColorLight,
-            candidateTextColorDark = entry.candidateTextColor?.let { longToColor(it).let { lightenColor(it) } } ?: scheme.candidateTextColorDark,
+            keyTextColorLight = entry.keyTextColor?.let { longToColor(it) } ?: longToColor(global.keyTextColor),
+            keyTextColorDark = entry.keyTextColorDark?.let { longToColor(it) }
+                ?: longToColor(global.keyTextColorDark),
+            candidateTextColorLight = entry.candidateTextColor?.let { longToColor(it) }
+                ?: longToColor(global.candidateTextColor),
+            candidateTextColorDark = entry.candidateTextColorDark?.let { longToColor(it) }
+                ?: longToColor(global.candidateTextColorDark),
             keyboardBackground = entry.keyboardBackground ?: scheme.keyboardBackground,
             keyBackground = entry.keyBackground ?: scheme.keyBackground,
             candidateBarBackground = entry.candidateBarBackground ?: scheme.candidateBarBackground,
@@ -394,5 +431,31 @@ object KeyboardThemes {
     fun getDividerColor(themeId: String, isDark: Boolean): Color {
         val theme = getThemeById(themeId)
         return if (isDark) theme.dividerColorDark else theme.dividerColorLight
+    }
+
+    /** 返回 color_schemes 中显式定义的按键背景色，未定义返回 null。 */
+    fun getKeyBgColorOverride(themeId: String, isDark: Boolean): Color? {
+        val entry = configOverrides[themeId] ?: return null
+        return resolveKeyBgColor(entry, isDark)
+    }
+
+    /** 返回 color_schemes 中显式定义的按键文字色，未定义返回 null。 */
+    fun getKeyTextColorOverride(themeId: String, isDark: Boolean): Color? {
+        val entry = configOverrides[themeId] ?: return null
+        return if (isDark) {
+            entry.keyTextColorDark?.let { longToColor(it) }
+        } else {
+            entry.keyTextColor?.let { longToColor(it) }
+        }
+    }
+
+    /** 返回 color_schemes 中显式定义的候选文字色，未定义返回 null。 */
+    fun getCandidateTextColorOverride(themeId: String, isDark: Boolean): Color? {
+        val entry = configOverrides[themeId] ?: return null
+        return if (isDark) {
+            entry.candidateTextColorDark?.let { longToColor(it) }
+        } else {
+            entry.candidateTextColor?.let { longToColor(it) }
+        }
     }
 }

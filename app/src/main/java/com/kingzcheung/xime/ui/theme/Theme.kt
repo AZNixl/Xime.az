@@ -128,27 +128,30 @@ private fun generateColorScheme(seed: Color, seedContainer: Color, dark: Boolean
 @Composable
 fun XimeTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
+    themeId: String? = null,
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current
-    var themeId by remember { mutableStateOf(SettingsPreferences.getKeyboardTheme(context)) }
+    var currentThemeId by remember { mutableStateOf(themeId ?: SettingsPreferences.getKeyboardTheme(context)) }
     var configDarkThemeId by remember { mutableStateOf(KeysConfigHelper.loadThemeIdForMode(context, true)) }
 
-    DisposableEffect(context) {
+    DisposableEffect(context, themeId) {
         val prefs = SettingsPreferences.getPrefsPublic(context)
         val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-            if (key == "keyboard_theme") {
-                themeId = SettingsPreferences.getKeyboardTheme(context)
+            if (key == "keyboard_theme" && themeId == null) {
+                currentThemeId = SettingsPreferences.getKeyboardTheme(context)
             }
         }
         prefs.registerOnSharedPreferenceChangeListener(listener)
         onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
     }
 
-    val effectiveThemeId = if (darkTheme) {
-        configDarkThemeId.takeIf { it.isNotEmpty() } ?: themeId
-    } else {
+    val effectiveThemeId = if (themeId != null) {
         themeId
+    } else if (darkTheme) {
+        configDarkThemeId.takeIf { it.isNotEmpty() } ?: currentThemeId
+    } else {
+        currentThemeId
     }
     val scheme = KeyboardThemes.getThemeById(effectiveThemeId)
     val seed = if (darkTheme) scheme.primaryDark else scheme.primaryLight

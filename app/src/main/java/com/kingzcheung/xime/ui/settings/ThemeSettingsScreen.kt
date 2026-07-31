@@ -1,6 +1,5 @@
 package com.kingzcheung.xime.ui.settings
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -22,10 +21,14 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.kingzcheung.xime.ui.theme.KeyboardColorScheme
 import com.kingzcheung.xime.viewmodel.ThemeSettingsViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -57,6 +60,8 @@ fun ThemeSettingsContent(
             )
         }
     ) { paddingValues ->
+        var previewTheme by remember { mutableStateOf<KeyboardColorScheme?>(null) }
+
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -129,7 +134,7 @@ fun ThemeSettingsContent(
             
             item {
                 Text(
-                    text = "左右分栏显示浅色与深色预览",
+                    text = "点击配色预览完整键盘效果",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 6.dp)
@@ -147,8 +152,7 @@ fun ThemeSettingsContent(
                                 theme = theme,
                                 isSelected = uiState.colorTheme == theme.id,
                                 onClick = {
-                                    viewModel.setColorTheme(theme.id)
-                                    onThemeChanged()
+                                    previewTheme = theme
                                 },
                                 modifier = Modifier.weight(1f)
                             )
@@ -160,7 +164,7 @@ fun ThemeSettingsContent(
                 }
                 
                 item {
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(1.dp))
                 }
             }
             
@@ -173,6 +177,18 @@ fun ThemeSettingsContent(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
                 )
             }
+        }
+
+        previewTheme?.let { theme ->
+            ThemePreviewSheet(
+                theme = theme,
+                onApply = {
+                    viewModel.setColorTheme(theme.id)
+                    previewTheme = null
+                    onThemeChanged()
+                },
+                onDismiss = { previewTheme = null },
+            )
         }
     }
 }
