@@ -30,6 +30,7 @@ data class InputUIState(
     val deploymentMessage: String = "",
     val inputSessionId: Long = 0,
     val t9ResetSignal: Long = 0,
+    val swipeCancelEpoch: Long = 0,
     val t9RightCandidateSelectedCount: Long = 0,
     val t9SelectedCandidatePinyin: String = "",
     val toolbarButtons: List<String> = ToolbarButton.DEFAULT_VISIBLE.map { it.id },
