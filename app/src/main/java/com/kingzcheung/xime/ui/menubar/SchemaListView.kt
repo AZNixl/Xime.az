@@ -45,11 +45,13 @@ fun SchemaListView(
     backgroundColor: Color,
     accentColor: Color,
     keyTextColor: Color,
+    keyBgColor: Color,
     onSelectSchema: (String) -> Unit,
     onBack: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    val itemBgColor = MaterialTheme.colorScheme.surfaceContainerLow
+    // 功能 item 背景：与键盘按键背景一致（keyBgColor，浅色纯白、深色跟随 keyboard.colors）
+    val itemBgColor = keyBgColor
     val textColor = keyTextColor
     val subTextColor = keyTextColor.copy(alpha = 0.65f)
     // 图标按钮容器色：surface 与 primary 的混合色调（带种子色但不过于强烈）

@@ -43,11 +43,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.tooling.preview.Preview
 import com.kingzcheung.xime.settings.SchemaInfo
+import com.kingzcheung.xime.settings.BackgroundConfig
 import com.kingzcheung.xime.ui.theme.XimeTheme
 import com.kingzcheung.xime.settings.KeysConfigHelper
 import com.kingzcheung.xime.settings.KeyboardColorsConfig
 import com.kingzcheung.xime.ui.theme.KeyboardColorScheme
 import com.kingzcheung.xime.ui.theme.KeyboardThemes
+import com.kingzcheung.xime.ui.theme.keyboardBackground
 
 @Composable
 fun SettingsSection(
@@ -900,7 +902,9 @@ fun KeyboardThemeCard(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight(),
-                        bgColor = theme.keyboardBgLight,
+                        keyboardBackground = theme.keyboardBackground,
+                        isDark = false,
+                        fallbackBg = theme.keyboardBgLight,
                         candidateBarColor = theme.candidateBarBgLight,
                         accentColor = theme.accentLight,
                         keyColor = globalKeyBgLight,
@@ -911,7 +915,9 @@ fun KeyboardThemeCard(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight(),
-                        bgColor = theme.keyboardBgDark,
+                        keyboardBackground = theme.keyboardBackground,
+                        isDark = true,
+                        fallbackBg = theme.keyboardBgDark,
                         candidateBarColor = theme.candidateBarBgDark,
                         accentColor = theme.accentDark,
                         keyColor = globalKeyBgDark,
@@ -948,7 +954,9 @@ fun KeyboardThemeCard(
 @Composable
 private fun ThemeHalfPreview(
     modifier: Modifier = Modifier,
-    bgColor: Color,
+    keyboardBackground: BackgroundConfig?,
+    isDark: Boolean,
+    fallbackBg: Color,
     candidateBarColor: Color,
     accentColor: Color,
     keyColor: Color,
@@ -964,7 +972,7 @@ private fun ThemeHalfPreview(
     Box(
         modifier = modifier
             .clip(shape)
-            .background(bgColor)
+            .keyboardBackground(keyboardBackground, isDark, fallbackBg)
             .padding(4.dp)
     ) {
         Column(modifier = Modifier.fillMaxSize()) {

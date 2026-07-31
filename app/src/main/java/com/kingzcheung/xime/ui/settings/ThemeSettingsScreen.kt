@@ -164,7 +164,7 @@ fun ThemeSettingsContent(
                 }
                 
                 item {
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(1.dp))
                 }
             }
             

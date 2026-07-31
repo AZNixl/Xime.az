@@ -51,6 +51,7 @@ import com.kingzcheung.xime.ui.keyboard.LocalKeyCornerRadius
 import com.kingzcheung.xime.ui.keyboard.crispShadowColor
 import com.kingzcheung.xime.ui.theme.KeyboardColorScheme
 import com.kingzcheung.xime.ui.theme.KeyboardThemes
+import com.kingzcheung.xime.ui.theme.keyboardBackground
 
 private val QWERTY_ROW0 = listOf("Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P")
 private val QWERTY_ROW1 = listOf("A", "S", "D", "F", "G", "H", "J", "K", "L")
@@ -211,7 +212,7 @@ private fun ThemeKeyboardPreview(
         Box(
             modifier = modifier
                 .clip(RoundedCornerShape(12.dp))
-                .background(bgColor),
+                .keyboardBackground(theme.keyboardBackground, isDark, bgColor),
         ) {
             Column(
                 modifier = Modifier

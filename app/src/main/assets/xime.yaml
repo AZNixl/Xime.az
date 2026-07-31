@@ -31,8 +31,8 @@ style:
 #     type: gradient
 #     colors: [0x8F73E2, 0xE8DEF8]        # 亮色渐变断点
 #     colors_dark: [0x4A3F7A, 0x2D2040]    # 暗色渐变断点（可选）
-#     angle: 135                            # 角度制
-#
+#     angle: 90                            # 角度制
+#  
 #   keyboard_background:
 #     type: image
 #     src: "themes/lavender_bg.png"          # 相对于 assets/
@@ -55,14 +55,6 @@ color_schemes:
       color: 0xE3E4E8
       color_dark: 0x0D1B33
   
-  forest_green:
-    name: "森林翠绿"
-    primary_color: 0x2E7D32
-    keyboard_background:
-      type: solid
-      color: 0xE3E4E8
-      color_dark: 0x0D1F0E
-  
   sunset_orange:
     name: "落日橙光"
     primary_color: 0xE65100
@@ -70,14 +62,6 @@ color_schemes:
       type: solid
       color: 0xE3E4E8
       color_dark: 0x1A0D00
-  
-  coral_red:
-    name: "珊瑚绯红"
-    primary_color: 0xC62828
-    keyboard_background:
-      type: solid
-      color: 0xE3E4E8
-      color_dark: 0x2D1414
   
   slate_gray:
     name: "沉稳石墨"
@@ -102,22 +86,9 @@ color_schemes:
       type: solid
       color: 0xE3E4E8
       color_dark: 0x002622
-  animal_crossing:
-    name: "动物之森"
-    primary_color: 0xf3b700
-    keyboard_background:
-      type: solid
-      color: 0xf8f3c6
-      color_dark: 0xf8f3c6
-    key_bg_color: 0xfaf9e7
-    key_bg_color_dark: 0xfaf9e7
-    key_text_color: 0x9c7452
-    key_text_color_dark: 0x9c7452
-    candidate_text_color: 0x9c7452
-    candidate_text_color_dark: 0x9c7452
 
   sakura_pink:
-    name: "樱花粉"
+    name: "樱花粉黛"
     primary_color: 0xe91e63
     keyboard_background:
       type: solid
@@ -199,6 +170,96 @@ color_schemes:
     key_text_color_dark: 0x5d4037
     candidate_text_color: 0x5d4037
     candidate_text_color_dark: 0x5d4037
+
+  aurora_gradient:
+    name: "极光青蓝"
+    primary_color: 0x00b0a8
+    keyboard_background:
+      type: gradient
+      colors: [0xe0f7fa, 0xb2ebf2]
+      colors_dark: [0x00332e, 0x015c56]
+      angle: 90
+    key_bg_color: 0xe6ffffff
+    key_bg_color_dark: 0x5affffff
+    key_text_color: 0x14444a
+    key_text_color_dark: 0xe0f7fa
+    candidate_text_color: 0x14444a
+    candidate_text_color_dark: 0xe0f7fa
+
+  sunset_gradient:
+    name: "落日余晖"
+    primary_color: 0xff7043
+    keyboard_background:
+      type: gradient
+      colors: [0xfff3e0, 0xffccbc]
+      colors_dark: [0x3e1a12, 0x8c2f1d]
+      angle: 90
+    key_bg_color: 0xe6ffffff
+    key_bg_color_dark: 0x5affffff
+    key_text_color: 0x5d2a17
+    key_text_color_dark: 0xffe0d6
+    candidate_text_color: 0x5d2a17
+    candidate_text_color_dark: 0xffe0d6
+
+  ocean_gradient:
+    name: "深海渐变"
+    primary_color: 0x1e88e5
+    keyboard_background:
+      type: gradient
+      colors: [0xe3f2fd, 0x90caf9]
+      colors_dark: [0x0b2d52, 0x0d47a1]
+      angle: 90
+    key_bg_color: 0xe6ffffff
+    key_bg_color_dark: 0x5affffff
+    key_text_color: 0x0d3a5c
+    key_text_color_dark: 0xd6eaff
+    candidate_text_color: 0x0d3a5c
+    candidate_text_color_dark: 0xd6eaff
+
+  purple_gradient:
+    name: "紫梦渐变"
+    primary_color: 0x7e57c2
+    keyboard_background:
+      type: gradient
+      colors: [0xede7f6, 0xd1c4e9]
+      colors_dark: [0x271852, 0x4527a0]
+      angle: 90
+    key_bg_color: 0xe6ffffff
+    key_bg_color_dark: 0x5affffff
+    key_text_color: 0x3c2a66
+    key_text_color_dark: 0xe8def8
+    candidate_text_color: 0x3c2a66
+    candidate_text_color_dark: 0xe8def8
+
+  rose_gradient:
+    name: "玫瑰渐变"
+    primary_color: 0xec407a
+    keyboard_background:
+      type: gradient
+      colors: [0xfce4ec, 0xf8bbd0]
+      colors_dark: [0x3b0a22, 0x8c1356]
+      angle: 90
+    key_bg_color: 0xe6ffffff
+    key_bg_color_dark: 0x5affffff
+    key_text_color: 0x5d1035
+    key_text_color_dark: 0xffdbe8
+    candidate_text_color: 0x5d1035
+    candidate_text_color_dark: 0xffdbe8
+
+  forest_gradient:
+    name: "森林迷雾"
+    primary_color: 0x43a047
+    keyboard_background:
+      type: gradient
+      colors: [0xe8f5e9, 0xc8e6c9]
+      colors_dark: [0x0f3016, 0x1b5e20]
+      angle: 90
+    key_bg_color: 0xe6ffffff
+    key_bg_color_dark: 0x5affffff
+    key_text_color: 0x1e4620
+    key_text_color_dark: 0xdff5e0
+    candidate_text_color: 0x1e4620
+    candidate_text_color_dark: 0xdff5e0
 
 # ── 26 键全键盘手势配置 ──
 # 每个按键可定义 4 个手势：

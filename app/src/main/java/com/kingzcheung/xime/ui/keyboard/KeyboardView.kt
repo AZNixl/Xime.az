@@ -59,7 +59,6 @@ import com.kingzcheung.xime.ui.menubar.SchemaListView
 import com.kingzcheung.xime.ui.menubar.ToolbarCustomizeView
 import com.kingzcheung.xime.ui.theme.KeyboardThemes
 import com.kingzcheung.xime.ui.theme.keyboardBackground
-import com.kingzcheung.xime.ui.theme.resolveSolidColor
 import com.kingzcheung.xime.viewmodel.KeyboardUiState
 import com.kingzcheung.xime.viewmodel.KeyboardViewModel
 import kotlin.math.abs
@@ -173,9 +172,6 @@ fun KeyboardView(
         else kbColors.specialKeyBgColor?.let { longToColor(it) } ?: themeSpecialKeyColor
     val specialKeyTextColor = if (state.isDarkTheme) androidx.compose.ui.graphics.Color.White
         else KeyboardThemes.getSpecialKeyTextColor(state.themeId, false)
-    val candidateBarBg = (themeScheme.candidateBarBackground?.let { resolveSolidColor(it, state.isDarkTheme) })
-        ?: if (state.isDarkTheme) themeScheme.candidateBarBgDark
-        else themeScheme.candidateBarBgLight
     val candidateTextColor = KeyboardThemes.getCandidateTextColorOverride(state.themeId, state.isDarkTheme)
         ?: if (state.isDarkTheme) longToColor(kbColors.candidateTextColorDark)
         else longToColor(kbColors.candidateTextColor)
@@ -245,7 +241,7 @@ fun KeyboardView(
 
             if (state.showQuickSendForm) {
                 QuickSendFormArea(
-                    backgroundColor = candidateBarBg,
+                    backgroundColor = Color.Transparent,
                     textColor = keyTextColor,
                     accentColor = accentColor,
                     isFocused = state.quickSendFormFocused,
@@ -298,7 +294,7 @@ fun KeyboardView(
                     ToolbarAction(button, onClick)
                 },
                 visuals = CandidateBarVisuals(
-                    backgroundColor = candidateBarBg,
+                    backgroundColor = Color.Transparent,
                     textColor = candidateTextColor,
                     dividerColor = dividerColor,
                     accentColor = accentColor,
@@ -830,6 +826,7 @@ fun KeyboardView(
                         backgroundColor = keyboardBgColor,
                         accentColor = accentColor,
                         keyTextColor = keyTextColor,
+                        keyBgColor = keyBgColor,
                         onSelectSchema = { schemaId ->
                             callbacks.onSwitchSchema?.invoke(schemaId)
                             viewModel.closeOverlay()
@@ -883,7 +880,7 @@ fun KeyboardView(
                         EditKeyboardLayout(
                             onAction = editAction,
                             onBack = { viewModel.closeOverlay() },
-                            backgroundColor = candidateBarBg,
+                            backgroundColor = Color.Transparent,
                             textColor = keyTextColor,
                             accentColor = accentColor,
                             keyBgColor = keyBgColor,
@@ -901,7 +898,7 @@ fun KeyboardView(
                         },
                         onImageEmojiSelect = callbacks.onCommitImage,
                         onBack = { viewModel.closeOverlay() },
-                        backgroundColor = candidateBarBg,
+                        backgroundColor = Color.Transparent,
                         textColor = keyTextColor,
                         accentColor = accentColor,
                         bottomPaddingDp = state.keyboardBottomPaddingDp,
@@ -916,7 +913,7 @@ fun KeyboardView(
                             }
                         },
                         onBack = { viewModel.closeOverlay() },
-                        backgroundColor = candidateBarBg,
+                        backgroundColor = Color.Transparent,
                         textColor = keyTextColor,
                         accentColor = accentColor,
                         modifier = Modifier.fillMaxWidth().fillMaxHeight()
@@ -926,7 +923,7 @@ fun KeyboardView(
                             candidates = state.candidates.toList(),
                             candidateComments = state.candidateComments.toList(),
                             associationCandidates = state.associationCandidates.toList(),
-                            backgroundColor = candidateBarBg,
+                            backgroundColor = Color.Transparent,
                             textColor = candidateTextColor,
                             hasNextPage = state.hasNextPage,
                             hasPrevPage = state.hasPrevPage,

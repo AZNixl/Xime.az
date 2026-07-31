@@ -14,7 +14,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.platform.LocalContext
@@ -27,25 +26,6 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.sin
-
-/** 将 BackgroundConfig 转为 Compose Brush（仅 solid / gradient）。 */
-private fun backgroundConfigToBrush(config: BackgroundConfig, isDark: Boolean): Brush? {
-    return when (config.type) {
-        "solid" -> {
-            val hex = if (isDark) config.colorDark ?: config.color else config.color
-            hex?.let { SolidColor(Color(0xFF000000 or it)) }
-        }
-        "gradient" -> {
-            val hexes = if (isDark) config.colorsDark ?: config.colors else config.colors
-            if (hexes != null && hexes.size >= 2) {
-                val colors = hexes.map { Color(0xFF000000 or it) }
-                val (start, end) = angleToFractionalPoints(config.angle ?: 0)
-                Brush.linearGradient(colors, start, end)
-            } else null
-        }
-        else -> null
-    }
-}
 
 /** 角度制 → 渐变起始终止点（归一化坐标 0..1）。 */
 private fun angleToFractionalPoints(angleDeg: Int): Pair<Offset, Offset> {
@@ -94,10 +74,30 @@ fun Modifier.keyboardBackground(
     if (background == null) return this.then(Modifier.background(fallbackColor))
 
     when (background.type) {
-        "solid", "gradient" -> {
-            val brush = backgroundConfigToBrush(background, isDark)
-            return if (brush != null) this.then(Modifier.background(brush))
+        "solid" -> {
+            val hex = if (isDark) background.colorDark ?: background.color else background.color
+            val color = hex?.let { Color(0xFF000000 or it) }
+            return if (color != null) this.then(Modifier.background(color))
             else this.then(Modifier.background(fallbackColor))
+        }
+        "gradient" -> {
+            val hexes = if (isDark) background.colorsDark ?: background.colors else background.colors
+            if (hexes != null && hexes.size >= 2) {
+                val colors = hexes.map { Color(0xFF000000 or it) }
+                val (startRatio, endRatio) = angleToFractionalPoints(background.angle ?: 0)
+                return this.then(
+                    Modifier.drawWithContent {
+                        val start = Offset(size.width * startRatio.x, size.height * startRatio.y)
+                        val end = Offset(size.width * endRatio.x, size.height * endRatio.y)
+                        drawRect(
+                            brush = Brush.linearGradient(colors, start, end),
+                            size = size,
+                        )
+                        drawContent()
+                    }
+                )
+            }
+            return this.then(Modifier.background(fallbackColor))
         }
         "image" -> {
             val context = LocalContext.current

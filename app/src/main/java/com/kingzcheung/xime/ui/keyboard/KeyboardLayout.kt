@@ -248,7 +248,6 @@ fun KeyboardLayout(
     CompositionLocalProvider(LocalKeyCornerRadius provides kbKey.cornerRadius.dp) {
     Box(
         modifier = modifier
-            .keyboardBackground(themeScheme.keyboardBackground, isDarkTheme, keyboardBackgroundColor)
             .onGloballyPositioned { coordinates ->
                 keyboardBounds = coordinates.boundsInRoot()
             }
