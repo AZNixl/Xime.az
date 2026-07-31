@@ -79,7 +79,7 @@ fun EmojiKeyboardLayout(
     val iconButtonContainer = androidx.compose.ui.graphics.lerp(
         MaterialTheme.colorScheme.surface,
         MaterialTheme.colorScheme.primary,
-        0.35f
+        0.15f
     )
 
     var selectedTopTabIndex by remember { mutableStateOf(0) }

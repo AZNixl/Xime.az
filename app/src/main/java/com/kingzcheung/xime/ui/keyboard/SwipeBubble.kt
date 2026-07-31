@@ -29,7 +29,7 @@ private val bubbleFillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 private val bubbleTextPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 private val bubbleBgPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 private val bubbleLabelPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-private val SHADOW_COLOR = android.graphics.Color.argb(0x44, 0, 0, 0)
+private val SHADOW_COLOR = android.graphics.Color.argb(0x26, 0, 0, 0)
 
 data class BubbleDrawData(
     val boxLeft: Float,
