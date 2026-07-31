@@ -4,6 +4,8 @@ import com.kingzcheung.xime.service.PredictionManager
 import android.annotation.SuppressLint
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -20,7 +22,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
@@ -99,9 +100,6 @@ fun CandidateBar(
         MaterialTheme.colorScheme.surface,
         MaterialTheme.colorScheme.primary,
         0.15f
-    )
-    val iconButtonPressedContainer = iconButtonContainer.compositeOver(
-        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
     )
     val iconButtonTint = MaterialTheme.colorScheme.onSurfaceVariant
     val showComments = SettingsPreferences.showCandidateComments(context)
@@ -343,7 +341,7 @@ fun CandidateBar(
             }
 
             LazyRow(
-                modifier = Modifier.weight(1f),
+                modifier = if (state is CandidateBarState.Idle) Modifier else Modifier.weight(1f),
                 state = candidateListState,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
@@ -397,32 +395,34 @@ fun CandidateBar(
 
             when {
                 state is CandidateBarState.Idle -> {
-                    if (toolbarActions.isNotEmpty()) {
-                        toolbarActions.forEach { action ->
-                            val interactionSource = remember { MutableInteractionSource() }
-                            val isPressed by interactionSource.collectIsPressedAsState()
-                            Box(
-                                modifier = Modifier
-                                    .padding(horizontal = 5.dp)
-                                    .size(32.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        if (isPressed) iconButtonPressedContainer
-                                        else iconButtonContainer
+                    Row(
+                        modifier = Modifier
+                            .weight(1f, fill = true)
+                            .horizontalScroll(rememberScrollState()),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (toolbarActions.isNotEmpty()) {
+                            toolbarActions.forEach { action ->
+                                val interactionSource = remember { MutableInteractionSource() }
+                                val isPressed by interactionSource.collectIsPressedAsState()
+                                Box(
+                                    modifier = Modifier
+                                        .padding(horizontal = 5.dp)
+                                        .size(32.dp)
+                                        .clickable(
+                                            interactionSource = interactionSource,
+                                            indication = null,
+                                            onClick = action.onClick
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = action.button.icon,
+                                        contentDescription = action.button.label,
+                                        tint = if (isPressed) iconButtonTint.copy(alpha = 0.6f) else iconButtonTint,
+                                        modifier = Modifier.size(22.dp)
                                     )
-                                    .clickable(
-                                        interactionSource = interactionSource,
-                                        indication = null,
-                                        onClick = action.onClick
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = action.button.icon,
-                                    contentDescription = action.button.label,
-                                    tint = if (isPressed) iconButtonTint.copy(alpha = 0.6f) else iconButtonTint,
-                                    modifier = Modifier.size(20.dp)
-                                )
+                                }
                             }
                         }
                     }
@@ -436,11 +436,6 @@ fun CandidateBar(
                         Box(
                             modifier = Modifier
                                 .size(32.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    if (isHideKeyboardPressed) iconButtonPressedContainer
-                                    else iconButtonContainer
-                                )
                                 .clickable(
                                     interactionSource = hideKeyboardInteractionSource,
                                     indication = null,
@@ -452,7 +447,7 @@ fun CandidateBar(
                                 imageVector = Icons.Default.KeyboardArrowDown,
                                 contentDescription = "收起键盘",
                                 tint = if (isHideKeyboardPressed) iconButtonTint.copy(alpha = 0.6f) else iconButtonTint,
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(22.dp)
                             )
                         }
                     }
