@@ -50,6 +50,7 @@ import com.kingzcheung.xime.settings.KeysConfigHelper
 import com.kingzcheung.xime.ui.keyboard.LocalKeyCornerRadius
 import com.kingzcheung.xime.ui.keyboard.crispShadowColor
 import com.kingzcheung.xime.ui.theme.KeyboardColorScheme
+import com.kingzcheung.xime.ui.theme.KeyboardThemes
 
 private val QWERTY_ROW0 = listOf("Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P")
 private val QWERTY_ROW1 = listOf("A", "S", "D", "F", "G", "H", "J", "K", "L")
@@ -199,8 +200,8 @@ private fun ThemeKeyboardPreview(
 
     val kbColors = KeysConfigHelper.getKeyboardColors()
     val longToColor: (Long) -> Color = { if (it > 0xFFFFFF) Color(it) else Color(0xFF000000 or it) }
-    val keyColor =
-        if (isDark) longToColor(kbColors.keyBgColorDark) else longToColor(kbColors.keyBgColor)
+    val keyColor = KeyboardThemes.getKeyBgColorOverride(theme.id, isDark)
+        ?: if (isDark) longToColor(kbColors.keyBgColorDark) else longToColor(kbColors.keyBgColor)
 
     val cornerRadius = KeysConfigHelper.getKeyboardKeyConfig().cornerRadius.dp
 
@@ -234,7 +235,7 @@ private fun ThemeKeyboardPreview(
                                     keyColor,
                                     textColor,
                                     1f,
-                                    extraModifier = Modifier.padding(1.dp, 2.dp)
+                                    extraModifier = Modifier.padding(0.5.dp, 2.dp)
                                 )
                             }
                         }
@@ -243,7 +244,7 @@ private fun ThemeKeyboardPreview(
                     // Row 2: ASDFGHJKL
                     Box(modifier = Modifier.weight(1f)) {
                         Row(
-                            modifier = Modifier.fillMaxSize(),
+                            modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
                             horizontalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
                             QWERTY_ROW1.forEach { key ->
@@ -252,7 +253,7 @@ private fun ThemeKeyboardPreview(
                                     keyColor,
                                     textColor,
                                     1f,
-                                    extraModifier = Modifier.padding(1.dp, 2.dp)
+                                    extraModifier = Modifier.padding(0.5.dp, 2.dp)
                                 )
                             }
                         }
@@ -270,7 +271,7 @@ private fun ThemeKeyboardPreview(
                             label = "",
                             icon = rememberVectorPainter(Icons.TwoTone.KeyboardControlKey),
                             color = specialKeyColor, textColor = textColor, weight = 1.4f,
-                            extraModifier = Modifier.padding(1.dp, 2.dp)
+                            extraModifier = Modifier.padding(0.5.dp, 2.dp)
                         )
 
                         Row(
@@ -285,7 +286,7 @@ private fun ThemeKeyboardPreview(
                                     keyColor,
                                     textColor,
                                     1f,
-                                    extraModifier = Modifier.padding(1.dp, 2.dp)
+                                    extraModifier = Modifier.padding(0.5.dp, 2.dp)
                                 )
                             }
                         }
@@ -294,7 +295,7 @@ private fun ThemeKeyboardPreview(
                             label = "",
                             icon = rememberVectorPainter(Icons.AutoMirrored.Filled.Backspace),
                             color = specialKeyColor, textColor = textColor, weight = 1.4f,
-                            extraModifier = Modifier.padding(1.dp, 2.dp)
+                            extraModifier = Modifier.padding(0.5.dp, 2.dp)
                         )
                     }
 
@@ -305,11 +306,11 @@ private fun ThemeKeyboardPreview(
                             .weight(1f),
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        PreviewKey("?123", specialKeyColor, textColor, 1.2f,extraModifier = Modifier.padding(1.dp, 2.dp))
-                        PreviewKey("，", keyColor, textColor, 0.8f,extraModifier = Modifier.padding(1.dp, 2.dp))
-                        PreviewKey("空格", keyColor, textColor, 3f, fontSize = 9.sp,extraModifier = Modifier.padding(1.dp, 2.dp))
-                        PreviewKey("中/En", specialKeyColor, textColor, 0.8f, fontSize = 8.sp,extraModifier = Modifier.padding(1.dp, 2.dp))
-                        PreviewKey("确定", specialKeyColor, textColor, 1.2f,extraModifier = Modifier.padding(1.dp, 2.dp))
+                        PreviewKey("?123", specialKeyColor, textColor, 1.2f,extraModifier = Modifier.padding(0.5.dp, 2.dp))
+                        PreviewKey("，", keyColor, textColor, 0.8f,extraModifier = Modifier.padding(0.5.dp, 2.dp))
+                        PreviewKey("空格", keyColor, textColor, 3f, fontSize = 9.sp,extraModifier = Modifier.padding(0.5.dp, 2.dp))
+                        PreviewKey("中/En", specialKeyColor, textColor, 0.8f, fontSize = 8.sp,extraModifier = Modifier.padding(0.5.dp, 2.dp))
+                        PreviewKey("确定", specialKeyColor, textColor, 1.2f,extraModifier = Modifier.padding(0.5.dp, 2.dp))
                     }
                 }
             }
@@ -382,7 +383,7 @@ private fun RowScope.PreviewKey(
     textColor: Color,
     weight: Float,
     icon: Painter? = null,
-    fontSize: androidx.compose.ui.unit.TextUnit = 10.sp,
+    fontSize: androidx.compose.ui.unit.TextUnit = 14.sp,
     extraModifier: Modifier = Modifier,
 ) {
     val shadow = KeysConfigHelper.getKeyboardShadow()
@@ -424,6 +425,7 @@ private fun RowScope.PreviewKey(
                 text = label,
                 fontSize = fontSize,
                 color = textColor,
+                fontWeight = FontWeight.Medium,
                 maxLines = 1,
             )
         }

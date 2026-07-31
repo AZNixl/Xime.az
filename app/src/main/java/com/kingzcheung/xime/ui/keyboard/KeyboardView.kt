@@ -161,9 +161,11 @@ fun KeyboardView(
     val longToColor: (Long) -> androidx.compose.ui.graphics.Color = { if (it > 0xFFFFFF) androidx.compose.ui.graphics.Color(it) else androidx.compose.ui.graphics.Color(0xFF000000 or it) }
     val keyboardBgColor = if (state.isDarkTheme) longToColor(KeyboardColorsConfig.FALLBACK_BG_DARK)
         else longToColor(KeyboardColorsConfig.FALLBACK_BG_LIGHT)
-    val keyBgColor = if (state.isDarkTheme) longToColor(kbColors.keyBgColorDark)
+    val keyBgColor = KeyboardThemes.getKeyBgColorOverride(state.themeId, state.isDarkTheme)
+        ?: if (state.isDarkTheme) longToColor(kbColors.keyBgColorDark)
         else longToColor(kbColors.keyBgColor)
-    val keyTextColor = if (state.isDarkTheme) longToColor(kbColors.keyTextColorDark)
+    val keyTextColor = KeyboardThemes.getKeyTextColorOverride(state.themeId, state.isDarkTheme)
+        ?: if (state.isDarkTheme) longToColor(kbColors.keyTextColorDark)
         else longToColor(kbColors.keyTextColor)
     val accentColor = KeyboardThemes.getAccentColor(state.themeId, state.isDarkTheme)
     val themeScheme = KeyboardThemes.getThemeById(state.themeId)
@@ -176,7 +178,8 @@ fun KeyboardView(
     val candidateBarBg = (themeScheme.candidateBarBackground?.let { resolveSolidColor(it, state.isDarkTheme) })
         ?: if (state.isDarkTheme) themeScheme.candidateBarBgDark
         else themeScheme.candidateBarBgLight
-    val candidateTextColor = if (state.isDarkTheme) longToColor(kbColors.candidateTextColorDark)
+    val candidateTextColor = KeyboardThemes.getCandidateTextColorOverride(state.themeId, state.isDarkTheme)
+        ?: if (state.isDarkTheme) longToColor(kbColors.candidateTextColorDark)
         else longToColor(kbColors.candidateTextColor)
     val dividerColor = if (state.isDarkTheme) androidx.compose.ui.graphics.Color(0xFF3C4043) else androidx.compose.ui.graphics.Color(0xFFDADCE0)
 

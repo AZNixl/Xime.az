@@ -281,14 +281,20 @@ data class ColorSchemeEntry(
     val keyboardBgColor: Long? = null,
     @SerialName("key_bg_color")
     val keyBgColor: Long? = null,
+    @SerialName("key_bg_color_dark")
+    val keyBgColorDark: Long? = null,
     @SerialName("special_key_bg_color")
     val specialKeyBgColor: Long? = null,
     @SerialName("candidate_bar_bg_color")
     val candidateBarBgColor: Long? = null,
     @SerialName("key_text_color")
     val keyTextColor: Long? = null,
+    @SerialName("key_text_color_dark")
+    val keyTextColorDark: Long? = null,
     @SerialName("candidate_text_color")
     val candidateTextColor: Long? = null,
+    @SerialName("candidate_text_color_dark")
+    val candidateTextColorDark: Long? = null,
     @SerialName("keyboard_background")
     val keyboardBackground: BackgroundConfig? = null,
     @SerialName("key_background")

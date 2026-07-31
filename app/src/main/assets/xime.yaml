@@ -102,6 +102,19 @@ color_schemes:
       type: solid
       color: 0xE3E4E8
       color_dark: 0x002622
+  animal_crossing:
+    name: "动物之森"
+    primary_color: 0xf3b700
+    keyboard_background:
+      type: solid
+      color: 0xf8f3c6
+      color_dark: 0xf8f3c6
+    key_bg_color: 0xfaf9e7
+    key_bg_color_dark: 0xfaf9e7
+    key_text_color: 0x9c7452
+    key_text_color_dark: 0x9c7452
+    candidate_text_color: 0x9c7452
+    candidate_text_color_dark: 0x9c7452
 
 # ── 26 键全键盘手势配置 ──
 # 每个按键可定义 4 个手势：

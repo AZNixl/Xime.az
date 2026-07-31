@@ -47,6 +47,7 @@ import com.kingzcheung.xime.ui.theme.XimeTheme
 import com.kingzcheung.xime.settings.KeysConfigHelper
 import com.kingzcheung.xime.settings.KeyboardColorsConfig
 import com.kingzcheung.xime.ui.theme.KeyboardColorScheme
+import com.kingzcheung.xime.ui.theme.KeyboardThemes
 
 @Composable
 fun SettingsSection(
@@ -862,8 +863,10 @@ fun KeyboardThemeCard(
 ) {
     val kbColors = KeysConfigHelper.getKeyboardColors()
     val longToColor: (Long) -> Color = { if (it > 0xFFFFFF) Color(it) else Color(0xFF000000 or it) }
-    val globalKeyBgLight = longToColor(kbColors.keyBgColor)
-    val globalKeyBgDark = longToColor(kbColors.keyBgColorDark)
+    val globalKeyBgLight = KeyboardThemes.getKeyBgColorOverride(theme.id, false)
+        ?: longToColor(kbColors.keyBgColor)
+    val globalKeyBgDark = KeyboardThemes.getKeyBgColorOverride(theme.id, true)
+        ?: longToColor(kbColors.keyBgColorDark)
     Column(
         modifier = modifier
     ) {

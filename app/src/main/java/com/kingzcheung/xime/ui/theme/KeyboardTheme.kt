@@ -200,13 +200,19 @@ object KeyboardThemes {
         val cfgColor = longToColor(entry.primaryColor)
         val lightened = lightenColor(cfgColor)
         val veryLight = lightenColor(cfgColor, 0.8f)
+        val global = KeysConfigHelper.getKeyboardColors()
 
         val kbdBg = resolveBgColor(entry, isDark = false) ?: Color.White
         val kbdBgDark = resolveBgColor(entry, isDark = true) ?: Color(0xFF1C1B1F)
-        val keyBg = resolveKeyBgColor(entry, isDark = false) ?: Color.White
-        val keyBgDark = resolveKeyBgColor(entry, isDark = true) ?: Color(0xFF4A4A4A)
-        val txtColor = entry.keyTextColor?.let { longToColor(it) } ?: Color(0xFF202124)
-        val txtColorDark = entry.keyTextColor?.let { longToColor(it).let { lightenColor(it) } } ?: Color(0xFFE8EAED)
+        val keyBg = resolveKeyBgColor(entry, isDark = false) ?: longToColor(global.keyBgColor)
+        val keyBgDark = resolveKeyBgColor(entry, isDark = true) ?: longToColor(global.keyBgColorDark)
+        val txtColor = entry.keyTextColor?.let { longToColor(it) } ?: longToColor(global.keyTextColor)
+        val txtColorDark = entry.keyTextColorDark?.let { longToColor(it) }
+            ?: longToColor(global.keyTextColorDark)
+        val candColorLight = entry.candidateTextColor?.let { longToColor(it) }
+            ?: longToColor(global.candidateTextColor)
+        val candColorDark = entry.candidateTextColorDark?.let { longToColor(it) }
+            ?: longToColor(global.candidateTextColorDark)
 
         return KeyboardColorScheme(
             id = id,
@@ -229,8 +235,8 @@ object KeyboardThemes {
             candidateBarBgDark = kbdBgDark,
             keyTextColorLight = txtColor,
             keyTextColorDark = txtColorDark,
-            candidateTextColorLight = entry.candidateTextColor?.let { longToColor(it) } ?: cfgColor,
-            candidateTextColorDark = entry.candidateTextColor?.let { longToColor(it).let { lightenColor(it) } } ?: lightened,
+            candidateTextColorLight = candColorLight,
+            candidateTextColorDark = candColorDark,
             keyboardBackground = entry.keyboardBackground,
             keyBackground = entry.keyBackground,
             candidateBarBackground = entry.candidateBarBackground,
@@ -273,10 +279,10 @@ object KeyboardThemes {
                 }
             }
         }
-        return entry.keyBgColor?.let {
-            val c = longToColor(it)
-            if (isDark) darkenColor(c) else c
+        if (isDark) {
+            return entry.keyBgColorDark?.let { longToColor(it) }
         }
+        return entry.keyBgColor?.let { longToColor(it) }
     }
 
     /** 将 hex long 转为 Color。0xRRGGBB 补上 FF alpha，0xAARRGGBB 保留 alpha。 */
@@ -305,6 +311,7 @@ object KeyboardThemes {
         val entry = configOverrides[scheme.id] ?: return scheme
         val cfgColor = longToColor(entry.primaryColor)
         val lightened = lightenColor(cfgColor)
+        val global = KeysConfigHelper.getKeyboardColors()
         return scheme.copy(
             name = entry.name.ifEmpty { scheme.name },
             accentLight = cfgColor,
@@ -313,14 +320,17 @@ object KeyboardThemes {
             primaryDark = lightened,
             keyboardBgLight = resolveBgColor(entry, isDark = false) ?: scheme.keyboardBgLight,
             keyboardBgDark = resolveBgColor(entry, isDark = true) ?: scheme.keyboardBgDark,
-            keyBgLight = resolveKeyBgColor(entry, isDark = false) ?: scheme.keyBgLight,
-            keyBgDark = resolveKeyBgColor(entry, isDark = true) ?: scheme.keyBgDark,
+            keyBgLight = resolveKeyBgColor(entry, isDark = false) ?: longToColor(global.keyBgColor),
+            keyBgDark = resolveKeyBgColor(entry, isDark = true) ?: longToColor(global.keyBgColorDark),
             candidateBarBgLight = resolveBgColor(entry, isDark = false) ?: scheme.candidateBarBgLight,
             candidateBarBgDark = resolveBgColor(entry, isDark = true) ?: scheme.candidateBarBgDark,
-            keyTextColorLight = entry.keyTextColor?.let { longToColor(it) } ?: scheme.keyTextColorLight,
-            keyTextColorDark = entry.keyTextColor?.let { longToColor(it).let { lightenColor(it) } } ?: scheme.keyTextColorDark,
-            candidateTextColorLight = entry.candidateTextColor?.let { longToColor(it) } ?: scheme.candidateTextColorLight,
-            candidateTextColorDark = entry.candidateTextColor?.let { longToColor(it).let { lightenColor(it) } } ?: scheme.candidateTextColorDark,
+            keyTextColorLight = entry.keyTextColor?.let { longToColor(it) } ?: longToColor(global.keyTextColor),
+            keyTextColorDark = entry.keyTextColorDark?.let { longToColor(it) }
+                ?: longToColor(global.keyTextColorDark),
+            candidateTextColorLight = entry.candidateTextColor?.let { longToColor(it) }
+                ?: longToColor(global.candidateTextColor),
+            candidateTextColorDark = entry.candidateTextColorDark?.let { longToColor(it) }
+                ?: longToColor(global.candidateTextColorDark),
             keyboardBackground = entry.keyboardBackground ?: scheme.keyboardBackground,
             keyBackground = entry.keyBackground ?: scheme.keyBackground,
             candidateBarBackground = entry.candidateBarBackground ?: scheme.candidateBarBackground,
@@ -396,5 +406,31 @@ object KeyboardThemes {
     fun getDividerColor(themeId: String, isDark: Boolean): Color {
         val theme = getThemeById(themeId)
         return if (isDark) theme.dividerColorDark else theme.dividerColorLight
+    }
+
+    /** 返回 color_schemes 中显式定义的按键背景色，未定义返回 null。 */
+    fun getKeyBgColorOverride(themeId: String, isDark: Boolean): Color? {
+        val entry = configOverrides[themeId] ?: return null
+        return resolveKeyBgColor(entry, isDark)
+    }
+
+    /** 返回 color_schemes 中显式定义的按键文字色，未定义返回 null。 */
+    fun getKeyTextColorOverride(themeId: String, isDark: Boolean): Color? {
+        val entry = configOverrides[themeId] ?: return null
+        return if (isDark) {
+            entry.keyTextColorDark?.let { longToColor(it) }
+        } else {
+            entry.keyTextColor?.let { longToColor(it) }
+        }
+    }
+
+    /** 返回 color_schemes 中显式定义的候选文字色，未定义返回 null。 */
+    fun getCandidateTextColorOverride(themeId: String, isDark: Boolean): Color? {
+        val entry = configOverrides[themeId] ?: return null
+        return if (isDark) {
+            entry.candidateTextColorDark?.let { longToColor(it) }
+        } else {
+            entry.candidateTextColor?.let { longToColor(it) }
+        }
     }
 }
