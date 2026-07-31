@@ -26,6 +26,8 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.sin
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /** 角度制 → 渐变起始终止点（归一化坐标 0..1）。 */
 private fun angleToFractionalPoints(angleDeg: Int): Pair<Offset, Offset> {
@@ -107,8 +109,10 @@ fun Modifier.keyboardBackground(
             var imageBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
             LaunchedEffect(src) {
                 imageBitmap = try {
-                    context.assets.open(src).use { stream ->
-                        BitmapFactory.decodeStream(stream).asImageBitmap()
+                    withContext(Dispatchers.Default) {
+                        openThemeImageStream(context, src)?.use { stream ->
+                            BitmapFactory.decodeStream(stream)?.asImageBitmap()
+                        }
                     }
                 } catch (e: Exception) { null }
             }
@@ -116,9 +120,20 @@ fun Modifier.keyboardBackground(
             val bitmap = imageBitmap
             if (bitmap != null) {
                 val fit = background.fit ?: "cover"
+                val overlayAlpha = if (isDark) {
+                    background.overlayAlphaDark ?: background.overlayAlpha
+                } else {
+                    background.overlayAlpha
+                }
                 return this.then(
                     Modifier.drawWithContent {
                         drawImageBackground(bitmap, fit)
+                        // 半透明黑色遮罩压暗背景，提升按键对比度（Gboard 风格）
+                        if (overlayAlpha != null && overlayAlpha > 0f) {
+                            drawRect(
+                                color = Color.Black.copy(alpha = overlayAlpha.coerceIn(0f, 1f)),
+                            )
+                        }
                         drawContent()
                     }
                 )

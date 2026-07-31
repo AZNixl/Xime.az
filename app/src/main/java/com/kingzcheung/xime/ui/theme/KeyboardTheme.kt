@@ -1,10 +1,33 @@
 package com.kingzcheung.xime.ui.theme
 
 import android.content.Context
+import android.graphics.BitmapFactory
 import androidx.compose.ui.graphics.Color
+import androidx.core.graphics.ColorUtils
 import com.kingzcheung.xime.settings.BackgroundConfig
 import com.kingzcheung.xime.settings.ColorSchemeEntry
 import com.kingzcheung.xime.settings.KeysConfigHelper
+import java.io.File
+import java.io.FileInputStream
+import java.io.InputStream
+import kotlin.math.max
+
+/**
+ * 打开主题背景图片流。
+ * 优先读取用户数据目录（context.filesDir/rime/<src>，用户可自行放入或通过分享导入），
+ * 找不到再回退到内置 assets/<src>。
+ */
+fun openThemeImageStream(context: Context, src: String): InputStream? {
+    val userFile = File(context.filesDir, "rime/$src")
+    if (userFile.exists() && userFile.isFile) {
+        return FileInputStream(userFile)
+    }
+    return try {
+        context.assets.open(src)
+    } catch (e: Exception) {
+        null
+    }
+}
 
 data class KeyboardColorScheme(
     val id: String,
@@ -89,7 +112,7 @@ object KeyboardThemes {
         val existingIds = overridden.map { it.id }.toSet()
         val newThemes = configOverrides
             .filterKeys { it !in existingIds }
-            .map { (id, entry) -> buildSchemeFromConfig(id, entry) }
+            .map { (id, entry) -> buildSchemeFromConfig(context, id, entry) }
         themesCache = overridden + newThemes
         themesMapCache = themesCache.associateBy { it.id }
         android.util.Log.d("KeyboardTheme", "reload: themesCache ids=${themesCache.map { it.id }}")
@@ -98,8 +121,10 @@ object KeyboardThemes {
 
 
     /** 根据配置项创建全新的 KeyboardColorScheme。 */
-    private fun buildSchemeFromConfig(id: String, entry: ColorSchemeEntry): KeyboardColorScheme {
-        val cfgColor = longToColor(entry.primaryColor)
+    private fun buildSchemeFromConfig(context: Context, id: String, entry: ColorSchemeEntry): KeyboardColorScheme {
+        val primary = if (entry.primaryColor != 0L) entry.primaryColor
+        else extractImageSeedColor(context, entry)
+        val cfgColor = longToColor(primary)
         val lightened = lightenColor(cfgColor)
         val veryLight = lightenColor(cfgColor, 0.8f)
         val global = KeysConfigHelper.getKeyboardColors()
@@ -185,6 +210,77 @@ object KeyboardThemes {
             return entry.keyBgColorDark?.let { longToColor(it) }
         }
         return entry.keyBgColor?.let { longToColor(it) }
+    }
+
+    /** 将 hex long 转为 Color。0xRRGGBB 补上 FF alpha，0xAARRGGBB 保留 alpha。 */
+    /**
+     * 从图片背景提取主色作为种子色。参考 Material 3 动态配色思路：
+     * 解码小图 → 转 HSL → 排除接近黑白灰的像素 → 分桶统计 → 取权重最高的桶平均色。
+     * 取色失败返回默认薰衣草紫。
+     */
+    private fun extractImageSeedColor(context: Context, entry: ColorSchemeEntry): Long {
+        val src = entry.keyboardBackground?.takeIf { it.type == "image" }?.src
+        if (src.isNullOrBlank()) return 0xFF8F73E2
+        return try {
+            val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            openThemeImageStream(context, src)?.use { BitmapFactory.decodeStream(it, null, options) }
+            var sampleSize = 1
+            var maxDim = max(options.outWidth, options.outHeight)
+            while (maxDim / sampleSize > 64) sampleSize *= 2
+            val decodeOptions = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+            val bitmap = openThemeImageStream(context, src)?.use { BitmapFactory.decodeStream(it, null, decodeOptions) }
+                ?: return 0xFF8F73E2
+            try {
+                val width = bitmap.width
+                val height = bitmap.height
+                val pixels = IntArray(width * height)
+                bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+                val hueBuckets = 16
+                val satBuckets = 4
+                val count = LongArray(hueBuckets * satBuckets)
+                val sumR = DoubleArray(hueBuckets * satBuckets)
+                val sumG = DoubleArray(hueBuckets * satBuckets)
+                val sumB = DoubleArray(hueBuckets * satBuckets)
+                val hsl = FloatArray(3)
+                for (pixel in pixels) {
+                    val r = (pixel shr 16) and 0xFF
+                    val g = (pixel shr 8) and 0xFF
+                    val b = pixel and 0xFF
+                    ColorUtils.RGBToHSL(r, g, b, hsl)
+                    val hue = hsl[0]
+                    val sat = hsl[1]
+                    val light = hsl[2]
+                    if (sat < 0.12f || light < 0.08f || light > 0.92f) continue
+                    val hi = (hue / 360f * hueBuckets).toInt().coerceIn(0, hueBuckets - 1)
+                    val si = (sat * satBuckets).toInt().coerceIn(0, satBuckets - 1)
+                    val idx = hi * satBuckets + si
+                    count[idx]++
+                    sumR[idx] += r
+                    sumG[idx] += g
+                    sumB[idx] += b
+                }
+                var bestIdx = -1
+                var bestScore = 0L
+                for (i in count.indices) {
+                    if (count[i] == 0L) continue
+                    val sat = (i % satBuckets + 1) / satBuckets.toFloat()
+                    val score = count[i] * (1L + (sat * 4).toLong())
+                    if (score > bestScore) {
+                        bestScore = score
+                        bestIdx = i
+                    }
+                }
+                if (bestIdx < 0) return 0xFF8F73E2
+                val r = (sumR[bestIdx] / count[bestIdx]).toInt().toLong()
+                val g = (sumG[bestIdx] / count[bestIdx]).toInt().toLong()
+                val b = (sumB[bestIdx] / count[bestIdx]).toInt().toLong()
+                (r shl 16) or (g shl 8) or b
+            } finally {
+                bitmap.recycle()
+            }
+        } catch (e: Exception) {
+            0xFF8F73E2
+        }
     }
 
     /** 将 hex long 转为 Color。0xRRGGBB 补上 FF alpha，0xAARRGGBB 保留 alpha。 */

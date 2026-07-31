@@ -270,6 +270,12 @@ data class BackgroundConfig(
     @SerialName("src_dark")
     val srcDark: String? = null,
     val fit: String? = null,
+    /** 图片背景遮罩：半透明黑色覆盖层降低背景亮度（0~1，如 0.35 表示压暗 35%）。 */
+    @SerialName("overlay_alpha")
+    val overlayAlpha: Float? = null,
+    /** 暗色模式下的遮罩强度，未配置时沿用 [overlayAlpha]。 */
+    @SerialName("overlay_alpha_dark")
+    val overlayAlphaDark: Float? = null,
 )
 
 @Serializable
@@ -764,10 +770,21 @@ object KeysConfigHelper {
         if (default == null) return custom
         return XimeConfig(
             ximeIndex = custom.ximeIndex ?: default.ximeIndex,
-            colorSchemes = custom.colorSchemes ?: default.colorSchemes,
+            // 合并而非替换：custom 覆盖同名字题，其余保留内置主题，
+            // 这样用户只需在 xime.custom.yaml 中添加自定义背景主题而不会丢失内置主题。
+            colorSchemes = mergeColorSchemes(default.colorSchemes, custom.colorSchemes),
             style = custom.style ?: default.style,
             metadata = custom.metadata ?: default.metadata,
         )
+    }
+
+    private fun mergeColorSchemes(
+        default: Map<String, ColorSchemeEntry>?,
+        custom: Map<String, ColorSchemeEntry>?,
+    ): Map<String, ColorSchemeEntry>? {
+        if (custom == null) return default
+        if (default == null) return custom
+        return default + custom
     }
 
     private fun readAssetText(context: Context, fileName: String): String? {

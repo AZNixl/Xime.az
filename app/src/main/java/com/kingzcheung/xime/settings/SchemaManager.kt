@@ -75,6 +75,8 @@ object SchemaManager {
             val name = file.name
             if (name == "default.yaml" || name == "xime.yaml") return@forEach
             if (isProtectedImportName(name)) return@forEach
+            // themes/ 存放用户导入或自定义的背景图片，全量清理时保留
+            if (name == "themes") return@forEach
             if (file.isDirectory) {
                 file.deleteRecursively()
             } else {

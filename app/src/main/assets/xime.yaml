@@ -35,8 +35,16 @@ style:
 #  
 #   keyboard_background:
 #     type: image
-#     src: "themes/lavender_bg.png"          # 相对于 assets/
+#     src: "themes/lavender_bg.png"          # 相对于 rime/ 用户目录（优先）或 assets/
 #     fit: cover                             # cover | contain | fill | fit_width | fit_height | none
+#
+# 自定义图片背景有两种方式：
+# 1. 在系统相册/文件管理中把图片「分享到 Xime」，图片会自动存入
+#    rime/themes/custom_<时间戳>.jpg，并把可用的 color_schemes 配置模板复制到剪贴板，
+#    粘贴到 rime/xime.custom.yaml 后即可在主题设置中选择。
+# 2. 手动把图片放入 rime/themes/（如通过 USB 或文件管理器），然后在
+#    xime.custom.yaml 中添加引用它的 color_scheme，src 写相对 rime/ 的路径。
+#    内置主题的同名文件会被用户目录中的文件覆盖。
 #
 color_schemes:
   lavender_purple:
@@ -260,6 +268,51 @@ color_schemes:
     key_text_color_dark: 0xdff5e0
     candidate_text_color: 0x1e4620
     candidate_text_color_dark: 0xdff5e0
+
+  kitosonita_landscape:
+    name: "夜幕之影"
+    keyboard_background:
+      type: image
+      src: "themes/lll-sh-silhouette-bg.jpg"
+      fit: cover
+      overlay_alpha: 0.15
+      overlay_alpha_dark: 0.30
+    key_bg_color: 0x8cffffff
+    key_bg_color_dark: 0x5affffff
+    key_text_color: 0x232323
+    key_text_color_dark: 0xf2f2f2
+    candidate_text_color: 0x232323
+    candidate_text_color_dark: 0xf2f2f2
+
+  mrfawdi_nature:
+    name: "暮色之桥"
+    keyboard_background:
+      type: image
+      src: "themes/nordseher-bridge-bg.jpg"
+      fit: cover
+      overlay_alpha: 0.15
+      overlay_alpha_dark: 0.30
+    key_bg_color: 0x8cffffff
+    key_bg_color_dark: 0x5affffff
+    key_text_color: 0x3a2028
+    key_text_color_dark: 0xf7eef1
+    candidate_text_color: 0x76565F
+    candidate_text_color_dark: 0xf7eef1
+
+  olivcelso_desert:
+    name: "大漠流金"
+    keyboard_background:
+      type: image
+      src: "themes/olivcelso-desert-bg.jpg"
+      fit: cover
+      overlay_alpha: 0.30
+      overlay_alpha_dark: 0.45
+    key_bg_color: 0x8cffffff
+    key_bg_color_dark: 0x5affffff
+    key_text_color: 0x3B5277
+    key_text_color_dark: 0xf7eccb
+    candidate_text_color: 0xE4C656
+    candidate_text_color_dark: 0xE4C656
 
 # ── 26 键全键盘手势配置 ──
 # 每个按键可定义 4 个手势：

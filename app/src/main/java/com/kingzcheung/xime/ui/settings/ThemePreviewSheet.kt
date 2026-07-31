@@ -41,12 +41,14 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kingzcheung.xime.settings.KeysConfigHelper
+import com.kingzcheung.xime.settings.SettingsPreferences
 import com.kingzcheung.xime.ui.keyboard.LocalKeyCornerRadius
 import com.kingzcheung.xime.ui.keyboard.crispShadowColor
 import com.kingzcheung.xime.ui.theme.KeyboardColorScheme
@@ -194,7 +196,6 @@ private fun ThemeKeyboardPreview(
     modifier: Modifier = Modifier,
 ) {
     val bgColor = if (isDark) theme.keyboardBgDark else theme.keyboardBgLight
-    val cBarColor = if (isDark) theme.candidateBarBgDark else theme.candidateBarBgLight
     val accent = if (isDark) theme.accentDark else theme.accentLight
     val specialKeyColor = if (isDark) theme.specialKeyDark else theme.specialKeyLight
     val textColor = if (isDark) theme.keyTextColorDark else theme.keyTextColorLight
@@ -203,6 +204,11 @@ private fun ThemeKeyboardPreview(
     val longToColor: (Long) -> Color = { if (it > 0xFFFFFF) Color(it) else Color(0xFF000000 or it) }
     val keyColor = KeyboardThemes.getKeyBgColorOverride(theme.id, isDark)
         ?: if (isDark) longToColor(kbColors.keyBgColorDark) else longToColor(kbColors.keyBgColor)
+    val candidateTextColor = KeyboardThemes.getCandidateTextColorOverride(theme.id, isDark)
+        ?: if (isDark) longToColor(kbColors.candidateTextColorDark)
+        else longToColor(kbColors.candidateTextColor)
+    val context = LocalContext.current
+    val candidateTextSize = SettingsPreferences.getCandidateTextSize(context)
 
     val cornerRadius = KeysConfigHelper.getKeyboardKeyConfig().cornerRadius.dp
 
@@ -219,7 +225,7 @@ private fun ThemeKeyboardPreview(
                     .fillMaxSize()
                     .padding(start = 4.dp, end = 4.dp, bottom = 8.dp),
             ) {
-                CandidateBarPreview(cBarColor, accent, textColor)
+                CandidateBarPreview(accent, candidateTextColor, candidateTextSize)
 
                 Column(modifier = Modifier
                     .fillMaxWidth()
@@ -321,15 +327,14 @@ private fun ThemeKeyboardPreview(
 
 @Composable
 private fun CandidateBarPreview(
-    bgColor: Color,
     accent: Color,
     textColor: Color,
+    textSize: Int,
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .height(50.dp)
-            .background(bgColor)
             .padding(horizontal = 8.dp),
         verticalArrangement = Arrangement.Center,
     ) {
@@ -341,14 +346,16 @@ private fun CandidateBarPreview(
                 text = "曦码",
                 isSelected = true,
                 accent = accent,
-                textColor = textColor
+                textColor = textColor,
+                textSize = textSize
             )
             Spacer(modifier = Modifier.width(4.dp))
             PreviewCandidate(
                 text = "输入法",
                 isSelected = false,
                 accent = accent,
-                textColor = textColor
+                textColor = textColor,
+                textSize = textSize
             )
         }
     }
@@ -360,6 +367,7 @@ private fun PreviewCandidate(
     isSelected: Boolean,
     accent: Color,
     textColor: Color,
+    textSize: Int,
 ) {
     Box(
         modifier = Modifier
@@ -370,7 +378,7 @@ private fun PreviewCandidate(
         Text(
             text = text,
             color = if (isSelected) accent else textColor,
-            fontSize = 17.sp,
+            fontSize = textSize.sp,
             fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal,
             maxLines = 1,
         )
