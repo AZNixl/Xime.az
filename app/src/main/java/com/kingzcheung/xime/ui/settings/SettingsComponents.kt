@@ -980,8 +980,6 @@ private fun ThemeHalfPreview(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(12.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(candidateBarColor)
                     .padding(horizontal = 3.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
