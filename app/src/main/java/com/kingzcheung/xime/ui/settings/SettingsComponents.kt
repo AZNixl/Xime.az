@@ -216,8 +216,8 @@ fun SchemaItem(
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Medium,
                 color = if (!isDownloaded) MaterialTheme.colorScheme.outline
-                    else if (isSelected) MaterialTheme.colorScheme.primary 
-                    else MaterialTheme.colorScheme.onSurface
+                else if (isSelected) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurface
             )
             if (schema.description.isNotEmpty()) {
                 Text(
@@ -253,7 +253,7 @@ fun SchemaItem(
                 }
             }
         }
-        
+
         if (!isDownloaded) {
             OutlinedButton(
                 onClick = onDownload,
@@ -373,7 +373,7 @@ fun ThemeCard(
     val specialKeyColor = accentColor ?: if (isDark) Color(0xFF4A4A4A) else Color(0xFFD3E3FD)
     val textColor = if (isDark) Color(0xFFE8EAED) else Color(0xFF202124)
     val candidateBarColor = if (isDark) Color(0xFF2D2D2D) else Color(0xFFF8F9FA)
-    
+
     Column(
         modifier = modifier
     ) {
@@ -514,12 +514,16 @@ fun ThemeCard(
                                         .width(16.dp)
                                         .height(6.dp)
                                         .clip(RoundedCornerShape(2.dp))
-                                        .background(accentColor ?: if (isDark) Color(0xFF8AB4F8) else Color(0xFF1A73E8))
+                                        .background(
+                                            accentColor ?: if (isDark) Color(0xFF8AB4F8) else Color(
+                                                0xFF1A73E8
+                                            )
+                                        )
                                 )
                             }
-                            
+
                             Spacer(modifier = Modifier.height(4.dp))
-                            
+
                             repeat(3) { rowIndex ->
                                 Row(
                                     modifier = Modifier
@@ -530,7 +534,8 @@ fun ThemeCard(
                                 ) {
                                     val keysInRow = if (rowIndex == 2) 3 else 10
                                     repeat(keysInRow) { keyIndex ->
-                                        val isSpecialKey = (rowIndex == 2 && (keyIndex == 0 || keyIndex == 2))
+                                        val isSpecialKey =
+                                            (rowIndex == 2 && (keyIndex == 0 || keyIndex == 2))
                                         val isSpaceKey = (rowIndex == 2 && keyIndex == 1)
                                         Box(
                                             modifier = Modifier
@@ -605,7 +610,11 @@ fun CodeDisplayCard(
                                 .height(26.dp)
                                 .clip(RoundedCornerShape(4.dp))
                                 .background(MaterialTheme.colorScheme.surface)
-                                .border(0.5.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(4.dp))
+                                .border(
+                                    0.5.dp,
+                                    MaterialTheme.colorScheme.outlineVariant,
+                                    RoundedCornerShape(4.dp)
+                                )
                                 .padding(horizontal = 8.dp),
                             contentAlignment = Alignment.CenterStart
                         ) {
@@ -634,9 +643,17 @@ fun CodeDisplayCard(
                                 .clip(RoundedCornerShape(4.dp))
                                 .padding(horizontal = 6.dp, vertical = 4.dp)
                         ) {
-                            Column(verticalArrangement = Arrangement.Center, modifier = Modifier.padding(vertical = 0.dp)) {
+                            Column(
+                                verticalArrangement = Arrangement.Center,
+                                modifier = Modifier.padding(vertical = 0.dp)
+                            ) {
                                 Row(modifier = Modifier.padding(vertical = 2.dp)) {
-                                    Text("shu ru fa", fontSize = 10.sp, lineHeight = 1.sp, color = onSurface.copy(alpha = 0.6f))
+                                    Text(
+                                        "shu ru fa",
+                                        fontSize = 10.sp,
+                                        lineHeight = 1.sp,
+                                        color = onSurface.copy(alpha = 0.6f)
+                                    )
                                 }
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
@@ -698,7 +715,9 @@ fun CodeDisplayCardPreview_SelectedWithCode() {
             isSelected = true,
             showCodeInInputBox = true,
             onClick = {},
-            modifier = Modifier.padding(16.dp).height(160.dp)
+            modifier = Modifier
+                .padding(16.dp)
+                .height(160.dp)
         )
     }
 }
@@ -712,7 +731,9 @@ fun CodeDisplayCardPreview_NotSelectedNoCode() {
             isSelected = true,
             showCodeInInputBox = false,
             onClick = {},
-            modifier = Modifier.padding(16.dp).height(160.dp)
+            modifier = Modifier
+                .padding(16.dp)
+                .height(160.dp)
         )
     }
 }
@@ -835,7 +856,10 @@ fun CommentDisplayCardPreview_Show() {
             isSelected = true,
             showComment = true,
             onClick = {},
-            modifier = Modifier.fillMaxWidth().height(100.dp).padding(10.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(100.dp)
+                .padding(10.dp)
         )
     }
 }
@@ -849,7 +873,10 @@ fun CommentDisplayCardPreview_Hide() {
             isSelected = false,
             showComment = false,
             onClick = {},
-            modifier = Modifier.fillMaxWidth().height(100.dp).padding(10.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(100.dp)
+                .padding(10.dp)
         )
     }
 }
@@ -1004,7 +1031,8 @@ private fun ThemeHalfPreview(
                 ) {
                     val keysInRow = if (rowIndex == 2) 2 else 5
                     repeat(keysInRow) { keyIndex ->
-                        val isSpecial = (isLeft && rowIndex == 2 && (keyIndex == 0)) || (!isLeft && rowIndex == 2 && keyIndex == 1)
+                        val isSpecial =
+                            (isLeft && rowIndex == 2 && (keyIndex == 0)) || (!isLeft && rowIndex == 2 && keyIndex == 1)
                         val isSpace = (rowIndex == 2 && keyIndex == if (isLeft) 1 else 0)
                         Box(
                             modifier = Modifier
@@ -1047,7 +1075,12 @@ fun CandidateTextSizeCard(
                     .padding(horizontal = 12.dp, vertical = 10.dp),
             ) {
                 Row(modifier = Modifier.padding(vertical = 2.dp)) {
-                    Text("shu ru fa", fontSize = 10.sp, lineHeight = 1.sp, color = onSurface.copy(alpha = 0.6f))
+                    Text(
+                        "shu ru fa",
+                        fontSize = 10.sp,
+                        lineHeight = 1.sp,
+                        color = onSurface.copy(alpha = 0.6f)
+                    )
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
@@ -1083,7 +1116,9 @@ fun CandidateTextSizeCardPreview() {
     XimeTheme {
         CandidateTextSizeCard(
             candidateTextSize = 19f,
-            modifier = Modifier.padding(16.dp).fillMaxWidth()
+            modifier = Modifier
+                .padding(16.dp)
+                .fillMaxWidth()
         )
     }
 }

@@ -16,7 +16,8 @@ class VoiceKeyboardContainer(
     private val onStopRecognition: () -> Unit,
     private val isRecording: () -> Boolean,
     private val setRecording: (Boolean) -> Unit,
-    private val onVoiceDismiss: () -> Unit = {}
+    private val onVoiceDismiss: () -> Unit = {},
+    private val onTouchCancel: () -> Unit = {},
 ) : FrameLayout(context) {
 
     private var isTrackingVoiceButtons = false
@@ -49,10 +50,15 @@ class VoiceKeyboardContainer(
                     handleActionDown(it)
                 }
 
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                MotionEvent.ACTION_UP -> {
                     handleActionUp()
                 }
-
+                MotionEvent.ACTION_CANCEL -> {
+                    // 系统手势（如三指截图）截走触摸流时，IME 收不到 UP，Compose 手势也不会被取消。
+                    // 这里把 cancel 上抛，触发活动键盘 remount 来取消所有进行中的手势协程。
+                    handleActionUp()
+                    onTouchCancel()
+                }
                 MotionEvent.ACTION_MOVE -> {
                     handleActionMove(it)
                 }

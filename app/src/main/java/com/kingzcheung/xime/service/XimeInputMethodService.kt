@@ -747,6 +747,11 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                 )
                 keyboardViewModel.exitVoice()
                 isTrackingVoiceButtons = false
+            },
+            onTouchCancel = {
+                uiState.value = uiState.value.copy(
+                    swipeCancelEpoch = uiState.value.swipeCancelEpoch + 1
+                )
             }
         )
         
@@ -936,6 +941,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                 floatingOffsetY = state.floatingOffsetY,
                                 floatingMinOffsetY = floatingMinY,
                                 t9ResetSignal = state.t9ResetSignal,
+                                swipeCancelEpoch = state.swipeCancelEpoch,
                                 t9RightCandidateSelectedCount = state.t9RightCandidateSelectedCount,
                                 t9SelectedCandidatePinyin = state.t9SelectedCandidatePinyin,
                                 showQuickSendForm = state.showQuickSendForm,

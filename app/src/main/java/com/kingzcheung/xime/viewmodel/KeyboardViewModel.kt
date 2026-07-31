@@ -67,6 +67,7 @@ data class KeyboardUiState(
     val floatingOffsetY: Int = 0,
     val floatingMinOffsetY: Int = 0,
     val t9ResetSignal: Long = 0L,
+    val swipeCancelEpoch: Long = 0L,
     val t9RightCandidateSelectedCount: Long = 0L,
     val t9SelectedCandidatePinyin: String = "",
     val showQuickSendForm: Boolean = false,
