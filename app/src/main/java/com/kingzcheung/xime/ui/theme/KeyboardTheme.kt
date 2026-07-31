@@ -18,8 +18,9 @@ import kotlin.math.max
  * 找不到再回退到内置 assets/<src>。
  */
 fun openThemeImageStream(context: Context, src: String): InputStream? {
-    val userFile = File(context.filesDir, "rime/$src")
-    if (userFile.exists() && userFile.isFile) {
+    val rimeBase = File(context.filesDir, "rime").canonicalFile
+    val userFile = File(rimeBase, src).canonicalFile
+    if (userFile.isFile && userFile.path.startsWith(rimeBase.path + File.separator)) {
         return FileInputStream(userFile)
     }
     return try {
@@ -107,7 +108,7 @@ object KeyboardThemes {
         configOverrides = KeysConfigHelper.loadColorSchemes(context)
         android.util.Log.d("KeyboardTheme", "reload: configOverrides=${configOverrides.keys}")
         // 1) 对硬编码主题应用配置覆盖
-        val overridden = defaultThemes.map { applyConfigOverrides(it) }
+        val overridden = defaultThemes.map { applyConfigOverrides(context, it) }
         // 2) 把配置中有但硬编码列表中没有的新主题也加入缓存
         val existingIds = overridden.map { it.id }.toSet()
         val newThemes = configOverrides
@@ -216,11 +217,35 @@ object KeyboardThemes {
     /**
      * 从图片背景提取主色作为种子色。参考 Material 3 动态配色思路：
      * 解码小图 → 转 HSL → 排除接近黑白灰的像素 → 分桶统计 → 取权重最高的桶平均色。
+     * 取色结果按 src+文件大小/修改时间缓存到 SharedPreferences，
+     * 避免每次冷启动在主线程重复解码（图片主题没有 primary_color 时）。
      * 取色失败返回默认薰衣草紫。
      */
     private fun extractImageSeedColor(context: Context, entry: ColorSchemeEntry): Long {
         val src = entry.keyboardBackground?.takeIf { it.type == "image" }?.src
         if (src.isNullOrBlank()) return 0xFF8F73E2
+        val cacheKey = themeSeedCacheKey(context, src)
+        val cached = context.getSharedPreferences("theme_seed_cache", Context.MODE_PRIVATE)
+            .getLong(cacheKey, 0L)
+        if (cached != 0L) return cached
+        val result = doExtractImageSeedColor(context, src)
+        if (result != 0xFF8F73E2) {
+            context.getSharedPreferences("theme_seed_cache", Context.MODE_PRIVATE)
+                .edit().putLong(cacheKey, result).apply()
+        }
+        return result
+    }
+
+    /** 生成种子色缓存键：src + 文件大小/修改时间，文件变化后自动失效。 */
+    private fun themeSeedCacheKey(context: Context, src: String): String {
+        val userFile = File(context.filesDir, "rime/$src")
+        val file = if (userFile.isFile) userFile else null
+        val size = file?.length() ?: -1L
+        val mtime = file?.lastModified() ?: -1L
+        return "seed_$src|$size|$mtime"
+    }
+
+    private fun doExtractImageSeedColor(context: Context, src: String): Long {
         return try {
             val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             openThemeImageStream(context, src)?.use { BitmapFactory.decodeStream(it, null, options) }
@@ -305,9 +330,11 @@ object KeyboardThemes {
     }
 
     /** 应用配置覆盖，返回覆盖后的 KeyboardColorScheme。 */
-    private fun applyConfigOverrides(scheme: KeyboardColorScheme): KeyboardColorScheme {
+    private fun applyConfigOverrides(context: Context, scheme: KeyboardColorScheme): KeyboardColorScheme {
         val entry = configOverrides[scheme.id] ?: return scheme
-        val cfgColor = longToColor(entry.primaryColor)
+        val primary = if (entry.primaryColor != 0L) entry.primaryColor
+        else extractImageSeedColor(context, entry)
+        val cfgColor = longToColor(primary)
         val lightened = lightenColor(cfgColor)
         val global = KeysConfigHelper.getKeyboardColors()
         return scheme.copy(

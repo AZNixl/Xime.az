@@ -271,10 +271,11 @@ class MainActivity : ComponentActivity() {
 
     /** 生成可在 xime.custom.yaml 中使用的主题配置模板并复制到剪贴板。 */
     private fun copyThemeConfigTemplate(fileName: String) {
+        val schemeId = fileName.substringBeforeLast('.')
         val template = """
             color_schemes:
-              custom_background:
-                name: "自定义背景"
+              $schemeId:
+                name: "自定义背景 ${schemeId.removePrefix("custom_")}"
                 keyboard_background:
                   type: image
                   src: "themes/$fileName"
