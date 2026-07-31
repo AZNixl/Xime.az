@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -136,16 +135,10 @@ fun MenuBar(
             MenuItem(settingsIcon, "设置", callbacks.onSettings)
         )
     }
-    // 外层 Box 负责铺满背景（延伸到底部），内层 Column 保持内容区原有紧凑布局
-    Box(
+    Column(
         modifier = modifier
             .fillMaxWidth()
-            .fillMaxHeight()
-            .background(state.backgroundColor)
-    ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth(),
+            .background(state.backgroundColor),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
@@ -177,7 +170,8 @@ fun MenuBar(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 50.dp, vertical = 24.dp),
+                    .padding(horizontal = 50.dp)
+                    .weight(1f),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -201,8 +195,9 @@ fun MenuBar(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 12.dp, bottom = 24.dp),
+                    .weight(1f),
                 horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.SpaceAround
             ) {
                 HorizontalPager(
                     state = pagerState,
@@ -232,8 +227,9 @@ fun MenuBar(
                 }
 
                 if (pages.size > 1) {
+
                     Row(
-                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
+                        modifier = Modifier.padding(horizontal = 16.dp),
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -249,10 +245,10 @@ fun MenuBar(
                             )
                         }
                     }
+                    Spacer(modifier = Modifier.height(8.dp))
                 }
             }
         }
-    }
     }
 }
 
