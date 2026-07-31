@@ -62,7 +62,7 @@ fun SymbolKeyboardLayout(
     val iconButtonContainer = androidx.compose.ui.graphics.lerp(
         MaterialTheme.colorScheme.surface,
         MaterialTheme.colorScheme.primary,
-        0.35f
+        0.15f
     )
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE

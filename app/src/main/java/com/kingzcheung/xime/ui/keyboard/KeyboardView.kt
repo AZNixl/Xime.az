@@ -901,7 +901,7 @@ fun KeyboardView(
                         },
                         onImageEmojiSelect = callbacks.onCommitImage,
                         onBack = { viewModel.closeOverlay() },
-                        backgroundColor = Color.Transparent,
+                        backgroundColor = keyboardBgColor,
                         textColor = keyTextColor,
                         accentColor = accentColor,
                         bottomPaddingDp = state.keyboardBottomPaddingDp,
@@ -916,7 +916,7 @@ fun KeyboardView(
                             }
                         },
                         onBack = { viewModel.closeOverlay() },
-                        backgroundColor = Color.Transparent,
+                        backgroundColor = keyboardBgColor,
                         textColor = keyTextColor,
                         accentColor = accentColor,
                         keyBgColor = keyBgColor,

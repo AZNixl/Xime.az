@@ -98,7 +98,7 @@ fun CandidateBar(
     val iconButtonContainer = androidx.compose.ui.graphics.lerp(
         MaterialTheme.colorScheme.surface,
         MaterialTheme.colorScheme.primary,
-        0.35f
+        0.15f
     )
     val iconButtonPressedContainer = iconButtonContainer.compositeOver(
         MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
