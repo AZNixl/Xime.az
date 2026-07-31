@@ -866,6 +866,7 @@ fun KeyboardView(
                         keyTextColor = keyTextColor,
                         backgroundColor = keyboardBgColor,
                         accentColor = accentColor,
+                        keyBgColor = keyBgColor,
                         onUpdateToolbarButtons = callbacks.onUpdateToolbarButtons,
                         onDismiss = { viewModel.closeOverlay() },
                         bottomPaddingDp = state.keyboardBottomPaddingDp,
@@ -882,7 +883,7 @@ fun KeyboardView(
                         EditKeyboardLayout(
                             onAction = editAction,
                             onBack = { viewModel.closeOverlay() },
-                            backgroundColor = Color.Transparent,
+                            backgroundColor = keyboardBgColor,
                             textColor = keyTextColor,
                             accentColor = accentColor,
                             keyBgColor = keyBgColor,
@@ -918,6 +919,8 @@ fun KeyboardView(
                         backgroundColor = Color.Transparent,
                         textColor = keyTextColor,
                         accentColor = accentColor,
+                        keyBgColor = keyBgColor,
+                        bottomPaddingDp = state.keyboardBottomPaddingDp,
                         modifier = Modifier.fillMaxWidth().fillMaxHeight()
                     )
                     is OverlayRoute.CandidatePage -> CandidatePage(

@@ -24,7 +24,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -48,6 +47,7 @@ fun ToolbarCustomizeView(
     keyTextColor: Color,
     backgroundColor: Color,
     accentColor: Color,
+    keyBgColor: Color,
     onUpdateToolbarButtons: ((List<String>) -> Unit)?,
     onDismiss: () -> Unit,
     bottomPaddingDp: Int = 0,
@@ -72,11 +72,11 @@ fun ToolbarCustomizeView(
 
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-    // 图标按钮容器色：surface 与 primary 的混合色调（带种子色但不过于强烈）
+    // 图标按钮容器色：按键背景与强调色的混合色调（带主题色但不过于强烈）
     val iconButtonContainer = androidx.compose.ui.graphics.lerp(
-        MaterialTheme.colorScheme.surface,
-        MaterialTheme.colorScheme.primary,
-        0.35f
+        keyBgColor,
+        accentColor,
+        0.25f
     )
 
     val itemsPerPage = 8
@@ -152,7 +152,7 @@ fun ToolbarCustomizeView(
                 .weight(1f)
                 .padding(horizontal = 16.dp)
                 .clip(RoundedCornerShape(16.dp))
-                .background(MaterialTheme.colorScheme.surface)
+                .background(keyBgColor)
                 .padding(16.dp,10.dp)
         ) {
             HorizontalPager(

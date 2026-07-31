@@ -72,7 +72,7 @@ fun EditKeyboardLayout(
     backgroundColor: Color,
     textColor: Color,
     accentColor: Color,
-    keyBgColor: Color = Color(0xFF374151),
+    keyBgColor: Color,
     bottomPaddingDp: Int = 0,
     modifier: Modifier = Modifier
 ) {
