@@ -1,6 +1,7 @@
 package com.kingzcheung.xime.ui.keyboard
 
 import com.kingzcheung.xime.keyboard.GestureAction
+import com.kingzcheung.xime.viewmodel.SchemaSwitchUiState
 
 data class KeyboardCallbacks(
     val onKeyPress: (String, Boolean) -> Unit,
@@ -19,6 +20,7 @@ data class KeyboardCallbacks(
     val onReloadConfig: (() -> Unit)? = null,
     val onSettings: (() -> Unit)? = null,
     val onSwitchSchema: ((String) -> Unit)? = null,
+    val onToggleSchemaSwitch: ((SchemaSwitchUiState) -> Unit)? = null,
     val onHideKeyboard: (() -> Unit)? = null,
     val onSwitchKeyboard: (() -> Unit)? = null,
     val onToolbarEditingAction: ((String) -> Unit)? = null,

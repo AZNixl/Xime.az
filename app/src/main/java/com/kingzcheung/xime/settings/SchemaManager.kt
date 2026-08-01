@@ -9,6 +9,7 @@ import com.charleskorn.kaml.Yaml
 import com.charleskorn.kaml.YamlConfiguration
 import com.charleskorn.kaml.YamlList
 import com.charleskorn.kaml.YamlMap
+import com.charleskorn.kaml.YamlNode
 import com.charleskorn.kaml.YamlScalar
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -42,6 +43,19 @@ data class SchemaMeta(
     val description: String = ""
 )
 
+/**
+ * 方案中 `switches` 定义的一个开关项。
+ * - [name] 非空时表示布尔开关（如 ascii_mode / full_shape / ascii_punct）。
+ * - [options] 非空时表示多选一开关（如简繁切换，同一时刻只有一个 option 为 true）。
+ * - [abbrev] 自定义缩写（可能每个状态一个），供菜单栏展示用；为空时取 states 首字符。
+ */
+data class SchemaSwitch(
+    val name: String = "",
+    val options: List<String> = emptyList(),
+    val states: List<String> = emptyList(),
+    val abbrev: List<String> = emptyList(),
+)
+
 @Serializable
 internal data class SchemaYaml(val schema: SchemaEntry)
 
@@ -56,7 +70,7 @@ internal data class SchemaEntry(
 object SchemaManager {
     private const val TAG = "SchemaManager"
     private const val CUSTOM_YAML = "default.custom.yaml"
-    internal val yaml = Yaml(configuration = YamlConfiguration(strictMode = false))
+    internal val yaml = Yaml(configuration = YamlConfiguration(strictMode = false, anchorsAndAliases = com.charleskorn.kaml.AnchorsAndAliases.Permitted(maxAliasCount = UInt.MAX_VALUE)))
 
     private val downloadClient = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
@@ -75,6 +89,8 @@ object SchemaManager {
             val name = file.name
             if (name == "default.yaml" || name == "xime.yaml") return@forEach
             if (isProtectedImportName(name)) return@forEach
+            // themes/ 存放用户导入或自定义的背景图片，全量清理时保留
+            if (name == "themes") return@forEach
             if (file.isDirectory) {
                 file.deleteRecursively()
             } else {
@@ -658,6 +674,77 @@ object SchemaManager {
             try { Log.e(TAG, "Failed to parse schema name for $schemaId", e) } catch (_: Exception) {}
             null
         }
+    }
+
+    /**
+     * 读取方案顶层 `switches:` 中可展示的开关项（name 或 options 存在且有 states）。
+     * `switches` 位于 schema 块之外，需单独解析。解析失败或不存在时返回空列表。
+     */
+    fun getSchemaSwitches(context: Context, schemaId: String): List<SchemaSwitch> {
+        val file = File(getRimeDir(context), "$schemaId.schema.yaml")
+        if (!file.exists()) return emptyList()
+        return parseSchemaSwitches(file)
+    }
+
+    /** 纯解析：从 .schema.yaml 读取 switches。 */
+    internal fun parseSchemaSwitches(file: File): List<SchemaSwitch> {
+        return try {
+            val text = file.readText().trimStart('\uFEFF')
+            val block = extractSwitchesBlock(text) ?: return emptyList()
+            val listNode = yaml.parseToYamlNode(block) as? YamlList ?: return emptyList()
+            listNode.items.mapNotNull { item ->
+                parseSwitchEntry(item as? YamlMap ?: return@mapNotNull null)
+            }
+        } catch (e: Exception) {
+            try { Log.w(TAG, "Failed to parse switches for ${file.name}: ${e.message}", e) } catch (_: Exception) {}
+            emptyList()
+        }
+    }
+
+    private fun parseSwitchEntry(entry: YamlMap): SchemaSwitch? {
+        val states = (entry["states"] as? YamlList)
+            ?.items?.mapNotNull { (it as? YamlScalar)?.content }
+            .orEmpty()
+        if (states.isEmpty()) return null
+        val name = (entry["name"] as? YamlScalar)?.content.orEmpty()
+        val options = (entry["options"] as? YamlList)
+            ?.items?.mapNotNull { (it as? YamlScalar)?.content }
+            .orEmpty()
+        val abbrev = parseAbbrev(entry["abbrev"])
+        return when {
+            name.isNotBlank() -> SchemaSwitch(name = name, options = emptyList(), states = states, abbrev = abbrev)
+            options.isNotEmpty() -> SchemaSwitch(name = "", options = options, states = states, abbrev = abbrev)
+            else -> null
+        }
+    }
+
+    /** abbrev 可以是单个字符串或每个状态一个的字符串列表。 */
+    private fun parseAbbrev(node: YamlNode?): List<String> = when (node) {
+        is YamlScalar -> listOf(node.content)
+        is YamlList -> node.items.mapNotNull { (it as? YamlScalar)?.content }
+        else -> emptyList()
+    }
+
+    /**
+     * 从 YAML 文本中提取顶层 `switches:` 的列表项内容（不含 `switches:` 头行），
+     * 返回一个可独立作为列表解析的 YAML 片段；不存在时返回 null。
+     */
+    internal fun extractSwitchesBlock(yamlText: String): String? {
+        val lines = yamlText.lines()
+        val idx = lines.indexOfFirst {
+            it.trimStart().let { t -> t == "switches:" || (t.startsWith("switches:") && t[9] == ' ') }
+        }
+        if (idx < 0) return null
+        val result = mutableListOf<String>()
+        for (i in idx + 1 until lines.size) {
+            val line = lines[i]
+            if (line.isBlank()) continue
+            val indent = line.length - line.trimStart().length
+            if (indent == 0) break
+            result.add(line)
+        }
+        if (result.isEmpty()) return null
+        return result.joinToString("\n")
     }
 
     fun getEnabledSchemas(context: Context): List<String> {

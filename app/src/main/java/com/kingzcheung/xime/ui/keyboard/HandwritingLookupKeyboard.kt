@@ -78,7 +78,6 @@ fun HandwritingLookupKeyboard(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(keyboardBgColor)
             .padding(
                 bottom = if (uiState.isFloatingMode) {
                     0.dp

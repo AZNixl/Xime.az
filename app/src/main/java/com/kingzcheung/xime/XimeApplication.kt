@@ -88,9 +88,10 @@ class XimeApplication : Application(), ImageLoaderFactory {
         // 从 xime.yaml 加载配色方案
         KeyboardThemes.initFromConfig(this)
 
-        // 从 xime.yaml 的 style.color_scheme 读取默认主题
+        // 从 xime.yaml 的 style 读取默认主题和显示模式
         SettingsPreferences.defaultKeyboardTheme = KeysConfigHelper.loadDefaultThemeId(this)
-        Log.d(TAG, "Default keyboard theme: ${SettingsPreferences.defaultKeyboardTheme}")
+        SettingsPreferences.defaultDarkMode = KeysConfigHelper.loadDefaultDarkMode(this)
+        Log.d(TAG, "Default keyboard theme: ${SettingsPreferences.defaultKeyboardTheme}, dark mode: ${SettingsPreferences.defaultDarkMode}")
 
         // 初始化模型运行时（内存管理 + 生命周期）
         ModelRuntime.attach(this)

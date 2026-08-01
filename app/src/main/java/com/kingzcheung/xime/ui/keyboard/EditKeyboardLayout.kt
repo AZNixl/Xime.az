@@ -72,11 +72,11 @@ fun EditKeyboardLayout(
     backgroundColor: Color,
     textColor: Color,
     accentColor: Color,
+    keyBgColor: Color,
     bottomPaddingDp: Int = 0,
     modifier: Modifier = Modifier
 ) {
-    val isDarkTheme = textColor == Color(0xFFE8EAED)
-    val keyBg = if (isDarkTheme) Color(0xFF374151) else Color(0xFFF3F4F6)
+    val keyBg = keyBgColor
     var isSelecting by remember { mutableStateOf(false) }
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val sideGap = if (isLandscape) 50.dp else 8.dp

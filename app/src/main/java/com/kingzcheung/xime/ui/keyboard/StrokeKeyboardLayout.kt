@@ -77,6 +77,7 @@ fun StrokeKeyboardLayout(
     keyBackgroundColor: Color,
     keyTextColor: Color,
     specialKeyBackgroundColor: Color,
+    bubbleBackgroundColor: Color = keyBackgroundColor,
     keyboardBackgroundColor: Color = Color.Transparent,
     shadowEnabled: Boolean = true,
     shadowElevation: Dp = 1.dp,
@@ -96,6 +97,7 @@ fun StrokeKeyboardLayout(
         onKeyPress = onKeyPress,
         keyBackgroundColor = keyBackgroundColor,
         specialKeyBackgroundColor = specialKeyBackgroundColor,
+        bubbleBackgroundColor = bubbleBackgroundColor,
         shadowEnabled = shadowEnabled,
         shadowElevation = shadowElevation,
         shadowShapeRadius = shadowShapeRadius,
@@ -116,6 +118,7 @@ private fun StrokeKeyboardSwipeOverlay(
     onKeyPress: (String) -> Unit,
     keyBackgroundColor: Color,
     specialKeyBackgroundColor: Color,
+    bubbleBackgroundColor: Color = keyBackgroundColor,
     shadowEnabled: Boolean,
     shadowElevation: Dp,
     shadowShapeRadius: Dp,
@@ -134,7 +137,7 @@ private fun StrokeKeyboardSwipeOverlay(
     val bubbleData = rememberSwipeBubbleDrawData(
         swipeState = swipeState,
         keyBounds = lastKeyBounds,
-        keyBackgroundColor = keyBackgroundColor,
+        keyBackgroundColor = bubbleBackgroundColor,
         keyTextColor = keyTextColor,
         accentColor = specialKeyTextColor,
         keyWidth = if (swipeState.isSwiping || swipeState.isPressed) lastKeyBounds.width else 0f,
@@ -159,7 +162,6 @@ private fun StrokeKeyboardSwipeOverlay(
     CompositionLocalProvider(LocalKeyCornerRadius provides keyCornerRadius) {
     Box(
         modifier = modifier
-            .background(keyboardBackgroundColor)
             .onGloballyPositioned { coordinates ->
                 keyboardBounds = coordinates.boundsInRoot()
             }

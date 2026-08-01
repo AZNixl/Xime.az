@@ -38,6 +38,7 @@ fun CommonSymbolKeyboardLayout(
     keyBackgroundColor: Color,
     keyTextColor: Color,
     specialKeyBackgroundColor: Color,
+    bubbleBackgroundColor: Color = keyBackgroundColor,
     keyboardBackgroundColor: Color = Color.Transparent,
     shadowEnabled: Boolean = true,
     shadowElevation: Dp = 1.dp,
@@ -84,7 +85,7 @@ fun CommonSymbolKeyboardLayout(
     val bubbleData = rememberSwipeBubbleDrawData(
         swipeState = swipeState,
         keyBounds = lastKeyBounds,
-        keyBackgroundColor = keyBackgroundColor,
+        keyBackgroundColor = bubbleBackgroundColor,
         keyTextColor = keyTextColor,
         accentColor = specialKeyTextColor,
         keyWidth = if (swipeState.isSwiping || swipeState.isPressed) lastKeyBounds.width else 0f,
@@ -96,7 +97,6 @@ fun CommonSymbolKeyboardLayout(
         modifier = modifier
             .fillMaxWidth()
             .fillMaxHeight()
-            .background(keyboardBackgroundColor)
             .onGloballyPositioned { coordinates ->
                 keyboardBounds = coordinates.boundsInRoot()
             }
@@ -140,8 +140,7 @@ fun CommonSymbolKeyboardLayout(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .fillMaxHeight()
-                            .padding(start = 4.dp, end = 4.dp, bottom = 8.dp),
+                            .fillMaxHeight(),
                     ) {
                         Row(
                             modifier = Modifier

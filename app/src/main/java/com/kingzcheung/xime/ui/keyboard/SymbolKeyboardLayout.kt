@@ -3,6 +3,8 @@ package com.kingzcheung.xime.ui.keyboard
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +17,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -24,6 +28,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -34,6 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -47,10 +53,17 @@ fun SymbolKeyboardLayout(
     backgroundColor: Color,
     textColor: Color,
     accentColor: Color,
+    keyBgColor: Color,
+    bottomPaddingDp: Int = 0,
     modifier: Modifier = Modifier
 ) {
     val categories = remember { SymbolData.categories }
-    val isDarkTheme = textColor == Color(0xFFE8EAED)
+    // 图标按钮容器色：surface 与 primary 的混合色调（带种子色但不过于强烈）
+    val iconButtonContainer = androidx.compose.ui.graphics.lerp(
+        MaterialTheme.colorScheme.surface,
+        MaterialTheme.colorScheme.primary,
+        0.15f
+    )
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
     val scope = rememberCoroutineScope()
@@ -77,7 +90,7 @@ fun SymbolKeyboardLayout(
                 modifier = Modifier
                     .size(28.dp)
                     .clip(CircleShape)
-                    .background(if (isDarkTheme) Color(0xFF374151) else Color(0xFFF3F4F6))
+                    .background(iconButtonContainer)
                     .clickable { onBack() },
                 contentAlignment = Alignment.Center
             ) {
@@ -122,6 +135,7 @@ fun SymbolKeyboardLayout(
                                     onClick = { onSelect(symbol) },
                                     modifier = Modifier.weight(1f),
                                     textColor = textColor,
+                                    backgroundColor = keyBgColor,
                                 )
                             }
                             repeat(columns - rowSymbols.size) {
@@ -170,8 +184,8 @@ fun SymbolKeyboardLayout(
             )
         }
 
-        // 底部留空（竖屏至少 40dp）
-        Spacer(modifier = Modifier.height(if (isLandscape) 15.dp else 40.dp))
+        // 底部留空（至少覆盖导航栏 inset 与键盘底部内边距）
+        Spacer(modifier = Modifier.height(maxOf(bottomPaddingDp.dp, with(LocalDensity.current) { WindowInsets.navigationBars.getBottom(this).toDp() })))
     }
 }
 
@@ -181,12 +195,23 @@ private fun SymbolButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     textColor: Color = Color.Unspecified,
+    backgroundColor: Color,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
     Box(
         modifier = modifier
             .aspectRatio(1f)
-            .clip(RoundedCornerShape(4.dp))
-            .clickable(onClick = onClick),
+            .clip(RoundedCornerShape(8.dp))
+            .background(
+                if (isPressed) androidx.compose.ui.graphics.lerp(backgroundColor, Color.Black, 0.2f)
+                else backgroundColor
+            )
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            ),
         contentAlignment = Alignment.Center
     ) {
         Text(

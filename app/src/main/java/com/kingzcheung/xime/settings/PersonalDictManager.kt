@@ -236,6 +236,12 @@ use_preset_vocabulary: false
         val pkName = packName(rimeDir, schemaId)
         val mergedId = "${schemaId}_merged"
         val dictFile = java.io.File(rimeDir, "${mergedId}.dict.yaml")
+        // 验证源词典存在，否则 Rime 编译 xqzm_merged 时会失败
+        val srcDictFile = java.io.File(rimeDir, "$dictName.dict.yaml")
+        if (!srcDictFile.exists()) {
+            if (dictFile.exists()) dictFile.delete()
+            return
+        }
         dictFile.writeText("""# Rime dict
 ---
 name: $mergedId

@@ -94,6 +94,7 @@ import com.kingzcheung.xime.settings.SettingsPreferences
 import com.kingzcheung.xime.ui.keyboard.KeyboardView
 import com.kingzcheung.xime.ui.keyboard.isT9Schema
 import com.kingzcheung.xime.ui.theme.KeyboardThemes
+import com.kingzcheung.xime.ui.theme.keyboardBackground
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import com.kingzcheung.xime.settings.KeysConfigHelper
@@ -294,7 +295,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             isFloatingMode = isFloatingMode,
             floatingOffsetX = clampedX,
             floatingOffsetY = clampedY,
-            isGlassEffectEnabled = SettingsPreferences.isGlassEffectEnabled(this@XimeInputMethodService),
         )
     }
     
@@ -747,6 +747,11 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                 )
                 keyboardViewModel.exitVoice()
                 isTrackingVoiceButtons = false
+            },
+            onTouchCancel = {
+                uiState.value = uiState.value.copy(
+                    swipeCancelEpoch = uiState.value.swipeCancelEpoch + 1
+                )
             }
         )
         
@@ -852,10 +857,11 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                 else effectiveKeyboardHeight + quickSendFormExtra
                         }
                         val kbColors = KeysConfigHelper.getKeyboardColors()
-                        val longToColor: (Long) -> androidx.compose.ui.graphics.Color = { if (it == 0L)  { androidx.compose.ui.graphics.Color(0xE61E1E1E) } else { androidx.compose.ui.graphics.Color(0xFF000000 or it) } }
+                        val longToColor: (Long) -> androidx.compose.ui.graphics.Color = { if (it == 0L)  { androidx.compose.ui.graphics.Color(0xE61E1E1E) } else if (it > 0xFFFFFF) { androidx.compose.ui.graphics.Color(it) } else { androidx.compose.ui.graphics.Color(0xFF000000 or it) } }
                         val isDark = isDarkTheme
-                        val cardBg = if (isDark) longToColor(kbColors.keyboardBgColorDark) else longToColor(kbColors.keyboardBgColor)
-                        val candidateTextCol = if (isDark) longToColor(kbColors.candidateTextColorDark) else longToColor(kbColors.candidateTextColor)
+                        val cardBg = if (isDark) longToColor(com.kingzcheung.xime.settings.KeyboardColorsConfig.FALLBACK_BG_DARK) else longToColor(com.kingzcheung.xime.settings.KeyboardColorsConfig.FALLBACK_BG_LIGHT)
+                        val candidateTextCol = com.kingzcheung.xime.ui.theme.KeyboardThemes.getCandidateTextColorOverride(state.themeId, isDark)
+                            ?: if (isDark) longToColor(kbColors.candidateTextColorDark) else longToColor(kbColors.candidateTextColor)
                         val accentCol = com.kingzcheung.xime.ui.theme.KeyboardThemes.getAccentColor(state.themeId, isDark)
                         if (state.isCompact && (cand.candidates.isNotEmpty() || cand.isShowingRecentClipboard || cand.inputText.isNotEmpty())) {
                             HardwareKeyboardCandidateBar(
@@ -876,10 +882,11 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                             Box(modifier = Modifier.fillMaxSize())
                         } else {
                         val keyboardBgColor = cardBg
+                        val rootTheme = com.kingzcheung.xime.ui.theme.KeyboardThemes.getThemeById(state.themeId)
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .then(if (!state.isFloatingMode) Modifier.background(keyboardBgColor) else Modifier)
+                                .then(if (!state.isFloatingMode) Modifier.keyboardBackground(rootTheme.keyboardBackground, isDark, keyboardBgColor) else Modifier)
                     ) {
                         Box(
                             modifier = Modifier
@@ -906,6 +913,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                 schemaName = state.schemaName,
                                 currentSchemaId = state.currentSchemaId,
                                 schemas = state.schemas,
+                                schemaSwitches = state.schemaSwitches,
                                 enterKeyText = state.enterKeyText,
                                 isDarkTheme = isDarkTheme,
                                 darkMode = state.darkMode,
@@ -934,6 +942,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                 floatingOffsetY = state.floatingOffsetY,
                                 floatingMinOffsetY = floatingMinY,
                                 t9ResetSignal = state.t9ResetSignal,
+                                swipeCancelEpoch = state.swipeCancelEpoch,
                                 t9RightCandidateSelectedCount = state.t9RightCandidateSelectedCount,
                                 t9SelectedCandidatePinyin = state.t9SelectedCandidatePinyin,
                                 showQuickSendForm = state.showQuickSendForm,
@@ -1012,6 +1021,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                     onReloadConfig = { reloadConfig() },
                                     onSettings = { openSettings() },
                                     onSwitchSchema = { schemaId -> switchSchema(schemaId) },
+                                    onToggleSchemaSwitch = { sw -> toggleSchemaSwitch(sw) },
                                     onHideKeyboard = { hideKeyboard() },
                                     onSwitchKeyboard = {
                                         val imm = getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
@@ -1055,6 +1065,19 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                     onCursorMove = { direction ->
                                         val ic = currentInputConnection
                                         if (ic != null && direction != 0) {
+                                            if (SettingsPreferences.getInputTextLocation(this@XimeInputMethodService) == SettingsPreferences.INPUT_TEXT_INPUT_BOX &&
+                                                candidateState.value.isComposing
+                                            ) {
+                                                // 输入框模式：移动光标前先结束 composing 并清空 RIME 组成，
+                                                // 避免再次输入时 composing 区域与光标位置错乱
+                                                ic.finishComposingText()
+                                                postRimeJob {
+                                                    rimeEngine.clearComposition()
+                                                    withContext(Dispatchers.Main) {
+                                                        mainHandler.post { updateUI() }
+                                                    }
+                                                }
+                                            }
                                             var movedBySelection = false
                                             try {
                                                 val req = android.view.inputmethod.ExtractedTextRequest()
@@ -1145,7 +1168,14 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                         }
                                     },
                                     onT9RightCommitUndone = { count ->
-                                        currentInputConnection?.deleteSurroundingText(count, 0)
+                                        // 半提交文本在 composing 区域时无法用 deleteSurroundingText 删除，
+                                        // 需通过 endComposingInputBox 清空，交由后续 applyComposition 重建。
+                                        if (SettingsPreferences.getInputTextLocation(this@XimeInputMethodService)
+                                            == SettingsPreferences.INPUT_TEXT_INPUT_BOX) {
+                                            endComposingInputBox()
+                                        } else {
+                                            currentInputConnection?.deleteSurroundingText(count, 0)
+                                        }
                                         t9PartialCommitTexts.removeLastOrNull()
                                     },
                                     onT9SwitchAway = {
@@ -1716,8 +1746,15 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             hasNextPage = false,
             hasPrevPage = false
         )
-        if (SettingsPreferences.getInputTextLocation(this) == SettingsPreferences.INPUT_TEXT_INPUT_BOX) {
-            currentInputConnection?.finishComposingText()
+        endComposingInputBox()
+    }
+
+    /** 结束输入框中的 composing span，先清空内容再结束，避免转为 committed text。 */
+    private fun endComposingInputBox() {
+        if (SettingsPreferences.getInputTextLocation(this) != SettingsPreferences.INPUT_TEXT_INPUT_BOX) return
+        currentInputConnection?.let {
+            it.setComposingText("", 0)
+            it.finishComposingText()
         }
     }
 
@@ -1833,10 +1870,22 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         if (codeInInputBox) {
             val ic = currentInputConnection
             if (isComposing && displayText.isNotEmpty()) {
-                ic?.setComposingText(displayText, displayText.length)
+                showInputBoxComposition(ic, displayText)
             } else {
-                ic?.finishComposingText()
+                endComposingInputBox()
             }
+        }
+    }
+
+    /** 在输入框模式向编辑器写入编码文本。 */
+    private fun showInputBoxComposition(ic: android.view.inputmethod.InputConnection, displayText: String) {
+        // 第二参数为 1：光标相对编码起始偏移 1 个字符，使光标落在编码末尾，
+        // 避免传 displayText.length 时被 AOSP 钳制到整段文本末尾（光标跑到最右边）。
+        ic.beginBatchEdit()
+        try {
+            ic.setComposingText(displayText, 1)
+        } finally {
+            ic.endBatchEdit()
         }
     }
 
@@ -1921,9 +1970,9 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         if (SettingsPreferences.getInputTextLocation(this) == SettingsPreferences.INPUT_TEXT_INPUT_BOX) {
             val ic = currentInputConnection
             if (isComposing && displayText.isNotEmpty()) {
-                ic?.setComposingText(displayText, displayText.length)
+                showInputBoxComposition(ic, displayText)
             } else {
-                ic?.finishComposingText()
+                endComposingInputBox()
             }
         }
     }
@@ -1961,7 +2010,60 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                     currentSchemaId = currentSchemaId,
                     schemas = schemas
                 )
+                refreshSchemaSwitches()
             }
+        }
+    }
+
+    /** 读取当前引擎方案 `switches` 的实际取值，组装成菜单栏可展示的状态。 */
+    private fun loadSchemaSwitches(schemaId: String): List<com.kingzcheung.xime.viewmodel.SchemaSwitchUiState> {
+        if (schemaId.isEmpty()) return emptyList()
+        val defs = SchemaManager.getSchemaSwitches(this, schemaId)
+        return defs.map { def ->
+            val index = when {
+                def.name.isNotEmpty() && def.states.isNotEmpty() ->
+                    if (rimeEngine.getOption(def.name)) minOf(1, def.states.size - 1) else 0
+                def.options.isNotEmpty() -> {
+                    val active = def.options.indexOfFirst { rimeEngine.getOption(it) }
+                    if (active < 0) 0 else active
+                }
+                else -> 0
+            }
+            com.kingzcheung.xime.viewmodel.SchemaSwitchUiState(
+                name = def.name,
+                options = def.options,
+                states = def.states,
+                abbrev = def.abbrev,
+                currentIndex = index
+            )
+        }
+    }
+
+    /** 在引擎线程上刷新菜单栏方案开关状态。 */
+    private fun refreshSchemaSwitches() {
+        serviceScope.launch(keyProcessingDispatcher) {
+            val schemaId = rimeEngine.getCurrentSchema()
+            val switches = loadSchemaSwitches(schemaId)
+            withContext(Dispatchers.Main) {
+                uiState.value = uiState.value.copy(schemaSwitches = switches)
+            }
+        }
+    }
+
+    /** 菜单栏方案开关点击：切换引擎选项并刷新状态。 */
+    private fun toggleSchemaSwitch(sw: com.kingzcheung.xime.viewmodel.SchemaSwitchUiState) {
+        serviceScope.launch(keyProcessingDispatcher) {
+            if (sw.name == "ascii_mode") {
+                switchInputMethod()
+            } else if (sw.name.isNotEmpty()) {
+                rimeEngine.setOption(sw.name, !rimeEngine.getOption(sw.name))
+                updateUI()
+            } else if (sw.options.isNotEmpty()) {
+                val nextIndex = (sw.currentIndex + 1) % sw.options.size
+                sw.options.forEachIndexed { i, opt -> rimeEngine.setOption(opt, i == nextIndex) }
+                updateUI()
+            }
+            refreshSchemaSwitches()
         }
     }
 
@@ -2196,7 +2298,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                     )
                     withContext(Dispatchers.Main) {
                         currentInputConnection?.let {
-                            it.finishComposingText()
+                            endComposingInputBox()
                             // 删除输入框中所有文字
                             val textLen = inputFieldText.length
                             if (textLen > 0) {
@@ -2225,13 +2327,25 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                     calculatorEngine.clear()
                     updateCalculatorCandidates()
                     if (candState.isComposing) {
-                        val input = rimeEngine.getInput()
-                        if (input.isNotEmpty()) {
-                            withContext(Dispatchers.Main) {
-                                commitText(input)
-                            }
+                        // T9 模式提交完整预编辑（含 partial commit 累积），非 T9 模式用 RIME input。
+                        val isT9 = isT9Schema(state.currentSchemaId)
+                        val input = if (isT9 && candState.preeditText.isNotEmpty()) {
+                            candState.preeditText
+                        } else {
+                            rimeEngine.getInput()
                         }
-                        rimeEngine.clearComposition()
+                        if (input.isNotEmpty()) {
+                            withContext(Dispatchers.Main) { commitText(input) }
+                        }
+                        if (isT9) {
+                            // 内联 CLEAR_ALL 逻辑：同步清空，避免异步 postRimeJob 延迟导致后续 backspace 拿到旧状态。
+                            t9PartialCommitTexts.clear()
+                            rimeEngine.setInput("")
+                            rimeEngine.clearComposition()
+                        } else {
+                            rimeEngine.clearComposition()
+                        }
+                        withContext(Dispatchers.Main) { endComposingInputBox() }
                         needsUIUpdate = true
                     } else {
                         rimeEngine.clearComposition()
@@ -2240,22 +2354,14 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                             val action = imeOptions and EditorInfo.IME_MASK_ACTION
                             val noEnterAction = imeOptions and EditorInfo.IME_FLAG_NO_ENTER_ACTION != 0
                             when {
-                                // 如果设置了 IME_FLAG_NO_ENTER_ACTION，必须插入换行符
-                                // 不能走 performEditorAction，否则某些应用收到 Done/Send 等
-                                // 动作后会收起键盘，但按键标签显示的是"换行"
-                                noEnterAction -> {
-                                    sendDownUpKeyEvents(KeyEvent.KEYCODE_ENTER)
-                                }
+                                noEnterAction -> sendDownUpKeyEvents(KeyEvent.KEYCODE_ENTER)
                                 action == EditorInfo.IME_ACTION_GO ||
                                 action == EditorInfo.IME_ACTION_SEARCH ||
                                 action == EditorInfo.IME_ACTION_SEND ||
                                 action == EditorInfo.IME_ACTION_NEXT ||
-                                action == EditorInfo.IME_ACTION_DONE -> {
+                                action == EditorInfo.IME_ACTION_DONE ->
                                     currentInputConnection?.performEditorAction(action)
-                                }
-                                else -> {
-                                    sendDownUpKeyEvents(KeyEvent.KEYCODE_ENTER)
-                                }
+                                else -> sendDownUpKeyEvents(KeyEvent.KEYCODE_ENTER)
                             }
                         }
                     }
@@ -2268,10 +2374,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                             associationCandidates = emptyList(),
                             isComposing = false
                         )
-                        // T9 模式：同步重置 T9 控制器状态并清空 partial commit 累积文本，
-                        // 否则左侧候选区残留、下一轮输入会拼接旧 partial commit。
                         if (isT9Schema(state.currentSchemaId)) {
-                            keyboardCallbacks?.onT9ReplaceFullPinyin?.invoke(T9InputController.CLEAR_ALL)
                             uiState.value = uiState.value.copy(
                                 t9ResetSignal = uiState.value.t9ResetSignal + 1,
                                 t9RightCandidateSelectedCount = 0,

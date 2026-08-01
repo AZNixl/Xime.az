@@ -84,6 +84,7 @@ import com.kingzcheung.xime.viewmodel.KeyboardViewModel
 import com.kingzcheung.xime.viewmodel.ShiftMode
 import com.kingzcheung.xime.keyboard.OverlayRoute
 import com.kingzcheung.xime.ui.theme.KeyboardThemes
+import com.kingzcheung.xime.ui.theme.keyboardBackground
 
 import androidx.compose.material.icons.twotone.KeyboardControlKey
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -119,15 +120,20 @@ fun KeyboardLayout(
 
     val context = LocalContext.current
     val kbColors = KeysConfigHelper.getKeyboardColors()
-    val longToColor: (Long) -> Color = { Color(0xFF000000 or it) }
-    val keyboardBackgroundColor = if (uiState.isDarkTheme) longToColor(kbColors.keyboardBgColorDark) else longToColor(kbColors.keyboardBgColor)
+    val longToColor: (Long) -> Color = { if (it > 0xFFFFFF) Color(it) else Color(0xFF000000 or it) }
+    val keyboardBackgroundColor = KeyboardThemes.getKeyboardBackgroundColor(uiState.themeId, uiState.isDarkTheme)
+    val themeScheme = KeyboardThemes.getThemeById(uiState.themeId)
     val themeSpecialKeyColor = KeyboardThemes.getSpecialKeyColor(uiState.themeId, uiState.isDarkTheme)
-    val keyBackgroundColor = if (uiState.isDarkTheme) longToColor(kbColors.keyBgColorDark) else longToColor(kbColors.keyBgColor)
-    val keyTextColor = if (uiState.isDarkTheme) longToColor(kbColors.keyTextColorDark) else longToColor(kbColors.keyTextColor)
+    val keyBackgroundColor = KeyboardThemes.getKeyBgColorOverride(uiState.themeId, uiState.isDarkTheme)
+        ?: if (uiState.isDarkTheme) longToColor(kbColors.keyBgColorDark) else longToColor(kbColors.keyBgColor)
+    val keyTextColor = KeyboardThemes.getKeyTextColorOverride(uiState.themeId, uiState.isDarkTheme)
+        ?: if (uiState.isDarkTheme) longToColor(kbColors.keyTextColorDark) else longToColor(kbColors.keyTextColor)
     val specialKeyBackgroundColor = if (uiState.isDarkTheme) kbColors.specialKeyBgColorDark?.let { longToColor(it) }
         ?: themeSpecialKeyColor else kbColors.specialKeyBgColor?.let { longToColor(it) } ?: themeSpecialKeyColor
     val specialKeyTextColor = if (uiState.isDarkTheme) Color.White
         else KeyboardThemes.getSpecialKeyTextColor(uiState.themeId, false)
+    val bubbleBgColor = if (uiState.isDarkTheme) themeScheme.specialKeyDark
+        else themeScheme.specialKeyLight
     val kbShadow = KeysConfigHelper.getKeyboardShadow()
     val kbKey = KeysConfigHelper.getKeyboardKeyConfig()
     val shadowEnabled = kbShadow.enabled
@@ -230,7 +236,7 @@ fun KeyboardLayout(
     val bubbleData = rememberSwipeBubbleDrawData(
         swipeState = swipeState,
         keyBounds = lastKeyBounds,
-        keyBackgroundColor = keyBackgroundColor,
+        keyBackgroundColor = bubbleBgColor,
         keyTextColor = keyTextColor,
         accentColor = specialKeyTextColor,
         keyWidth = if (swipeState.isSwiping || swipeState.isPressed) lastKeyBounds.width else 0f,
@@ -242,7 +248,6 @@ fun KeyboardLayout(
     CompositionLocalProvider(LocalKeyCornerRadius provides kbKey.cornerRadius.dp) {
     Box(
         modifier = modifier
-            .background(keyboardBackgroundColor)
             .onGloballyPositioned { coordinates ->
                 keyboardBounds = coordinates.boundsInRoot()
             }
@@ -264,12 +269,11 @@ fun KeyboardLayout(
                 onSwipeStateChange = { state, bounds -> processSwipeState(state, bounds) },
             )
         } else {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .fillMaxHeight()
-                    .background(keyboardBackgroundColor)
-                    .padding(start = 4.dp, end = 4.dp, bottom = 8.dp),
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight()
+                        .padding(start = 4.dp, end = 4.dp, bottom = 8.dp),
             ) {
 
                 Column(
@@ -382,8 +386,7 @@ fun KeyboardLayout(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .weight(1f)
-                                .fillMaxHeight()
-                                .background(keyboardBackgroundColor),
+                                .fillMaxHeight(),
                         ) {
                             ShiftCapsKeyButton(
                                 shiftMode = visualShiftMode,
@@ -403,8 +406,7 @@ fun KeyboardLayout(
                                 Row(
                                     modifier = Modifier
                                         .weight(7f)
-                                        .fillMaxHeight()
-                                        .background(keyboardBackgroundColor),
+                                        .fillMaxHeight(),
                                 ) {
                                 val bottomKeys = keyRows.getOrElse(2) { listOf("z", "x", "c", "v", "b", "n", "m") }
                                 bottomKeys.forEach { key ->
@@ -539,8 +541,7 @@ fun KeyboardLayout(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .weight(1f)
-                            .background(keyboardBackgroundColor),
+                            .weight(1f),
                     ) {
                         if (isVoiceMode) {
                             DummyKeyButton(
@@ -862,8 +863,7 @@ private fun DummyKeyboardRow(
 ) {
     Row(
         modifier = modifier
-            .fillMaxWidth()
-            .background(keyboardBackgroundColor),
+            .fillMaxWidth(),
     ) {
         repeat(keysCount) {
             DummyKeyButton(
@@ -882,8 +882,7 @@ private fun DummyBottomRow(
 ) {
     Row(
         modifier = Modifier
-            .fillMaxWidth()
-            .background(keyboardBackgroundColor),
+            .fillMaxWidth(),
     ) {
         DummyKeyButton(
             backgroundColor = specialKeyBackgroundColor,
@@ -940,8 +939,7 @@ fun KeyboardRowWithConfig(
 ) {
     Row(
         modifier = modifier
-            .fillMaxWidth()
-            .background(config.keyboardBackgroundColor),
+            .fillMaxWidth(),
     ) {
         keys.forEach { key ->
             val rawSwipeUpLabel = KeysConfigHelper.getSwipeUpLabel(key, isAsciiMode)
@@ -1184,15 +1182,20 @@ private fun LandscapeKeyboardContent(
     val landscapeSwipeFontSize = 7.sp
 
     val kbColors = KeysConfigHelper.getKeyboardColors()
-    val longToColor: (Long) -> Color = { Color(0xFF000000 or it) }
-    val keyboardBackgroundColor = if (uiState.isDarkTheme) longToColor(kbColors.keyboardBgColorDark) else longToColor(kbColors.keyboardBgColor)
+    val longToColor: (Long) -> Color = { if (it > 0xFFFFFF) Color(it) else Color(0xFF000000 or it) }
+    val keyboardBackgroundColor = KeyboardThemes.getKeyboardBackgroundColor(uiState.themeId, uiState.isDarkTheme)
+    val themeScheme = KeyboardThemes.getThemeById(uiState.themeId)
     val themeSpecialKeyColor = KeyboardThemes.getSpecialKeyColor(uiState.themeId, uiState.isDarkTheme)
-    val keyBackgroundColor = if (uiState.isDarkTheme) longToColor(kbColors.keyBgColorDark) else longToColor(kbColors.keyBgColor)
-    val keyTextColor = if (uiState.isDarkTheme) longToColor(kbColors.keyTextColorDark) else longToColor(kbColors.keyTextColor)
+    val keyBackgroundColor = KeyboardThemes.getKeyBgColorOverride(uiState.themeId, uiState.isDarkTheme)
+        ?: if (uiState.isDarkTheme) longToColor(kbColors.keyBgColorDark) else longToColor(kbColors.keyBgColor)
+    val keyTextColor = KeyboardThemes.getKeyTextColorOverride(uiState.themeId, uiState.isDarkTheme)
+        ?: if (uiState.isDarkTheme) longToColor(kbColors.keyTextColorDark) else longToColor(kbColors.keyTextColor)
     val specialKeyBackgroundColor = if (uiState.isDarkTheme) kbColors.specialKeyBgColorDark?.let { longToColor(it) }
         ?: themeSpecialKeyColor else kbColors.specialKeyBgColor?.let { longToColor(it) } ?: themeSpecialKeyColor
     val specialKeyTextColor = if (uiState.isDarkTheme) Color.White
         else KeyboardThemes.getSpecialKeyTextColor(uiState.themeId, false)
+    val bubbleBgColor = if (uiState.isDarkTheme) themeScheme.specialKeyDark
+        else themeScheme.specialKeyLight
     val kbShadow = KeysConfigHelper.getKeyboardShadow()
     val kbKey = KeysConfigHelper.getKeyboardKeyConfig()
     val shadowEnabled = kbShadow.enabled
@@ -1968,8 +1971,7 @@ fun CompactKeyboardRowWithConfig(
 ) {
     Row(
         modifier = modifier
-            .fillMaxSize()
-            .background(config.keyboardBackgroundColor),
+            .fillMaxSize(),
     ) {
         keys.forEach { key ->
             val rawSwipeUpLabel = KeysConfigHelper.getSwipeUpLabel(key, isAsciiMode)

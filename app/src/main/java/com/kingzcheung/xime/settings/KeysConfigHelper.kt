@@ -96,20 +96,23 @@ data class KeyboardKeyConfig(
  * 键盘颜色配置，从 xime.yaml keyboard.colors 加载。
  * 所有颜色值为 0xRRGGBB 格式（不含 alpha）。
  */
+/** 全局键盘颜色后备，背景色已由 color_schemes 的 keyboard_background 接管。 */
 data class KeyboardColorsConfig(
-    val keyboardBgColor: Long = 0xE3E4E8,
-    val keyboardBgColorDark: Long = 0x202020,
     val keyBgColor: Long = 0xFFFFFF,
     val keyBgColorDark: Long = 0x4A4A4A,
     val specialKeyBgColor: Long? = null,
     val specialKeyBgColorDark: Long? = null,
-    val candidateBarBgColor: Long = 0xE3E4E8,
-    val candidateBarBgColorDark: Long = 0x202020,
     val keyTextColor: Long = 0x202124,
     val keyTextColorDark: Long = 0xE8EAED,
     val candidateTextColor: Long = 0x1A73E8,
     val candidateTextColorDark: Long = 0x8AB4F8,
-)
+) {
+    companion object {
+        /** 键盘背景后备色，仅当 color_schemes 无 keyboard_background 时使用。 */
+        const val FALLBACK_BG_LIGHT: Long = 0xE3E4E8
+        const val FALLBACK_BG_DARK: Long = 0x202020
+    }
+}
 
 /**
  * 从 YAML node 解析 KeyboardConfig。
@@ -224,6 +227,57 @@ private fun parseGestureNode(node: com.charleskorn.kaml.YamlNode): GestureDef {
 
 // ── 原有配置类 ──
 
+/**
+ * 背景配置，支持纯色/渐变/图片三种类型。
+ *
+ * YAML 示例：
+ * ```yaml
+ * # 纯色
+ * keyboard_background:
+ *   type: solid
+ *   color: 0x8F73E2
+ *   color_dark: 0x4A3F7A   # 可选，不指定则自动暗化
+ *
+ * # 渐变
+ * keyboard_background:
+ *   type: gradient
+ *   colors: [0x8F73E2, 0xE8DEF8]        # 亮色渐变断点
+ *   colors_dark: [0x4A3F7A, 0x2D2040]    # 暗色渐变断点（可选）
+ *   angle: 135  # 角度制，0=左→右，90=下→上，180=右→左，270=上→下
+ *
+ * # 图片
+ * keyboard_background:
+ *   type: image
+ *   src: "themes/lavender_bg.png"          # 相对于 assets/
+ *   src_dark: "themes/lavender_bg_dark.png" # 暗色变体（可选）
+ *   fit: cover  # cover | contain | fill | fit_width | fit_height | none
+ * ```
+ */
+@Serializable
+data class BackgroundConfig(
+    val type: String = "solid",
+    // solid
+    val color: Long? = null,
+    @SerialName("color_dark")
+    val colorDark: Long? = null,
+    // gradient
+    val colors: List<Long>? = null,
+    @SerialName("colors_dark")
+    val colorsDark: List<Long>? = null,
+    val angle: Int? = null,
+    // image
+    val src: String? = null,
+    @SerialName("src_dark")
+    val srcDark: String? = null,
+    val fit: String? = null,
+    /** 图片背景遮罩：半透明黑色覆盖层降低背景亮度（0~1，如 0.35 表示压暗 35%）。 */
+    @SerialName("overlay_alpha")
+    val overlayAlpha: Float? = null,
+    /** 暗色模式下的遮罩强度，未配置时沿用 [overlayAlpha]。 */
+    @SerialName("overlay_alpha_dark")
+    val overlayAlphaDark: Float? = null,
+)
+
 @Serializable
 data class ColorSchemeEntry(
     val name: String = "",
@@ -233,14 +287,26 @@ data class ColorSchemeEntry(
     val keyboardBgColor: Long? = null,
     @SerialName("key_bg_color")
     val keyBgColor: Long? = null,
+    @SerialName("key_bg_color_dark")
+    val keyBgColorDark: Long? = null,
     @SerialName("special_key_bg_color")
     val specialKeyBgColor: Long? = null,
     @SerialName("candidate_bar_bg_color")
     val candidateBarBgColor: Long? = null,
     @SerialName("key_text_color")
     val keyTextColor: Long? = null,
+    @SerialName("key_text_color_dark")
+    val keyTextColorDark: Long? = null,
     @SerialName("candidate_text_color")
     val candidateTextColor: Long? = null,
+    @SerialName("candidate_text_color_dark")
+    val candidateTextColorDark: Long? = null,
+    @SerialName("keyboard_background")
+    val keyboardBackground: BackgroundConfig? = null,
+    @SerialName("key_background")
+    val keyBackground: BackgroundConfig? = null,
+    @SerialName("candidate_bar_background")
+    val candidateBarBackground: BackgroundConfig? = null,
 )
 
 @Serializable
@@ -260,9 +326,19 @@ data class MetadataConfig(
 )
 
 @Serializable
+data class ColorSchemeModeConfig(
+    @SerialName("light")
+    val light: String? = null,
+    @SerialName("dark")
+    val dark: String? = null,
+)
+
+@Serializable
 data class StyleConfig(
     @SerialName("color_scheme")
-    val colorScheme: String? = null,
+    val colorScheme: ColorSchemeModeConfig? = null,
+    @SerialName("dark_mode")
+    val darkMode: Int? = null,
 )
 
 @Serializable
@@ -470,31 +546,23 @@ object KeysConfigHelper {
         val root = yaml.parseToYamlNode(yamlText) as? YamlMap ?: return null
         val keyboardNode = root["keyboard"] as? YamlMap ?: return null
         val colorsNode = keyboardNode["colors"] as? YamlMap ?: return null
-        var kbBg = 0xE3E4E8L
-        var kbBgDark = 0x202020L
         var kBg = 0xFFFFFFL
         var kBgDark = 0x4A4A4AL
         var spKeyBg: Long? = null
         var spKeyBgDark: Long? = null
-        var candBg = 0xE3E4E8L
-        var candBgDark = 0x202020L
         var kTxt = 0x202124L
         var kTxtDark = 0xE8EAEDL
-        var candTxt = 0x1A73E8L
+        var candTxt = 0x8AB4F8L
         var candTxtDark = 0x8AB4F8L
         for ((kNode, vNode) in colorsNode.entries) {
             val key = (kNode as? YamlScalar)?.content ?: continue
             val value = (vNode as? YamlScalar)?.content ?: continue
             val hex = value.removePrefix("0x").toLongOrNull(16) ?: continue
             when (key) {
-                "keyboard_bg_color" -> kbBg = hex
-                "keyboard_bg_color_dark" -> kbBgDark = hex
                 "key_bg_color" -> kBg = hex
                 "key_bg_color_dark" -> kBgDark = hex
                 "special_key_bg_color" -> spKeyBg = hex
                 "special_key_bg_color_dark" -> spKeyBgDark = hex
-                "candidate_bar_bg_color" -> candBg = hex
-                "candidate_bar_bg_color_dark" -> candBgDark = hex
                 "key_text_color" -> kTxt = hex
                 "key_text_color_dark" -> kTxtDark = hex
                 "candidate_text_color" -> candTxt = hex
@@ -502,14 +570,10 @@ object KeysConfigHelper {
             }
         }
         return KeyboardColorsConfig(
-            keyboardBgColor = kbBg,
-            keyboardBgColorDark = kbBgDark,
             keyBgColor = kBg,
             keyBgColorDark = kBgDark,
             specialKeyBgColor = spKeyBg,
             specialKeyBgColorDark = spKeyBgDark,
-            candidateBarBgColor = candBg,
-            candidateBarBgColorDark = candBgDark,
             keyTextColor = kTxt,
             keyTextColorDark = kTxtDark,
             candidateTextColor = candTxt,
@@ -706,10 +770,21 @@ object KeysConfigHelper {
         if (default == null) return custom
         return XimeConfig(
             ximeIndex = custom.ximeIndex ?: default.ximeIndex,
-            colorSchemes = custom.colorSchemes ?: default.colorSchemes,
+            // 合并而非替换：custom 覆盖同名字题，其余保留内置主题，
+            // 这样用户只需在 xime.custom.yaml 中添加自定义背景主题而不会丢失内置主题。
+            colorSchemes = mergeColorSchemes(default.colorSchemes, custom.colorSchemes),
             style = custom.style ?: default.style,
             metadata = custom.metadata ?: default.metadata,
         )
+    }
+
+    private fun mergeColorSchemes(
+        default: Map<String, ColorSchemeEntry>?,
+        custom: Map<String, ColorSchemeEntry>?,
+    ): Map<String, ColorSchemeEntry>? {
+        if (custom == null) return default
+        if (default == null) return custom
+        return default + custom
     }
 
     private fun readAssetText(context: Context, fileName: String): String? {
@@ -751,10 +826,24 @@ object KeysConfigHelper {
         return merged.colorSchemes ?: emptyMap()
     }
 
-    /** 从 xime.yaml 加载默认主题 ID（style.color_scheme）。 */
+    /** 从 xime.yaml 加载默认主题 ID（style.color_scheme 的 light 字段）。 */
     fun loadDefaultThemeId(context: Context): String {
         val merged = loadMergedConfig(context)
-        return merged.style?.colorScheme ?: "lavender_purple"
+        return merged.style?.colorScheme?.light ?: "lavender_purple"
+    }
+
+    /** 根据显示模式加载对应的默认主题 ID。 */
+    fun loadThemeIdForMode(context: Context, isDark: Boolean): String {
+        val merged = loadMergedConfig(context)
+        val cs = merged.style?.colorScheme ?: return "lavender_purple"
+        return if (isDark) (cs.dark ?: cs.light ?: "lavender_purple")
+               else cs.light ?: "lavender_purple"
+    }
+
+    /** 从 xime.yaml 加载默认显示模式（style.dark_mode）。 */
+    fun loadDefaultDarkMode(context: Context): Int {
+        val merged = loadMergedConfig(context)
+        return merged.style?.darkMode ?: 2
     }
 
     // ── 新公开 API ──
