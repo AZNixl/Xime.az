@@ -913,6 +913,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                 schemaName = state.schemaName,
                                 currentSchemaId = state.currentSchemaId,
                                 schemas = state.schemas,
+                                schemaSwitches = state.schemaSwitches,
                                 enterKeyText = state.enterKeyText,
                                 isDarkTheme = isDarkTheme,
                                 darkMode = state.darkMode,
@@ -1020,6 +1021,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                     onReloadConfig = { reloadConfig() },
                                     onSettings = { openSettings() },
                                     onSwitchSchema = { schemaId -> switchSchema(schemaId) },
+                                    onToggleSchemaSwitch = { sw -> toggleSchemaSwitch(sw) },
                                     onHideKeyboard = { hideKeyboard() },
                                     onSwitchKeyboard = {
                                         val imm = getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
@@ -2008,7 +2010,60 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                     currentSchemaId = currentSchemaId,
                     schemas = schemas
                 )
+                refreshSchemaSwitches()
             }
+        }
+    }
+
+    /** 读取当前引擎方案 `switches` 的实际取值，组装成菜单栏可展示的状态。 */
+    private fun loadSchemaSwitches(schemaId: String): List<com.kingzcheung.xime.viewmodel.SchemaSwitchUiState> {
+        if (schemaId.isEmpty()) return emptyList()
+        val defs = SchemaManager.getSchemaSwitches(this, schemaId)
+        return defs.map { def ->
+            val index = when {
+                def.name.isNotEmpty() && def.states.isNotEmpty() ->
+                    if (rimeEngine.getOption(def.name)) minOf(1, def.states.size - 1) else 0
+                def.options.isNotEmpty() -> {
+                    val active = def.options.indexOfFirst { rimeEngine.getOption(it) }
+                    if (active < 0) 0 else active
+                }
+                else -> 0
+            }
+            com.kingzcheung.xime.viewmodel.SchemaSwitchUiState(
+                name = def.name,
+                options = def.options,
+                states = def.states,
+                abbrev = def.abbrev,
+                currentIndex = index
+            )
+        }
+    }
+
+    /** 在引擎线程上刷新菜单栏方案开关状态。 */
+    private fun refreshSchemaSwitches() {
+        serviceScope.launch(keyProcessingDispatcher) {
+            val schemaId = rimeEngine.getCurrentSchema()
+            val switches = loadSchemaSwitches(schemaId)
+            withContext(Dispatchers.Main) {
+                uiState.value = uiState.value.copy(schemaSwitches = switches)
+            }
+        }
+    }
+
+    /** 菜单栏方案开关点击：切换引擎选项并刷新状态。 */
+    private fun toggleSchemaSwitch(sw: com.kingzcheung.xime.viewmodel.SchemaSwitchUiState) {
+        serviceScope.launch(keyProcessingDispatcher) {
+            if (sw.name == "ascii_mode") {
+                switchInputMethod()
+            } else if (sw.name.isNotEmpty()) {
+                rimeEngine.setOption(sw.name, !rimeEngine.getOption(sw.name))
+                updateUI()
+            } else if (sw.options.isNotEmpty()) {
+                val nextIndex = (sw.currentIndex + 1) % sw.options.size
+                sw.options.forEachIndexed { i, opt -> rimeEngine.setOption(opt, i == nextIndex) }
+                updateUI()
+            }
+            refreshSchemaSwitches()
         }
     }
 

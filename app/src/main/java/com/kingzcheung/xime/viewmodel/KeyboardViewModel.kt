@@ -24,6 +24,19 @@ import com.kingzcheung.xime.ui.keyboard.initialKeyboardLayoutState
 
 enum class ShiftMode { OFF, SINGLE, CAPS }
 
+/**
+ * 菜单栏中动态展示的一个方案开关（来自 schema 的 `switches`）。
+ * [name] 非空为布尔开关，[options] 非空为多选一开关；[currentIndex] 为当前状态在 [states] 中的下标。
+ * [abbrev] 为自定义缩写（可能每个状态一个），用于菜单栏标题展示。
+ */
+data class SchemaSwitchUiState(
+    val name: String = "",
+    val options: List<String> = emptyList(),
+    val states: List<String> = emptyList(),
+    val abbrev: List<String> = emptyList(),
+    val currentIndex: Int = 0,
+)
+
 data class KeyboardUiState(
     val candidates: List<String> = emptyList(),
     val candidateComments: List<String> = emptyList(),
@@ -37,6 +50,7 @@ data class KeyboardUiState(
     val schemaName: String = "",
     val currentSchemaId: String = "",
     val schemas: List<SchemaInfo> = emptyList(),
+    val schemaSwitches: List<SchemaSwitchUiState> = emptyList(),
     val enterKeyText: String = "发送",
     val isDarkTheme: Boolean = false,
     val darkMode: Int = 2,
