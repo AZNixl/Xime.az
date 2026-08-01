@@ -4,12 +4,14 @@ import com.kingzcheung.xime.settings.SchemaInfo
 import com.kingzcheung.xime.settings.SettingsPreferences
 import com.kingzcheung.xime.speech.RecognitionState
 import com.kingzcheung.xime.keyboard.ToolbarButton
+import com.kingzcheung.xime.viewmodel.SchemaSwitchUiState
 
 data class InputUIState(
     val isAsciiMode: Boolean = false,
     val schemaName: String = "",
     val currentSchemaId: String = "",
     val schemas: List<SchemaInfo> = emptyList(),
+    val schemaSwitches: List<SchemaSwitchUiState> = emptyList(),
     val enterKeyText: String = "发送",
     val darkMode: Int = 0,
     val themeId: String = "ocean_blue",

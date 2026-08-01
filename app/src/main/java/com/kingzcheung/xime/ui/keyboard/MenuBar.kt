@@ -46,11 +46,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.kingzcheung.xime.viewmodel.SchemaSwitchUiState
 
 data class MenuItem(
-    val icon: Painter,
+    val icon: Painter? = null,
     val label: String,
-    val action: () -> Unit
+    val action: () -> Unit,
+    val textIcon: String? = null,
 )
 
 data class MenuBarState(
@@ -61,6 +63,7 @@ data class MenuBarState(
     val keyBgColor: Color = Color.White,
     val keyTextColor: Color = Color(0xFF202124),
     val isFloatingMode: Boolean = false,
+    val schemaSwitches: List<SchemaSwitchUiState> = emptyList(),
 )
 
 data class MenuBarCallbacks(
@@ -75,6 +78,7 @@ data class MenuBarCallbacks(
     val onToggleDarkMode: () -> Unit,
     val onFloatingModeToggle: (() -> Unit)? = null,
     val onToolbarCustomize: () -> Unit = {},
+    val onToggleSchemaSwitch: ((SchemaSwitchUiState) -> Unit)? = null,
 )
 
 @Composable
@@ -121,18 +125,26 @@ fun MenuBar(
     val floatingLabel = if (state.isFloatingMode) "退出悬浮" else "悬浮模式"
     val floatingAction = callbacks.onFloatingModeToggle ?: {}
 
-    val menuItems = remember(darkModeIcon, darkModeLabel, state.isFloatingMode) {
+    // 动态方案开关：图标取第一个状态的首字；标题若有 abbrev 则用 abbrev（多个用 🔁 连接），否则用所有状态 🔁 连接
+    val switchItems = state.schemaSwitches.map { sw ->
+        val textIcon = sw.states.firstOrNull()?.firstOrNull()?.toString() ?: ""
+        val label = if (sw.abbrev.isNotEmpty()) sw.abbrev.joinToString("🔁")
+            else sw.states.joinToString("🔁")
+        MenuItem(icon = null, label = label, action = { callbacks.onToggleSchemaSwitch?.invoke(sw) }, textIcon = textIcon)
+    }
+
+    val menuItems = remember(darkModeIcon, darkModeLabel, state.isFloatingMode, state.schemaSwitches) {
         listOf(
             MenuItem(clipboardIcon, "剪贴板", callbacks.onClipboard),
             MenuItem(quickSendIcon, "快捷发送", callbacks.onQuickSend),
-            MenuItem(keyboardResizeIcon, "键盘调节", callbacks.onKeyboardResize),
-            MenuItem(emojiIcon, "表情", callbacks.onEmoji),
-            MenuItem(floatingIcon, floatingLabel, floatingAction),
-            MenuItem(darkModeIcon, darkModeLabel, callbacks.onToggleDarkMode),
-            MenuItem(deployIcon, "部署方案", callbacks.onReloadConfig),
             MenuItem(schemaIcon, "输入方案", callbacks.onSchemaList),
+            MenuItem(emojiIcon, "表情", callbacks.onEmoji),
+        ) + switchItems + listOf(
             MenuItem(customizeIcon, "定制工具栏", callbacks.onToolbarCustomize),
-            MenuItem(settingsIcon, "设置", callbacks.onSettings)
+            MenuItem(keyboardResizeIcon, "键盘调节", callbacks.onKeyboardResize),
+            MenuItem(darkModeIcon, darkModeLabel, callbacks.onToggleDarkMode),
+            MenuItem(floatingIcon, floatingLabel, floatingAction),
+            MenuItem(deployIcon, "部署方案", callbacks.onReloadConfig),
         )
     }
     Column(
@@ -141,12 +153,13 @@ fun MenuBar(
             .background(state.backgroundColor),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Box(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(50.dp)
                 .padding(horizontal = if (isLandscape) 50.dp else 8.dp),
-            contentAlignment = Alignment.CenterStart
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
@@ -159,6 +172,21 @@ fun MenuBar(
                 Icon(
                     imageVector = Icons.Default.KeyboardArrowUp,
                     contentDescription = "关闭菜单",
+                    tint = textColor,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                    .clickable { callbacks.onSettings() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    painter = settingsIcon,
+                    contentDescription = "设置",
                     tint = textColor,
                     modifier = Modifier.size(24.dp)
                 )
@@ -270,12 +298,22 @@ fun MenuItemButton(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Icon(
-            painter = item.icon,
-            contentDescription = item.label,
-            tint = textColor.copy(alpha = 0.7f),
-            modifier = Modifier.size(if (isLandscape) 18.dp else 24.dp)
-        )
+        if (item.textIcon != null) {
+            Text(
+                text = item.textIcon,
+                color = textColor.copy(alpha = 0.7f),
+                fontSize = if (isLandscape) 18.sp else 24.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1
+            )
+        } else if (item.icon != null) {
+            Icon(
+                painter = item.icon,
+                contentDescription = item.label,
+                tint = textColor.copy(alpha = 0.7f),
+                modifier = Modifier.size(if (isLandscape) 18.dp else 24.dp)
+            )
+        }
         Spacer(modifier = Modifier.height(2.dp))
         Text(
             text = item.label,

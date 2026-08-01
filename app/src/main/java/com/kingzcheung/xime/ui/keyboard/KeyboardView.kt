@@ -806,6 +806,7 @@ fun KeyboardView(
                             keyBgColor = keyBgColor,
                             keyTextColor = keyTextColor,
                             isFloatingMode = state.isFloatingMode,
+                            schemaSwitches = state.schemaSwitches,
                         ),
                         callbacks = MenuBarCallbacks(
                             onDismiss = { viewModel.closeOverlay() },
@@ -819,6 +820,7 @@ fun KeyboardView(
                             onToggleDarkMode = { callbacks.onToggleDarkMode?.invoke() },
                             onToolbarCustomize = { viewModel.showOverlay(OverlayRoute.ToolbarCustomize) },
                             onFloatingModeToggle = { callbacks.onFloatingModeChange?.invoke(!state.isFloatingMode); viewModel.closeOverlay() },
+                            onToggleSchemaSwitch = { sw -> callbacks.onToggleSchemaSwitch?.invoke(sw); viewModel.closeOverlay() },
                         ),
                         modifier = Modifier.fillMaxWidth().fillMaxHeight()
                     )
