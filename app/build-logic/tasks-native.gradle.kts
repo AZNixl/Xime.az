@@ -4,6 +4,13 @@ import java.util.Date
 val onnxVersion = "1.28.0"
 val onnxSrcUrl = "https://github.com/microsoft/onnxruntime/archive/refs/tags/v${onnxVersion}.tar.gz"
 
+// GitHub 加速镜像（按顺序尝试；不可用时请替换/删除）
+val ghMirrors = listOf(
+    "https://ghfast.top",
+    "https://gh-proxy.com",
+    "https://ghproxy.net",
+)
+
 val isWindows = System.getProperty("os.name").lowercase().contains("win")
 
 fun downloadCommand(vararg args: String): List<String> {
@@ -13,9 +20,14 @@ fun downloadCommand(vararg args: String): List<String> {
     return cmd
 }
 
+// 单个 URL 下载，支持断点续传与自动重试
 fun downloadFile(url: String, target: File, workDir: File, desc: String): Boolean {
     println("Downloading $desc: $url")
-    val cmd = downloadCommand("-#", "-L", "-o", target.absolutePath, url)
+    val cmd = downloadCommand(
+        "-L", "--retry", "5", "--retry-delay", "3", "--retry-all-errors",
+        "-C", "-", // 断点续传
+        "-o", target.absolutePath, url
+    )
     return try {
         val proc = ProcessBuilder(cmd).directory(workDir).redirectErrorStream(true).start()
         val buf = ByteArray(4096)
@@ -26,12 +38,11 @@ fun downloadFile(url: String, target: File, workDir: File, desc: String): Boolea
                 val s = String(buf, 0, n)
                 tail.append(s)
                 if (tail.length > 2000) tail.delete(0, tail.length - 2000)
-                print(s)
             }
         }
-        println()
-        if (proc.waitFor() != 0) {
-            System.err.println("Download failed for $desc: ${tail.takeLast(500)}")
+        val code = proc.waitFor()
+        if (code != 0) {
+            System.err.println("Download failed for $desc (exit $code): ${tail.takeLast(500)}")
             false
         } else {
             println("Downloaded ${target.name} (${target.length()} bytes)")
@@ -41,6 +52,23 @@ fun downloadFile(url: String, target: File, workDir: File, desc: String): Boolea
         System.err.println("Download error for $desc: ${e.message}")
         false
     }
+}
+
+// 按顺序尝试多个 URL（镜像优先，最后官方源），成功即停止，失败自动切换到下一个
+fun downloadWithMirrors(urls: List<String>, target: File, workDir: File, desc: String): Boolean {
+    for (url in urls) {
+        // 已完整下载则跳过
+        if (target.exists() && target.length() > 0) return true
+        if (downloadFile(url, target, workDir, desc)) return true
+        // 失败后清空残留半成品，避免续传污染下一源
+        target.delete()
+    }
+    return false
+}
+
+fun githubUrls(url: String): List<String> = buildList {
+    ghMirrors.forEach { add("${it.trimEnd('/')}/$url") }
+    add(url) // 官方源兜底
 }
 
 val downloadOnnx by tasks.registering {
@@ -64,7 +92,7 @@ val downloadOnnx by tasks.registering {
         // 1. Download & extract source tarball
         if (!srcDir.exists()) {
             val tarball = file("$buildDir/onnxruntime-${onnxVersion}.tar.gz")
-            if (!downloadFile(onnxSrcUrl, tarball, buildDir, "ONNX Runtime v${onnxVersion} source"))
+            if (!downloadWithMirrors(githubUrls(onnxSrcUrl), tarball, buildDir, "ONNX Runtime v${onnxVersion} source"))
                 throw GradleException("Failed to download ONNX Runtime source")
 
             println("Extracting source...")
@@ -117,7 +145,7 @@ val downloadOnnx by tasks.registering {
                 "--android_abi", abi, "--android_api", "27",
                 "--cmake_generator", "Ninja", "--use_nnapi", "--build_shared_lib",
                 "--config", "Release", "--build_dir", abiBuildDir.absolutePath,
-                "--parallel", "--skip_onnx_tests"
+                "--parallel", "--skip_onnx_tests", "--targets", "onnxruntime"
             ))
             val buildProc = ProcessBuilder(onnxBuild)
                 .directory(srcDir).redirectErrorStream(true).start()
@@ -173,7 +201,7 @@ val buildSherpaOnnx by tasks.registering {
         val url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.0/sherpa-onnx-v1.13.0-android.tar.bz2"
         val tarball = File(temporaryDir, "sherpa-onnx-android.tar.bz2")
 
-        if (!downloadFile(url, tarball, temporaryDir, "prebuilt sherpa-onnx JNI library")) {
+        if (!downloadWithMirrors(githubUrls(url), tarball, temporaryDir, "prebuilt sherpa-onnx JNI library")) {
             println("WARNING: sherpa-onnx JNI download failed. ASR will use online mode only.")
             return@doLast
         }

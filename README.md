@@ -170,16 +170,6 @@ Core rules:
 - [fcitx5-android](https://github.com/fcitx5-android/fcitx5-android) - Keyboard layout reference
 - [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) - Local speech-to-text support
 
-## Star History
-
-<a href="https://www.star-history.com/?repos=ximeiorg/Xime&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=ximeiorg/Xime&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=ximeiorg/Xime&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=ximeiorg/Xime&type=date&legend=top-left" />
- </picture>
-</a>
-
 ## License
 
 GPLv3 License

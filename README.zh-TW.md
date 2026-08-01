@@ -182,16 +182,6 @@ git submodule update --init --recursive
 - [fcitx5-android](https://github.com/fcitx5-android/fcitx5-android) - 鍵盤佈局參考
 - [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) - 本地語音轉文字模型支援
 
-## Star History
-
-<a href="https://www.star-history.com/?repos=ximeiorg/Xime&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=ximeiorg/Xime&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=ximeiorg/Xime&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=ximeiorg/Xime&type=date&legend=top-left" />
- </picture>
-</a>
-
 ## 授權條款
 
 GPLv3 License
