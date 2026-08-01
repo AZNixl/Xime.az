@@ -18,7 +18,6 @@ data class ModelInfo(
     val name: String,
     val description: String,
     val category: ModelCategory,
-    val storageDir: String,
     val files: List<ModelFile>,
     val archiveUrl: String? = null,
     val size: String = ""

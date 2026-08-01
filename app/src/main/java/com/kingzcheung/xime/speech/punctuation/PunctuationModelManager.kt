@@ -2,6 +2,7 @@ package com.kingzcheung.xime.speech.punctuation
 
 import android.content.Context
 import android.util.Log
+import com.kingzcheung.xime.model.ModelStorage
 import com.kingzcheung.xime.util.FileLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -15,7 +16,6 @@ class PunctuationModelManager(private val context: Context) {
 
     companion object {
         private const val TAG = "PunctuationModelManager"
-        private const val MODEL_DIR = "punctuation_models"
         private const val MODEL_ID = "punctuation_int8"
         private const val MODEL_FILE = "punctuation_int8.onnx"
         private const val VOCAB_FILE = "vocab.json"
@@ -55,7 +55,10 @@ class PunctuationModelManager(private val context: Context) {
     }
 
     fun getModelDir(): File {
-        return File(context.filesDir, MODEL_DIR)
+        // 统一目录：filesDir/models/punctuation_int8/；兼容旧版 punctuation_models/（自动迁移）
+        val dir = ModelStorage.getModelDir(context, MODEL_ID)
+        ModelStorage.migrateLegacyForModel(context, MODEL_ID)
+        return dir
     }
 
     fun getModelFile(): File {

@@ -1469,8 +1469,10 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             when {
                 savedSchema == HANDWRITING_SCHEMA_ID -> {
                     Log.d(TAG, "onStartInput: saved schema is handwriting, checking model files")
-                    val modelFile = java.io.File(filesDir, "ochwpro.onnx")
-                    val charIndexFile = java.io.File(filesDir, "char_index.json")
+                    val hwDir = com.kingzcheung.xime.model.ModelStorage.getModelDir(this, "ochwpro")
+                    com.kingzcheung.xime.model.ModelStorage.migrateLegacyForModel(this, "ochwpro")
+                    val modelFile = java.io.File(hwDir, "ochwpro.onnx")
+                    val charIndexFile = java.io.File(hwDir, "char_index.json")
                     if (!modelFile.exists() || !charIndexFile.exists()) {
                         Log.w(TAG, "Handwriting model not found, falling back to first available schema")
                         android.widget.Toast.makeText(

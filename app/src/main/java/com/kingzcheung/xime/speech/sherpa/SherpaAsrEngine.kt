@@ -6,6 +6,7 @@ import android.content.Context
 import android.util.Log
 import com.k2fsa.sherpa.onnx.*
 import com.kingzcheung.xime.model.ModelRuntime
+import com.kingzcheung.xime.model.ModelStorage
 import com.kingzcheung.xime.speech.RecognitionState
 import com.kingzcheung.xime.util.FileLogger
 import kotlinx.coroutines.CoroutineScope
@@ -88,7 +89,10 @@ class SherpaAsrEngine(private val context: Context) {
     
     fun getSelectedModelDir(): File {
         val modelId = getSelectedModelId()
-        return File(context.filesDir, "asr_models/$modelId")
+        val dir = ModelStorage.getModelDir(context, modelId)
+        // 兼容旧版：自动迁移 asr_models/<id>/ 下的模型文件
+        ModelStorage.migrateLegacyForModel(context, modelId)
+        return dir
     }
 
     fun getSelectedModelId(): String {

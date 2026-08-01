@@ -2,7 +2,9 @@ package com.kingzcheung.xime.association
 
 import android.content.Context
 import com.kingzcheung.xime.model.ModelRuntime
+import com.kingzcheung.xime.model.ModelStorage
 import com.kingzcheung.xime.service.InferenceClient
+import com.kingzcheung.xime.settings.SettingsPreferences
 import com.kingzcheung.xime.util.FileLogger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -34,8 +36,13 @@ object OnnxAssociationEngine {
         )
 
         try {
-            val modelDir = context.filesDir
+            // 模型 id 由设置决定，支持 small/base 等多版本共存切换
+            val modelId = SettingsPreferences.getPredictionSelectedModel(context)
+            val modelDir = ModelStorage.getModelDir(context, modelId)
             modelDir.mkdirs()
+
+            // 兼容旧版：把旧路径模型迁移到统一目录
+            ModelStorage.migrateLegacyForModel(context, modelId)
 
             val filesToCheck = listOf("vocab.json", "model_int8_dynamic.onnx")
             for (fileName in filesToCheck) {

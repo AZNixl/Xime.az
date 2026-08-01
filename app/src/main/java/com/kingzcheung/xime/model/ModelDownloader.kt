@@ -54,11 +54,8 @@ object ModelDownloader {
     }
 
     private fun getStorageDir(context: Context, modelInfo: ModelInfo): File {
-        return if (modelInfo.storageDir.isEmpty()) {
-            context.filesDir
-        } else {
-            File(context.filesDir, modelInfo.storageDir)
-        }
+        // 统一规则：所有模型一律存 filesDir/models/<id>/
+        return ModelStorage.getModelDir(context, modelInfo.id)
     }
 
     private suspend fun downloadFiles(
