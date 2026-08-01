@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import logo from './assets/logo.png'
 
-const ACCEPT = '.yaml,.zip,.tar.gz,.tgz,.gram'
-const SUPPORTED = /\.(yaml|zip|tar\.gz|tgz|gram)$/i
+const ACCEPT = '.yaml,.zip,.tar.gz,.tgz,.gram,.jpg,.jpeg,.png'
+const SUPPORTED = /\.(yaml|zip|tar\.gz|tgz|gram|jpe?g|png)$/i
 
 function supported(name) {
   return SUPPORTED.test(name)
@@ -65,6 +65,7 @@ function typeBadge(name, isDir) {
   if (lower.endsWith('.tar.gz') || lower.endsWith('.tgz')) return '归档'
   if (lower.endsWith('.yaml')) return '配置'
   if (lower.endsWith('.txt')) return '文本'
+  if (lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.webp')) return '图片'
   return '文件'
 }
 
@@ -259,7 +260,7 @@ export default function App() {
           onDragLeave={() => setDragOver(false)}
           onDrop={onDrop}
           className={
-            'cursor-pointer rounded-xl border-2 border-dashed p-10 text-center transition-all ' +
+            'flex min-h-[20rem] cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed p-10 text-center transition-all ' +
             (dragOver
               ? 'border-blue-500 bg-blue-50'
               : files.length
@@ -269,10 +270,7 @@ export default function App() {
         >
           <div className="mb-3 text-4xl text-gray-400">📄</div>
           <div className="text-sm text-gray-400">拖拽文件到此处</div>
-          <div className="mt-2 text-xs text-gray-300">支持 xime.custom.yaml / .zip / .tar.gz</div>
-          <div className="mt-3 rounded-lg bg-gray-100 p-2.5 text-xs leading-relaxed text-gray-400">
-            💡 多文件或复杂目录结构，请打包为 .zip 或 .tar.gz 上传
-          </div>
+          <div className="mt-2 text-xs text-gray-300">支持 .yaml / .zip / .tar.gz / 图片(.jpg/.png)</div>
         </div>
 
         <input
@@ -305,6 +303,13 @@ export default function App() {
         >
           {uploading ? '上传中...' : '上传'}
         </button>
+
+        <div className="mt-4 rounded-lg bg-gray-100 p-2.5 text-left text-xs leading-relaxed text-gray-400">
+          <div>💡 上传文件会自动分类放置：</div>
+          <div>· 方案压缩包(.zip/.tar.gz) → market 目录</div>
+          <div>· 配置文件(.yaml) → rime 目录</div>
+          <div>· 图片(.jpg/.png) → themes 目录</div>
+        </div>
 
         {summary && (
           <div
