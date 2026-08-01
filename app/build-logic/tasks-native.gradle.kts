@@ -1,8 +1,12 @@
 import java.text.SimpleDateFormat
 import java.util.Date
 
+// 使用官方 Maven 预编译 onnxruntime-android AAR（内置 CPU + NNAPI EP），
+// 不再从源码自行编译（自行编译需 30-60 分钟且依赖网络/NDK 稳定性）。
 val onnxVersion = "1.28.0"
-val onnxSrcUrl = "https://github.com/microsoft/onnxruntime/archive/refs/tags/v${onnxVersion}.tar.gz"
+val onnxAarUrl = "https://repo1.maven.org/maven2/com/microsoft/onnxruntime/onnxruntime-android/${onnxVersion}/onnxruntime-android-${onnxVersion}.aar"
+// 头文件不在 AAR 内，需从对应版本源码 raw 取（仅需 C API + provider factory 头）
+val onnxHeadersBase = "https://raw.githubusercontent.com/microsoft/onnxruntime/v${onnxVersion}/include/onnxruntime"
 
 // GitHub 加速镜像（按顺序尝试；不可用时请替换/删除）
 val ghMirrors = listOf(
@@ -13,11 +17,26 @@ val ghMirrors = listOf(
 
 val isWindows = System.getProperty("os.name").lowercase().contains("win")
 
+// 本机 curl 直连官方 GitHub 源常因 schannel TLS 握手失败（SSL error 35），
+// 而 PowerShell 的 Invoke-WebRequest（.NET TLS）与浏览器一致、更可靠。
+// Windows 下优先用 IWR；Linux/macOS 用 curl。
 fun downloadCommand(vararg args: String): List<String> {
-    val cmd = mutableListOf("curl")
-    if (isWindows) cmd.add("--ssl-no-revoke")
-    cmd.addAll(args)
-    return cmd
+    if (isWindows) {
+        // args 形如: -L --retry 5 ... -o <target> <url>
+        val url = args.last()
+        val outIdx = args.indexOf("-o")
+        val out = if (outIdx >= 0) args[outIdx + 1] else null
+        val script = StringBuilder()
+        script.append("[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12;")
+        if (out != null) {
+            script.append("Invoke-WebRequest -Uri '").append(url).append("' -OutFile '").append(out)
+                .append("' -UseBasicParsing -TimeoutSec 600;")
+        } else {
+            script.append("Invoke-WebRequest -Uri '").append(url).append("' -UseBasicParsing -TimeoutSec 600 | Out-Null;")
+        }
+        return listOf("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script.toString())
+    }
+    return mutableListOf<String>().apply { add("curl"); addAll(args) }
 }
 
 // 单个 URL 下载，支持断点续传与自动重试
@@ -43,11 +62,11 @@ fun downloadFile(url: String, target: File, workDir: File, desc: String): Boolea
         val code = proc.waitFor()
         if (code != 0) {
             System.err.println("Download failed for $desc (exit $code): ${tail.takeLast(500)}")
-            false
-        } else {
-            println("Downloaded ${target.name} (${target.length()} bytes)")
-            true
+            return false
         }
+        if (target.exists() && target.length() == 0L) { target.delete(); return false }
+        println("Downloaded ${target.name} (${target.length()} bytes)")
+        true
     } catch (e: Exception) {
         System.err.println("Download error for $desc: ${e.message}")
         false
@@ -74,7 +93,6 @@ fun githubUrls(url: String): List<String> = buildList {
 val downloadOnnx by tasks.registering {
     val cppDir = file("src/main/jni/onnxruntime")
     val jniLibsDir = file("src/main/jniLibs")
-    val srcDir = file("$buildDir/onnxruntime-src")
     val nnapiMarker = file("$buildDir/onnxruntime-nnapi-marker")
 
     outputs.dir(cppDir)
@@ -82,102 +100,90 @@ val downloadOnnx by tasks.registering {
     outputs.file(nnapiMarker)
 
     doLast {
-        val allAbisPresent = listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
-            .all { file("${jniLibsDir.absolutePath}/$it/libonnxruntime.so").exists() }
-        if (allAbisPresent && file("$cppDir/include/onnxruntime_c_api.h").exists()) {
-            println("ONNX Runtime with NNAPI already built for all ABIs, skipping")
+        val abis = listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+
+        // 已全部就绪则跳过
+        val allSoPresent = abis.all {
+            file("${jniLibsDir.absolutePath}/$it/libonnxruntime.so").exists() &&
+            file("${cppDir.absolutePath}/lib/$it/libonnxruntime.so").exists()
+        }
+        val headersPresent = file("$cppDir/include/onnxruntime_c_api.h").exists()
+        if (allSoPresent && headersPresent) {
+            println("ONNX Runtime (official AAR) already deployed for all ABIs, skipping")
             return@doLast
         }
 
-        // 1. Download & extract source tarball
-        if (!srcDir.exists()) {
-            val tarball = file("$buildDir/onnxruntime-${onnxVersion}.tar.gz")
-            if (!downloadWithMirrors(githubUrls(onnxSrcUrl), tarball, buildDir, "ONNX Runtime v${onnxVersion} source"))
-                throw GradleException("Failed to download ONNX Runtime source")
+        // 1. 下载官方 AAR（含 4 ABI 的 libonnxruntime.so，内置 CPU + NNAPI EP）
+        val aar = File(buildDir, "onnxruntime-android-${onnxVersion}.aar")
+        if (!downloadWithMirrors(listOf(onnxAarUrl), aar, buildDir, "onnxruntime-android AAR")) {
+            throw GradleException("Failed to download ONNX Runtime Android AAR: $onnxAarUrl")
+        }
+        println("AAR downloaded: ${aar.length()} bytes")
 
-            println("Extracting source...")
-            val tar = ProcessBuilder("tar", "-xzf", tarball.absolutePath, "-C", buildDir.absolutePath)
-                .directory(buildDir).redirectErrorStream(true).start()
-            val tarOut = tar.inputStream.bufferedReader().readText()
-            if (tar.waitFor() != 0) throw GradleException("Extract failed: $tarOut")
-
-            File(buildDir, "onnxruntime-${onnxVersion}").renameTo(srcDir)
-            tarball.delete()
-            println("Source ready: $srcDir")
+        // 2. 解压 AAR（zip），提取 jni/<abi>/libonnxruntime.so
+        val aarDir = File(buildDir, "onnxruntime-aar")
+        try {
+            copy {
+                from(zipTree(aar))
+                into(aarDir)
+            }
+        } catch (e: Exception) {
+            throw GradleException("Failed to extract AAR: ${e.message}")
         }
 
-        // 2. Locate NDK + SDK
-        fun findDir(vararg envs: String, fallbackDir: String, subDir: String): String {
-            for (env in envs) {
-                System.getenv(env)?.let { if (File(it).exists()) return it }
-            }
-            val base = File(fallbackDir)
-            if (base.exists()) {
-                val candidates = File(base, subDir).listFiles()
-                    ?.filter { it.isDirectory }?.sortedByDescending { it.name }
-                if (!candidates.isNullOrEmpty()) return candidates.first().absolutePath
-            }
-            return ""
-        }
-        val ndkDir = findDir("ANDROID_NDK", "ANDROID_NDK_HOME",
-            fallbackDir = "${System.getenv("LOCALAPPDATA")}/Android/Sdk", subDir = "ndk")
-        val sdkDir = findDir("ANDROID_HOME", "ANDROID_SDK_ROOT",
-            fallbackDir = "${System.getenv("LOCALAPPDATA")}/Android/Sdk", subDir = "")
-        if (ndkDir.isEmpty() || sdkDir.isEmpty())
-            throw GradleException("Cannot locate Android SDK/NDK. Set ANDROID_HOME and ANDROID_NDK.")
-        println("SDK: $sdkDir")
-        println("NDK: $ndkDir")
-
-        // 3. Build each ABI with NNAPI (CPU + NNAPI execution providers)
-        val onnxAbis = listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
-        for (abi in onnxAbis) {
-            val abiBuildDir = file("$buildDir/onnxruntime-build-android-$abi")
-            println("Building ONNX Runtime with NNAPI for $abi (CPU + NNAPI, 30-60 min)...")
-            abiBuildDir.mkdirs()
-            val onnxBuild = mutableListOf<String>()
-            if (isWindows) {
-                onnxBuild.addAll(listOf("cmd.exe", "/c", "\"${srcDir.absoluteFile}\\build.bat\""))
-            } else {
-                onnxBuild.addAll(listOf("bash", "${srcDir.absoluteFile}/build.sh"))
-            }
-            onnxBuild.addAll(listOf(
-                "--android", "--android_sdk_path", sdkDir, "--android_ndk_path", ndkDir,
-                "--android_abi", abi, "--android_api", "27",
-                "--cmake_generator", "Ninja", "--use_nnapi", "--build_shared_lib",
-                "--config", "Release", "--build_dir", abiBuildDir.absolutePath,
-                "--parallel", "--skip_onnx_tests", "--targets", "onnxruntime"
-            ))
-            val buildProc = ProcessBuilder(onnxBuild)
-                .directory(srcDir).redirectErrorStream(true).start()
-            buildProc.inputStream.bufferedReader().use { r ->
-                var line: String?; while (r.readLine().also { line = it } != null) { println(line) }
-            }
-            if (buildProc.waitFor() != 0) throw GradleException("ONNX Runtime build failed for $abi")
-
-            // 4. Locate built .so for this ABI
-            val sos = fileTree(abiBuildDir).matching { include("**/libonnxruntime.so") }.files
-            if (sos.isEmpty()) throw GradleException("No libonnxruntime.so in $abiBuildDir")
-            val builtSo = sos.first()
-            println("Built $abi: ${builtSo.absolutePath} (${builtSo.length()} bytes)")
-
-            // 5. Copy .so to jni link dir and jniLibs
-            val abiLib = file("${cppDir.absolutePath}/lib/$abi")
-            val abiJni = file("${jniLibsDir.absolutePath}/$abi")
+        for (abi in abis) {
+            val src = File(aarDir, "jni/$abi/libonnxruntime.so")
+            if (!src.exists()) throw GradleException("AAR missing jni/$abi/libonnxruntime.so")
+            val abiLib = File(cppDir, "lib/$abi")
+            val abiJni = File(jniLibsDir, abi)
             abiLib.mkdirs(); abiJni.mkdirs()
-            builtSo.copyTo(File(abiLib, "libonnxruntime.so"), overwrite = true)
-            builtSo.copyTo(File(abiJni, "libonnxruntime.so"), overwrite = true)
+            src.copyTo(File(abiLib, "libonnxruntime.so"), overwrite = true)
+            src.copyTo(File(abiJni, "libonnxruntime.so"), overwrite = true)
+            println("Deployed libonnxruntime.so [$abi] (${src.length()} bytes)")
         }
 
-        // 6. Copy headers from source (ABI-independent)
-        copy {
-            from("${srcDir.absolutePath}/include/onnxruntime")
-            into("${cppDir.absolutePath}/include")
+        // 下载 v1.28 core/session/ 目录下全部头文件（c_api.h 依赖 ep_c_api.h、
+        // error_code.h 等，需完整覆盖以通过编译），统一提升到 include 顶层供 #include 直接命中。
+        val dstHeaders = File(cppDir, "include")
+        dstHeaders.mkdirs()
+        val headersToFetch = listOf(
+            "core/session/environment.h",
+            "core/session/experimental_onnxruntime_cxx_api.h",
+            "core/session/experimental_onnxruntime_cxx_inline.h",
+            "core/session/onnxruntime_c_api.h",
+            "core/session/onnxruntime_cxx_api.h",
+            "core/session/onnxruntime_cxx_inline.h",
+            "core/session/onnxruntime_env_config_keys.h",
+            "core/session/onnxruntime_ep_c_api.h",
+            "core/session/onnxruntime_ep_device_ep_metadata_keys.h",
+            "core/session/onnxruntime_error_code.h",
+            "core/session/onnxruntime_experimental_c_api.h",
+            "core/session/onnxruntime_experimental_c_api.inc",
+            "core/session/onnxruntime_experimental_cxx_api.h",
+            "core/session/onnxruntime_float16.h",
+            "core/session/onnxruntime_lite_custom_op.h",
+            "core/session/onnxruntime_run_options_config_keys.h",
+            "core/session/onnxruntime_session_options_config_keys.h",
+        )
+        // 旧源码编译残留的 v1.28 头文件会与官方 v1.27 .so 不匹配（ORT_API_VERSION 不同），
+        // 导致 GetApi(28) 失败。部署前清理 include 目录，确保头文件与 AAR 版本一致。
+        dstHeaders.listFiles()?.forEach { old ->
+            if (old.isFile) old.delete()
+        }
+        for (rel in headersToFetch) {
+            val target = java.io.File(dstHeaders, rel.substringAfterLast("/"))
+            val url = "$onnxHeadersBase/$rel"
+            if (downloadWithMirrors(githubUrls(url), target, buildDir, "onnxruntime header $rel")) {
+                println("Header ok: ${target.name}")
+            } else {
+                System.err.println("WARNING: failed to fetch header $rel")
+            }
         }
 
-        // 7. Marker
+        // 4. Marker
         nnapiMarker.parentFile.mkdirs()
-        nnapiMarker.writeText("NNAPI v${onnxVersion} built on ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Date())}")
-        println("ONNX Runtime with NNAPI deployed to: ${onnxAbis.joinToString()}")
+        nnapiMarker.writeText("ONNX Runtime v${onnxVersion} (official AAR, CPU+NNAPI) deployed on ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Date())}")
+        println("ONNX Runtime deployed to: ${abis.joinToString()}")
     }
 }
 
