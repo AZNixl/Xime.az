@@ -65,15 +65,6 @@ Java_com_kingzcheung_xime_speech_punctuation_PunctuationInference_nativeInitiali
         return JNI_FALSE;
     }
 
-    status = api->SetIntraOpNumThreads(session_options, 2);
-    if (status) {
-        LOGE("Failed to set intra op num threads: %s", api->GetErrorMessage(status));
-        api->ReleaseStatus(status);
-        api->ReleaseSessionOptions(session_options);
-        env->ReleaseStringUTFChars(model_path, modelPathStr);
-        return JNI_FALSE;
-    }
-
     status = api->DisableCpuMemArena(session_options);
     if (status) {
         LOGE("Failed to disable CPU mem arena: %s", api->GetErrorMessage(status));

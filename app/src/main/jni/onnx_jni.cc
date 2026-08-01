@@ -12,15 +12,50 @@
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
+#define LOGW(...) __android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__)
 
 static OrtSession* g_session = nullptr;
 static OrtAllocator* g_allocator = nullptr;
 static std::mutex g_onnx_mutex;
 
+static std::string g_model_path;
+static OrtSession* g_cpu_fallback_session = nullptr;
+
 static std::unordered_map<std::string, int64_t> g_vocab;
 static std::vector<std::string> g_id2word;
 static int64_t g_bos_id = 1;
 static int64_t g_unk_id = 3;
+
+// Lazily create a CPU-only fallback session. Used when the NNAPI/GPU session
+// fails at runtime on devices without a working NNAPI driver, so inference
+// still produces results instead of crashing.
+static OrtSession* OnnxEnsureCpuFallbackSession(const OrtApi* api) {
+    if (g_cpu_fallback_session) return g_cpu_fallback_session;
+    if (g_model_path.empty()) return nullptr;
+
+    OrtEnv* ort_env = OnnxGetSharedEnv();
+    if (!ort_env) return nullptr;
+
+    OrtSessionOptions* options = nullptr;
+    OrtStatus* status = api->CreateSessionOptions(&options);
+    if (status) {
+        LOGE("Failed to create CPU fallback session options: %s", api->GetErrorMessage(status));
+        api->ReleaseStatus(status);
+        return nullptr;
+    }
+
+    status = api->CreateSession(ort_env, g_model_path.c_str(), options, &g_cpu_fallback_session);
+    api->ReleaseSessionOptions(options);
+    if (status) {
+        LOGE("Failed to create CPU fallback session: %s", api->GetErrorMessage(status));
+        api->ReleaseStatus(status);
+        g_cpu_fallback_session = nullptr;
+        return nullptr;
+    }
+
+    LOGW("Created CPU-only fallback session");
+    return g_cpu_fallback_session;
+}
 
 extern "C"
 JNIEXPORT void JNICALL
@@ -124,6 +159,7 @@ Java_com_kingzcheung_xime_association_NativeOnnxEngine_nativeInitialize(
 
     const char* modelPathStr = env->GetStringUTFChars(model_path, nullptr);
     LOGI("Initializing ONNX Runtime with model: %s", modelPathStr);
+    g_model_path = modelPathStr;
 
     OrtEnv* ort_env = OnnxGetSharedEnv();
     if (!ort_env) {
@@ -151,15 +187,9 @@ Java_com_kingzcheung_xime_association_NativeOnnxEngine_nativeInitialize(
         return JNI_FALSE;
     }
 
-    status = api->SetIntraOpNumThreads(session_options, 4);
-    if (status) {
-        LOGE("Failed to set intra op num threads: %s", api->GetErrorMessage(status));
-        api->ReleaseStatus(status);
-        api->ReleaseSessionOptions(session_options);
-        env->ReleaseStringUTFChars(model_path, modelPathStr);
-        return JNI_FALSE;
-    }
+    // 线程池由共享 env 的全局线程池提供（见 onnx_env.cc），session 不再各自建线程。
 
+    // 关闭 CPU 内存 arena，避免分配器缓存保留大量闲置内存。
     status = api->DisableCpuMemArena(session_options);
     if (status) {
         LOGE("Failed to disable CPU mem arena: %s", api->GetErrorMessage(status));
@@ -169,17 +199,38 @@ Java_com_kingzcheung_xime_association_NativeOnnxEngine_nativeInitialize(
         return JNI_FALSE;
     }
 
+    // Prefer NNAPI (GPU/HW accelerator). onnxruntime partitions the graph so
+    // nodes NNAPI supports run on NNAPI and the rest fall back to CPU. The CPU
+    // EP is appended explicitly to guarantee the NNAPI -> CPU fallback order.
     OnnxTryEnableNnapi(session_options);
+    OnnxTryEnableCpuFallback(session_options);
 
     status = api->CreateSession(ort_env, modelPathStr, session_options, &g_session);
     api->ReleaseSessionOptions(session_options);
-    env->ReleaseStringUTFChars(model_path, modelPathStr);
 
     if (status) {
-        LOGE("Failed to create session: %s", api->GetErrorMessage(status));
+        LOGE("Failed to create session with NNAPI: %s", api->GetErrorMessage(status));
         api->ReleaseStatus(status);
-        return JNI_FALSE;
+
+        // Whole-session fallback: if NNAPI cannot build the graph, retry with a
+        // CPU-only session so inference still works.
+        OrtSessionOptions* cpu_options = nullptr;
+        status = api->CreateSessionOptions(&cpu_options);
+        if (!status) {
+            OnnxTryEnableCpuFallback(cpu_options);
+            status = api->CreateSession(ort_env, modelPathStr, cpu_options, &g_session);
+            api->ReleaseSessionOptions(cpu_options);
+        }
+        if (status) {
+            LOGE("Failed to create CPU-only session: %s", api->GetErrorMessage(status));
+            api->ReleaseStatus(status);
+            env->ReleaseStringUTFChars(model_path, modelPathStr);
+            return JNI_FALSE;
+        }
+        LOGW("NNAPI unavailable, fell back to CPU-only execution");
     }
+
+    env->ReleaseStringUTFChars(model_path, modelPathStr);
 
     LOGI("ONNX Runtime initialized successfully");
     return JNI_TRUE;
@@ -239,14 +290,34 @@ Java_com_kingzcheung_xime_association_NativeOnnxEngine_nativePredict(
     status = api->Run(g_session, nullptr, input_names, (const OrtValue* const*)&input_tensor, 1,
                       output_names, 1, &output_tensor);
 
+    if (status) {
+        // NNAPI/GPU path failed at runtime (e.g. device without a working NNAPI
+        // driver). Fall back to a CPU-only session so inference still produces
+        // results instead of crashing.
+        LOGE("Run failed on NNAPI session: %s", api->GetErrorMessage(status));
+        api->ReleaseStatus(status);
+
+        OrtSession* fallback = OnnxEnsureCpuFallbackSession(api);
+        if (fallback) {
+            status = api->Run(fallback, nullptr, input_names, (const OrtValue* const*)&input_tensor, 1,
+                              output_names, 1, &output_tensor);
+            if (!status) {
+                LOGD("Run succeeded on CPU fallback session");
+            } else {
+                LOGE("CPU fallback run failed: %s", api->GetErrorMessage(status));
+            }
+        }
+
+        if (status) {
+            api->ReleaseValue(input_tensor);
+            api->ReleaseStatus(status);
+            env->ReleaseLongArrayElements(input_ids, input_data, JNI_ABORT);
+            return nullptr;
+        }
+    }
+
     api->ReleaseValue(input_tensor);
     env->ReleaseLongArrayElements(input_ids, input_data, JNI_ABORT);
-
-    if (status) {
-        LOGE("Failed to run session: %s", api->GetErrorMessage(status));
-        api->ReleaseStatus(status);
-        return nullptr;
-    }
 
     OrtTensorTypeAndShapeInfo* output_info = nullptr;
     status = api->GetTensorTypeAndShape(output_tensor, &output_info);
@@ -354,6 +425,12 @@ Java_com_kingzcheung_xime_association_NativeOnnxEngine_nativeRelease(
         g_session = nullptr;
         LOGD("Session released");
     }
+    if (g_cpu_fallback_session) {
+        api->ReleaseSession(g_cpu_fallback_session);
+        g_cpu_fallback_session = nullptr;
+        LOGD("CPU fallback session released");
+    }
+    g_model_path.clear();
 }
 
 extern "C"

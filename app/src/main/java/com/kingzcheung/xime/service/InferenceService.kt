@@ -128,7 +128,7 @@ class InferenceService : Service() {
                     ),
                     tokens = tokens,
                     numThreads = 2,
-                    provider = "cpu",
+                    provider = "nnapi",
                     modelType = "zipformer2"
                 )
 
