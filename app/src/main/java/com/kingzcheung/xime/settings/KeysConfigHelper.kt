@@ -3,17 +3,27 @@ package com.kingzcheung.xime.settings
 import android.content.Context
 import android.util.Log
 import com.charleskorn.kaml.Yaml
-import com.charleskorn.kaml.YamlException
 import com.charleskorn.kaml.YamlConfiguration
+import com.charleskorn.kaml.YamlContentPolymorphicSerializer
+import com.charleskorn.kaml.YamlException
+import com.charleskorn.kaml.YamlInput
+import com.charleskorn.kaml.YamlList
 import com.charleskorn.kaml.YamlMap
 import com.charleskorn.kaml.YamlNode
 import com.charleskorn.kaml.YamlScalar
-import com.charleskorn.kaml.YamlList
 import com.kingzcheung.xime.BuildConfig
 import com.kingzcheung.xime.keyboard.GestureAction
 import androidx.compose.runtime.mutableStateOf
+import kotlinx.serialization.DeserializationStrategy
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerialName
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -333,9 +343,34 @@ data class ColorSchemeModeConfig(
     val dark: String? = null,
 )
 
+/** 兼容 color_scheme 的两种写法：对象（{light, dark}）或标量字符串。 */
+@OptIn(ExperimentalSerializationApi::class)
+object ColorSchemeModeConfigSerializer :
+    YamlContentPolymorphicSerializer<ColorSchemeModeConfig>(ColorSchemeModeConfig::class) {
+
+    override fun selectDeserializer(node: YamlNode): DeserializationStrategy<ColorSchemeModeConfig> {
+        // 标量写法（config generator 输出）：color_scheme: mu_shan_zi → light 使用该值。
+        return if (node is YamlScalar) ScalarColorSchemeDeserializer else ColorSchemeModeConfig.serializer()
+    }
+
+    /** 把单个字符串的 color_scheme 反序列化为 light=该字符串。 */
+    private object ScalarColorSchemeDeserializer : KSerializer<ColorSchemeModeConfig> {
+        override val descriptor: SerialDescriptor =
+            PrimitiveSerialDescriptor("ScalarColorScheme", PrimitiveKind.STRING)
+
+        override fun deserialize(decoder: Decoder): ColorSchemeModeConfig =
+            ColorSchemeModeConfig(light = decoder.decodeString())
+
+        override fun serialize(encoder: Encoder, value: ColorSchemeModeConfig) {
+            encoder.encodeString(value.light ?: "")
+        }
+    }
+}
+
 @Serializable
 data class StyleConfig(
     @SerialName("color_scheme")
+    @Serializable(with = ColorSchemeModeConfigSerializer::class)
     val colorScheme: ColorSchemeModeConfig? = null,
     @SerialName("dark_mode")
     val darkMode: Int? = null,

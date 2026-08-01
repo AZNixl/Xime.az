@@ -850,6 +850,16 @@ object SchemaManager {
         name.endsWith(".tar.gz", ignoreCase = true) ||
         name.endsWith(".tgz", ignoreCase = true)
 
+    /** 判断文件名是否为图片（背景图等，导入到 themes/）。 */
+    fun isImage(name: String): Boolean =
+        name.endsWith(".jpg", ignoreCase = true) ||
+        name.endsWith(".jpeg", ignoreCase = true) ||
+        name.endsWith(".png", ignoreCase = true)
+
+    /** themes 目录：rime/themes/，存放用户导入或自定义的背景图片。 */
+    fun getThemesDir(context: Context): File =
+        File(getRimeDir(context), "themes")
+
     /**
      * 某些 Android 内容提供器会将未知 MIME 类型的文件（如 .yaml）自动追加 .txt 后缀，
      * 导致 xime.custom.yaml 变成 xime.custom.yaml.txt。此处修复已知情况。
@@ -877,7 +887,22 @@ object SchemaManager {
         autoEnable: Boolean = true,
     ): ImportResult = withContext(Dispatchers.IO) {
         val name = sanitizeDisplayName(displayName)
-        if (isArchive(name)) {
+        if (isImage(name)) {
+            // 图片：背景图等，保存到 rime/themes/，供主题使用
+            val themesDir = getThemesDir(context)
+            try {
+                themesDir.mkdirs()
+                val target = File(themesDir, name)
+                inputStream.use { input ->
+                    target.outputStream().use { output -> input.copyTo(output) }
+                }
+                FileLogger.i(TAG, "Imported $name -> rime/themes/")
+                ImportResult(true)
+            } catch (e: Exception) {
+                FileLogger.e(TAG, "Failed to import image $name", e)
+                ImportResult(false)
+            }
+        } else if (isArchive(name)) {
             // 压缩包：保存到 market/ 等待用户手动安装
             val importId = generateImportId()
             val pkgDir = getMarketDir(context, importId)
