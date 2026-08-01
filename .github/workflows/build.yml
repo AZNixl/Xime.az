@@ -51,6 +51,8 @@ jobs:
             build/sherpa-onnx-*
             app/src/main/jniLibs/arm64-v8a/libsherpa-onnx-jni.so
             app/src/main/jniLibs/armeabi-v7a/libsherpa-onnx-jni.so
+            app/src/main/jni/onnxruntime
+            app/src/main/jniLibs/**/libonnxruntime.so
           key: sherpa-${{ runner.os }}-1.13.0-${{ hashFiles('build-sherpa-onnx.sh') }}
           restore-keys: |
             sherpa-${{ runner.os }}-

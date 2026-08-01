@@ -81,8 +81,6 @@ object ModelIndexLoader {
         val versionsNode = entry["versions"] as? YamlList ?: return null
         val latestVersion = versionsNode.items.firstOrNull() as? YamlMap ?: return null
 
-        val storageDir = (latestVersion["storageDir"] as? YamlScalar)?.content ?: ""
-
         val archiveUrl = (latestVersion["archive"] as? YamlMap)
             ?.let { (it["url"] as? YamlScalar)?.content }
 
@@ -94,7 +92,6 @@ object ModelIndexLoader {
             description = description,
             category = category,
             size = size,
-            storageDir = storageDir,
             files = files,
             archiveUrl = archiveUrl
         )
