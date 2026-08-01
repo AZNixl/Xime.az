@@ -115,7 +115,7 @@ val downloadOnnx by tasks.registering {
             onnxBuild.addAll(listOf(
                 "--android", "--android_sdk_path", sdkDir, "--android_ndk_path", ndkDir,
                 "--android_abi", abi, "--android_api", "27",
-                "--cmake_generator", "Ninja", "--use_nnapi",
+                "--cmake_generator", "Ninja", "--use_nnapi", "--build_shared_lib",
                 "--config", "Release", "--build_dir", abiBuildDir.absolutePath,
                 "--parallel", "--skip_onnx_tests"
             ))
