@@ -930,7 +930,7 @@ fun KeyboardView(
                             candidates = state.candidates.toList(),
                             candidateComments = state.candidateComments.toList(),
                             associationCandidates = state.associationCandidates.toList(),
-                            backgroundColor = Color.Transparent,
+                            backgroundColor = keyboardBgColor,
                             textColor = candidateTextColor,
                             hasNextPage = state.hasNextPage,
                             hasPrevPage = state.hasPrevPage,

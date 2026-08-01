@@ -255,7 +255,6 @@ fun CandidatePageItem(
 
         modifier = modifier
             .clip(RoundedCornerShape(6.dp))
-//            .background(textColor.copy(alpha = 0.1f))
             .clickable(onClick = onClick)
             .padding(horizontal = 4.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
