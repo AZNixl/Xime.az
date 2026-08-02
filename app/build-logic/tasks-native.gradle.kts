@@ -284,8 +284,12 @@ val downloadKnf by tasks.registering {
     val knfSrc = file("$knfRoot/kaldi-native-fbank-${knfVersion}")
     val kissfftSrc = file("$knfRoot/kissfft")
 
-    outputs.dir(knfSrc)
-    outputs.dir(kissfftSrc)
+    val knfCmake = file("$knfSrc/CMakeLists.txt")
+    val kissfftCmake = file("$kissfftSrc/CMakeLists.txt")
+    // 用关键文件而非目录做 up-to-date 判断：目录可能残留残缺/不完整内容
+    //（例如被 CI 缓存恢复），但缺少 CMakeLists.txt 会导致 CMake 配置失败。
+    outputs.file(knfCmake)
+    outputs.file(kissfftCmake)
 
     doLast {
         fun isZip(f: File): Boolean {
@@ -312,7 +316,8 @@ val downloadKnf by tasks.registering {
 
         knfRoot.mkdirs()
 
-        if (!knfSrc.exists()) {
+        if (!knfCmake.exists()) {
+            knfSrc.deleteRecursively()
             val zip = File(buildDir, "kaldi-native-fbank-${knfVersion}.zip")
             val url = "https://github.com/csukuangfj/kaldi-native-fbank/archive/refs/tags/v${knfVersion}.zip"
             if (!downloadZip(listOf(url), zip, buildDir, "kaldi-native-fbank")) {
@@ -328,7 +333,8 @@ val downloadKnf by tasks.registering {
             println("kaldi-native-fbank downloaded to $knfSrc")
         }
 
-        if (!kissfftSrc.exists()) {
+        if (!kissfftCmake.exists()) {
+            kissfftSrc.deleteRecursively()
             val kzip = File(buildDir, "kissfft.zip")
             val kurl = "https://github.com/mborgerding/kissfft/archive/refs/tags/${kissfftTag}.zip"
             if (!downloadZip(listOf(kurl), kzip, buildDir, "kissfft")) {

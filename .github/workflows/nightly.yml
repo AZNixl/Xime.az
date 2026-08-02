@@ -84,9 +84,9 @@ jobs:
 
       - name: Install NDK
         run: |
-          sdkmanager "ndk;28.2.13676358"
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> $GITHUB_ENV
-          echo "ANDROID_NDK=$ANDROID_HOME/ndk/28.2.13676358" >> $GITHUB_ENV
+          sdkmanager "ndk;29.0.14206865"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/29.0.14206865" >> $GITHUB_ENV
+          echo "ANDROID_NDK=$ANDROID_HOME/ndk/29.0.14206865" >> $GITHUB_ENV
 
       - name: Install build tools
         run: |
@@ -98,14 +98,13 @@ jobs:
         with:
           path: |
             app/src/main/jni/onnxruntime
-            app/src/main/jni/third_party/knf
             app/src/main/jniLibs/**/libonnxruntime.so
           key: native-asr-${{ runner.os }}-${{ hashFiles('app/build-logic/tasks-native.gradle.kts') }}
           restore-keys: |
             native-asr-${{ runner.os }}-
 
-      - name: Download ONNX Runtime (ASR dependency)
-        run: ./gradlew downloadOnnx --no-daemon
+      - name: Download native ASR deps (ONNX Runtime + kaldi-native-fbank)
+        run: ./gradlew downloadOnnx downloadKnf --no-daemon
 
       - name: Cache CMake build
         uses: actions/cache@v6
