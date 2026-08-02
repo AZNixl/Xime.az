@@ -112,6 +112,8 @@ use_preset_vocabulary: false
     private suspend fun ensureSchemaPackInner(rimeDir: java.io.File, context: Context, schemaId: String) {
         val schemaFile = java.io.File(rimeDir, "${schemaId}.schema.yaml")
         if (!schemaFile.exists()) return
+        // handwriting 手写识别方案不经过 librime 词典输入，跳过个人词库合并。
+        if (schemaId == "handwriting") return
         // 确保个人词库空白文件存在，供 applyPackConfig / applyMergedDictConfig 引用
         val packFile = getPackFile(context, schemaId)
         if (!packFile.exists()) {
