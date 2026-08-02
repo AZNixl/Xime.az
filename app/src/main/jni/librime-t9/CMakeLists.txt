@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.18.0)
 
-aux_source_directory(src RIME_T9_SRC)
+# Compile directly from the top-level plugin sources (librime-t9/src) instead of
+# the copy under librime/plugins/, so that changes to the top-level sources are
+# tracked as CMake native inputs and trigger a recompile.
+aux_source_directory(${CMAKE_SOURCE_DIR}/librime-t9/src RIME_T9_SRC)
 
 add_library(rime-t9-objs OBJECT ${RIME_T9_SRC})
 if(BUILD_SHARED_LIBS)

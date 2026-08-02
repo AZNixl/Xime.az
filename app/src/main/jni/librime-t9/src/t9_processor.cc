@@ -306,14 +306,85 @@ bool T9Processor::SelectCandidate(int candidate_index) {
         }
     }
 
-    // Partial commit: reset buffer to only remaining digits, clear selections
-    string remaining = digit_buffer_.GetRemainingDigits();
-    T9LOG("SelectCandidate: partial commit, resetting buffer to remaining='%s'", remaining.c_str());
+    // Partial commit: reset the buffer to only the remaining digits, clear selections.
+    // GetRemainingDigits() alone is insufficient for the pure-digit case (no left-column
+    // selections): it only accounts for selections_, so it keeps the whole digit sequence.
+    // In that case the candidate's comment syllables actually consume digits from the front.
+    string remaining;
+    if (digit_buffer_.selections().empty()) {
+        string unconsumed = digit_buffer_.raw_digits();
+        int consumed_by_comment = ComputeConsumedDigitsFromSyllables(unconsumed, comment_syllables);
+        if (consumed_by_comment < static_cast<int>(unconsumed.length())) {
+            remaining = unconsumed.substr(consumed_by_comment);
+            T9LOG("SelectCandidate: partial commit, consuming=%d resetting buffer to remaining='%s'",
+                  consumed_by_comment, remaining.c_str());
+        } else {
+            // The candidate comment covers all digits → full commit.
+            T9LOG("SelectCandidate: partial commit consumed all digits, full commit");
+            digit_buffer_.Clear();
+            return true;
+        }
+    } else {
+        // Left-column selections exist: keep only the digits not consumed by selections.
+        remaining = digit_buffer_.GetRemainingDigits();
+        T9LOG("SelectCandidate: partial commit, resetting buffer to remaining='%s'", remaining.c_str());
+    }
     digit_buffer_.Clear();
     for (char d : remaining) {
         digit_buffer_.AppendDigit(d);
     }
     return false;
+}
+
+int T9Processor::ComputeConsumedDigitsFromSyllables(
+    const std::string& segment,
+    const std::vector<std::string>& syllables) const {
+    if (segment.empty() || syllables.empty()) return 0;
+    int consumed = 0;
+    std::string remaining = segment;
+    for (const auto& syl : syllables) {
+        std::string syl_code;
+        for (char c : syl) {
+            int d = DigitCode(c);
+            if (!d) { syl_code.clear(); break; }
+            syl_code += static_cast<char>('0' + d);
+        }
+        if (syl_code.empty()) break;
+        if (remaining.rfind(syl_code, 0) == 0) {
+            consumed += static_cast<int>(syl_code.length());
+            remaining = remaining.substr(syl_code.length());
+        } else {
+            int match_len = 0;
+            if (static_cast<int>(remaining.length()) >= static_cast<int>(syl_code.length())) {
+                for (int len = static_cast<int>(syl_code.length()) - 1; len >= 1; --len) {
+                    if (remaining.rfind(syl_code.substr(0, len), 0) == 0) {
+                        match_len = len;
+                        break;
+                    }
+                }
+                if (match_len == 0 && remaining.rfind(syl_code.substr(0, 1), 0) == 0)
+                    match_len = 1;
+            } else {
+                for (int len = static_cast<int>(remaining.length()); len >= 1; --len) {
+                    if (syl_code.rfind(remaining.substr(0, len), 0) == 0) {
+                        match_len = len;
+                        break;
+                    }
+                }
+            }
+            if (match_len > 0) {
+                consumed += match_len;
+                remaining = remaining.substr(match_len);
+            } else {
+                break;
+            }
+        }
+    }
+    if (consumed > 0) return consumed;
+    // Comment doesn't match the digit segment at all → consume nothing.
+    // Avoids misclassifying a candidate whose syllables exceed the segment length
+    // as a full commit.
+    return 0;
 }
 
 void T9Processor::SelectPinyinDirect(const std::string& pinyin, int digit_length) {

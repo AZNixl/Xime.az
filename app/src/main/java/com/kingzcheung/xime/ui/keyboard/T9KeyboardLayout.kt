@@ -477,19 +477,20 @@ private fun T9KeyboardContent(
         modifier = Modifier
             .fillMaxSize()
             .padding(start = if (compactMode) 0.dp else 4.dp, end = if (compactMode) 0.dp else 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(if (compactMode) 2.dp else 4.dp)
+        horizontalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         // ── 第1列：左侧候选区（拼音候选项） ──
         Column(
             modifier = Modifier
                 .fillMaxHeight()
-                .weight(0.9f),
+                .weight(0.8f),
             verticalArrangement = Arrangement.spacedBy(if (compactMode) 2.dp else 4.dp)
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxHeight()
                     .weight(3f)
+                    .padding(LocalKeyVisualPadding.current)
                     .then(candidateShadowModifier)
                     .clip(RoundedCornerShape(LocalKeyCornerRadius.current))
                     .background(keyBackgroundColor)
@@ -588,7 +589,7 @@ private fun T9KeyboardContent(
         Column(
             modifier = Modifier
                 .fillMaxHeight()
-                .weight(3.2f),
+                .weight(3.4f),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth().weight(1f),
@@ -754,7 +755,7 @@ private fun T9KeyboardContent(
         Column(
             modifier = Modifier
                 .fillMaxHeight()
-                .weight(0.9f),
+                .weight(0.8f),
         ) {
             SwipeableIconKeyButton(
                 icon = rememberVectorPainter(Icons.AutoMirrored.Filled.Backspace),

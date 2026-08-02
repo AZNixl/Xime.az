@@ -28,6 +28,9 @@ public:
 private:
     bool IsT9Schema() const;
     int DigitCode(char c) const;
+    // 计算候选词 comment 各音节从数字段前缀实际消费的位数（支持声母前缀匹配）。
+    int ComputeConsumedDigitsFromSyllables(const std::string& segment,
+                                           const std::vector<std::string>& syllables) const;
 
     T9DigitBuffer digit_buffer_;
     bool display_original_preedit_ = true;

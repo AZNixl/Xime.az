@@ -2241,6 +2241,21 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                             val result = rimeEngine.getProcessResult(true)
                             if (result.inputText.isEmpty()) {
                                 rimeEngine.clearComposition()
+                                // T9 部分提交：剩余编码删完后，已上屏/ composing 的部分候选词无法用
+                                // RIME 退格删除，会一直卡在候选栏。这里撤销最近一次部分提交：
+                                // 清空 composing 区域（或删除上屏文本）并从累积列表移除。
+                                if (t9PartialCommitTexts.isNotEmpty()) {
+                                    val len = t9PartialCommitTexts.last().length
+                                    withContext(Dispatchers.Main) {
+                                        if (SettingsPreferences.getInputTextLocation(this@XimeInputMethodService)
+                                            == SettingsPreferences.INPUT_TEXT_INPUT_BOX) {
+                                            endComposingInputBox()
+                                        } else {
+                                            currentInputConnection?.deleteSurroundingText(len, 0)
+                                        }
+                                    }
+                                    t9PartialCommitTexts.removeLastOrNull()
+                                }
                             }
                             uiEventChannel.trySend {
                                 updateUIWithResult(result)

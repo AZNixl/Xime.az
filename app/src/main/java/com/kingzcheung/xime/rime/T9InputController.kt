@@ -150,6 +150,9 @@ class T9InputController(
             // Directly set RIME input to remaining digits (bypass processKey/AppendDigit)
             rimeEngine.setInput(remaining)
         }
+        // Partial commit 后 RIME 已清空 composition 并重新填入剩余数字，
+        // 需基于该剩余数字重新计算左栏拼音候选，否则左栏仍显示旧候选。
+        updateCandidates()
     }
 
     fun clearRimeAndResend() {
