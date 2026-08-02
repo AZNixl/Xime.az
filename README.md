@@ -49,7 +49,7 @@ An Android input method built on the [Rime](https://rime.im/) engine, designed f
 - **Rime Engine** - Powered by the mature and reliable Rime input method engine for accurate Chinese input
 - **Rich Keyboard Layouts** - QWERTY full keyboard, T9 Pinyin, Stroke 9-key, Handwriting, Numpad (with calculator)
 - **Floating Keyboard** - Floating card style with drag support, semi-transparent rounded design
-- **Voice-to-Text** - Supports Alibaba Bailian FunAsr (online) and sherpa-onnx (local offline) engines
+- **Voice-to-Text** - Supports Alibaba Bailian FunAsr (online) and a built-in local offline ASR engine
 - **AI Enhancement** - Transformer-based predictive text and punctuation prediction for faster input
 - **Clean UI** - Material Design 3, light/dark themes with multiple color schemes
 - **Keyboard Adjustment** - Adjustable keyboard height and position
@@ -110,16 +110,7 @@ git submodule update --init --recursive
 
 ### Local Speech Recognition Build
 
-The project supports local offline speech recognition (based on sherpa-onnx). The JNI library is downloaded and compiled automatically on first build.
-
-If the automatic build fails, run:
-
-```bash
-# Build sherpa-onnx JNI library manually
-./build-sherpa-onnx.sh
-```
-
-The built `libsherpa-onnx-jni.so` will be placed in `app/src/main/jniLibs/`.
+The project supports local offline speech recognition using a self-contained zipformer2 ASR engine (onnxruntime + kaldi-native-fbank). Dependencies (ONNX Runtime, kaldi-native-fbank) are downloaded automatically by Gradle on first build.
 
 The local ASR model can be downloaded from within the app's settings page.
 
@@ -168,7 +159,8 @@ Core rules:
 - [Rime](https://rime.im/) - Input method engine
 - [Trime](https://github.com/osfans/trime) - Configuration reference
 - [fcitx5-android](https://github.com/fcitx5-android/fcitx5-android) - Keyboard layout reference
-- [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) - Local speech-to-text support
+- [onnxruntime](https://github.com/microsoft/onnxruntime) - Local ASR inference runtime
+- [kaldi-native-fbank](https://github.com/csukuangfj/kaldi-native-fbank) - Local ASR feature extraction
 
 ## License
 
