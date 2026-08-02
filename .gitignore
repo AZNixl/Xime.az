@@ -59,3 +59,5 @@ perf.data
 xime_heap.hprof
 app/src/main/jni/ncnn-build
 app/src/main/jni/ncnn
+# Downloaded at build time by gradle task downloadKnf
+app/src/main/jni/third_party/

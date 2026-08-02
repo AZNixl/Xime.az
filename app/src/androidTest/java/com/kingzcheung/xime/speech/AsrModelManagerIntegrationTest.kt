@@ -1,16 +1,15 @@
-package com.kingzcheung.xime.speech.sherpa
+package com.kingzcheung.xime.speech
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.kingzcheung.xime.speech.RecognitionState
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Integration tests for SherpaAsrEngine
+ * Integration tests for AsrModelManager
  * 
  * These tests verify:
  * - Model availability detection
@@ -19,26 +18,26 @@ import org.junit.runner.RunWith
  * - State management
  */
 @RunWith(AndroidJUnit4::class)
-class SherpaAsrEngineIntegrationTest {
+class AsrModelManagerIntegrationTest {
 
     private lateinit var context: Context
-    private lateinit var engine: SherpaAsrEngine
+    private lateinit var engine: AsrModelManager
 
     @Before
     fun setup() {
         context = ApplicationProvider.getApplicationContext()
-        engine = SherpaAsrEngine(context)
+        engine = AsrModelManager(context)
     }
 
     @Test
     fun testModelAvailabilityDetection() {
-        // Test that JNI library availability is detected
-        val isAvailable = engine.isAvailable()
-        
-        // This may be true or false depending on whether the JNI is compiled
+        // Test that model readiness is detected
+        val isReady = engine.isModelReady()
+
+        // This may be true or false depending on whether the model is downloaded
         // The test documents the expected behavior
-        assertTrue("isAvailable should return a boolean", 
-            isAvailable == true || isAvailable == false)
+        assertTrue("isModelReady should return a boolean",
+            isReady == true || isReady == false)
     }
 
     @Test
@@ -55,7 +54,7 @@ class SherpaAsrEngineIntegrationTest {
     @Test
     fun testAvailableModelsList() {
         // Test that AVAILABLE_MODELS is populated
-        val models = SherpaAsrEngine.AVAILABLE_MODELS
+        val models = AsrModelManager.AVAILABLE_MODELS
         
         assertFalse("Available models list should not be empty", models.isEmpty())
         assertTrue("Should have at least one model", models.isNotEmpty())
@@ -84,7 +83,7 @@ class SherpaAsrEngineIntegrationTest {
     @Test
     fun testModelSelection() {
         // Test setting and getting model
-        val testModelId = "ctc-multi-zh-hans-int8"
+        val testModelId = "zipformer-zh-int8"
         
         engine.setModel(testModelId)
         
@@ -105,27 +104,6 @@ class SherpaAsrEngineIntegrationTest {
     }
 
     @Test
-    fun testStateManagement() {
-        // Test initial state
-        val initialState = engine.getState()
-        assertEquals("Initial state should be IDLE", RecognitionState.IDLE, initialState)
-    }
-
-    @Test
-    fun testCallbackRegistration() {
-        // Test that callbacks can be registered
-        engine.setCallbacks(
-            onResult = { },
-            onPartialResult = { },
-            onStateChange = { },
-            onError = { }
-        )
-        
-        // If no exception thrown, test passes
-        assertTrue("Callbacks should be registered without error", true)
-    }
-
-    @Test
     fun testModelNeedsAutoPunctuation() {
         // Test that models correctly report punctuation requirement
         val modelInfo = engine.getSelectedModelInfo()
@@ -140,7 +118,7 @@ class SherpaAsrEngineIntegrationTest {
     @Test
     fun testModelFilesConfiguration() {
         // Test that model files are properly configured
-        val models = SherpaAsrEngine.AVAILABLE_MODELS
+        val models = AsrModelManager.AVAILABLE_MODELS
         
         for (model in models) {
             assertTrue("Model ${model.id} should have files", model.files.isNotEmpty())
@@ -158,13 +136,13 @@ class SherpaAsrEngineIntegrationTest {
     @Test
     fun testModelInfoPersistence() {
         // Test that model selection persists
-        val testModelId = "ctc-multi-zh-hans-int8"
+        val testModelId = "zipformer-zh-int8"
         
         // Set model
         engine.setModel(testModelId)
         
         // Create new engine instance
-        val newEngine = SherpaAsrEngine(context)
+        val newEngine = AsrModelManager(context)
         val modelInfo = newEngine.getSelectedModelInfo()
         
         // Should retrieve the same model

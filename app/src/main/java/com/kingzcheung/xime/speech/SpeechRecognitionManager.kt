@@ -13,7 +13,6 @@ import androidx.annotation.RequiresPermission
 import com.kingzcheung.xime.model.ModelRuntime
 import com.kingzcheung.xime.settings.SettingsPreferences
 import com.kingzcheung.xime.speech.funasr.FunAsrAsrBackend
-import com.kingzcheung.xime.speech.sherpa.IpcSherpaAsrBackend
 import com.kingzcheung.xime.util.FileLogger
 
 class SpeechRecognitionManager(private val context: Context) {
@@ -24,7 +23,7 @@ class SpeechRecognitionManager(private val context: Context) {
         private const val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
         private const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
         private const val BUFFER_SIZE_SECONDS = 0.1f
-        private const val SPEECH_THRESHOLD = 100
+        private const val SPEECH_THRESHOLD = 25
     }
 
     private var backend: AsrBackend? = null
@@ -84,7 +83,7 @@ class SpeechRecognitionManager(private val context: Context) {
 
             if (!newBackend.initialize()) {
                 val msg = when {
-                    newBackend is IpcSherpaAsrBackend -> "本地模型未下载"
+                    newBackend is LocalZipformerAsrBackend -> "本地模型未下载"
                     newBackend is FunAsrAsrBackend -> "初始化在线引擎失败，请检查 API Key"
                     else -> "引擎初始化失败"
                 }
@@ -255,7 +254,7 @@ class SpeechRecognitionManager(private val context: Context) {
 
     private fun createBackend(): AsrBackend {
         return if (SettingsPreferences.isSttUseLocal(context)) {
-            IpcSherpaAsrBackend(context)
+            LocalZipformerAsrBackend(context)
         } else {
             FunAsrAsrBackend(context)
         }

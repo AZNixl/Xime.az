@@ -3342,9 +3342,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                 if (decor != null) {
                     val navBarBg = decor.findViewById<View>(android.R.id.navigationBarBackground)
                     val navBarH = navBarBg?.height ?: 0
-                    val decorH = decor.height
-                    val h = (decorH - navBarH).coerceAtLeast(0)
-                    Log.d(TAG, "onComputeInsets: compactMode decorH=$decorH navBarBgH=$navBarH top=$h")
+                    val h = (decor.height - navBarH).coerceAtLeast(0)
                     outInsets.contentTopInsets = h
                     outInsets.visibleTopInsets = h
                     outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_VISIBLE
@@ -3383,9 +3381,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             }
         } else {
             super.onComputeInsets(outInsets)
-            val decor = window.window?.decorView
-            val decorH = decor?.height ?: -1
-            Log.d(TAG, "onComputeInsets: normalMode contentTop=${outInsets.contentTopInsets} visibleTop=${outInsets.visibleTopInsets} decorH=$decorH")
         }
     }
 

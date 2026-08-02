@@ -231,3 +231,28 @@ if(EXISTS "${SHERPA_ONNX_JNI_DIR}/lib/${ANDROID_ABI}/libsherpa-onnx-jni.so")
       IMPORTED_LOCATION "${SHERPA_ONNX_JNI_DIR}/lib/${ANDROID_ABI}/libsherpa-onnx-jni.so"
   )
 endif()
+
+# kaldi-native-fbank (fbank feature extraction, Apache-2.0) — fetched into
+# third_party/knf by the gradle task `downloadKnf`. kissfft (BSD) is provided
+# locally to avoid a network fetch inside KNF's own CMake.
+set(KNF_LOCAL_DIR "${CMAKE_SOURCE_DIR}/third_party/knf/kaldi-native-fbank-1.22.3")
+set(FETCHCONTENT_SOURCE_DIR_KISSFFT "${CMAKE_SOURCE_DIR}/third_party/knf/kissfft")
+add_subdirectory(${KNF_LOCAL_DIR} knf_build)
+
+# Self-implemented streaming zipformer2 ASR JNI (Apache-2.0 references)
+add_library(asr_jni SHARED
+    asr/asr_jni.cc
+    asr/zipformer2_model.cc
+    asr/feature_extractor.cc
+    asr/streaming_recognizer.cc
+)
+target_include_directories(asr_jni PRIVATE
+    ${ONNXRUNTIME_DIR}/include
+    ${KNF_LOCAL_DIR}
+)
+target_link_libraries(asr_jni
+    onnxruntime
+    kaldi-native-fbank-core
+    log
+)
+target_link_options(asr_jni PRIVATE "-Wl,-z,max-page-size=16384")

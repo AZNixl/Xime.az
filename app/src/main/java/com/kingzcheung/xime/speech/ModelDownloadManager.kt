@@ -1,4 +1,4 @@
-package com.kingzcheung.xime.speech.sherpa
+package com.kingzcheung.xime.speech
 
 import android.content.Context
 import android.util.Log

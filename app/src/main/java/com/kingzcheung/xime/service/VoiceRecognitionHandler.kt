@@ -10,7 +10,7 @@ import com.kingzcheung.xime.speech.RecognitionState
 import com.kingzcheung.xime.speech.SpeechRecognitionManager
 import com.kingzcheung.xime.speech.punctuation.PunctuationInference
 import com.kingzcheung.xime.speech.punctuation.PunctuationModelManager
-import com.kingzcheung.xime.speech.sherpa.SherpaAsrEngine
+import com.kingzcheung.xime.speech.AsrModelManager
 import com.kingzcheung.xime.settings.SettingsPreferences
 import com.kingzcheung.xime.util.FileLogger
 
@@ -57,7 +57,7 @@ class VoiceRecognitionHandler(
 
         val useLocal = SettingsPreferences.isSttUseLocal(context)
         val providerName = if (useLocal) {
-            val sherpaEngine = SherpaAsrEngine(context)
+            val sherpaEngine = AsrModelManager(context)
             sherpaEngine.getSelectedModelInfo()?.name ?: "本地模型"
         } else {
             val apiKey = SettingsPreferences.getFunAsrApiKey(context)
@@ -138,7 +138,7 @@ class VoiceRecognitionHandler(
 
         val useLocal = SettingsPreferences.isSttUseLocal(context)
         val providerName = if (useLocal) {
-            val sherpaEngine = SherpaAsrEngine(context)
+            val sherpaEngine = AsrModelManager(context)
             sherpaEngine.getSelectedModelInfo()?.name ?: "本地模型"
         } else {
             val apiKey = SettingsPreferences.getFunAsrApiKey(context)
@@ -193,7 +193,7 @@ class VoiceRecognitionHandler(
         val useLocal = SettingsPreferences.isSttUseLocal(context)
         if (!useLocal) return text
         
-        val sherpaEngine = SherpaAsrEngine(context)
+        val sherpaEngine = AsrModelManager(context)
         val needsAutoPunctuation = sherpaEngine.getSelectedModelInfo()?.needsAutoPunctuation ?: true
         if (!needsAutoPunctuation) return text
         

@@ -63,7 +63,7 @@ import androidx.compose.ui.unit.dp
 import com.kingzcheung.xime.R
 import com.kingzcheung.xime.model.ModelManager
 import com.kingzcheung.xime.settings.SettingsPreferences
-import com.kingzcheung.xime.speech.sherpa.SherpaAsrEngine
+import com.kingzcheung.xime.speech.AsrModelManager
 
 data class AsrProvider(
     val id: String,
@@ -245,14 +245,14 @@ fun LocalAsrTab(
     onNavigateToModelManagement: () -> Unit
 ) {
     val context = LocalContext.current
-    val models = remember { SherpaAsrEngine.AVAILABLE_MODELS }
+    val models = remember { AsrModelManager.AVAILABLE_MODELS }
 
     val downloadedStates = remember {
         models.map { it.id to ModelManager.isModelDownloaded(context, it.id) }
     }
 
     val savedModelId = remember {
-        context.getSharedPreferences("sherpa_asr", Context.MODE_PRIVATE)
+        context.getSharedPreferences("asr_model", Context.MODE_PRIVATE)
             .getString("selected_model", "") ?: ""
     }
 
@@ -272,7 +272,7 @@ fun LocalAsrTab(
 
     LaunchedEffect(autoSelectedId) {
         if (autoSelectedId.isNotEmpty() && savedModelId.isEmpty()) {
-            context.getSharedPreferences("sherpa_asr", Context.MODE_PRIVATE)
+            context.getSharedPreferences("asr_model", Context.MODE_PRIVATE)
                 .edit().putString("selected_model", autoSelectedId).apply()
         }
     }
@@ -297,7 +297,7 @@ fun LocalAsrTab(
                 isSelected = modelInfo.id == selectedModelId,
                 onSelect = {
                     selectedModelId = modelInfo.id
-                    context.getSharedPreferences("sherpa_asr", Context.MODE_PRIVATE)
+                    context.getSharedPreferences("asr_model", Context.MODE_PRIVATE)
                         .edit().putString("selected_model", modelInfo.id).apply()
                     SettingsPreferences.setSttUseLocal(context, true)
                 }
@@ -379,7 +379,7 @@ fun LocalAsrTab(
 
 @Composable
 fun LocalModelCard(
-    modelInfo: SherpaAsrEngine.AsrModelInfo,
+    modelInfo: AsrModelManager.AsrModelInfo,
     isSelected: Boolean,
     onSelect: () -> Unit
 ) {
@@ -540,7 +540,7 @@ fun KeepModelInRamToggle() {
     val context = LocalContext.current
     var keepInRam by remember { mutableStateOf(SettingsPreferences.isSttKeepModelInRam(context)) }
     val sherpaAvailable = try {
-        System.loadLibrary("sherpa-onnx-jni"); true
+        System.loadLibrary("asr_jni"); true
     } catch (e: UnsatisfiedLinkError) { false }
 
     Card(

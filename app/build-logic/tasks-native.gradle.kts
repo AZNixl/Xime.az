@@ -187,52 +187,6 @@ val downloadOnnx by tasks.registering {
     }
 }
 
-val buildSherpaOnnx by tasks.registering {
-    val jniLibsDir = file("src/main/jniLibs")
-    val abis = listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
-
-    // 每个 ABI 的 sherpa-onnx JNI 库（c-api/cxx-api 已被静态链接进 jni.so，无需单独打包）
-    val sherpaOnnxSos = abis.map { file("$jniLibsDir/$it/libsherpa-onnx-jni.so") }
-
-    outputs.files(sherpaOnnxSos)
-
-    dependsOn(downloadOnnx)
-
-    doLast {
-        if (sherpaOnnxSos.all { it.exists() }) {
-            println("sherpa-onnx JNI libraries already exist for all ABIs, skipping")
-            return@doLast
-        }
-
-        abis.forEach { jniLibsDir.resolve(it).mkdirs() }
-
-        val url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.0/sherpa-onnx-v1.13.0-android.tar.bz2"
-        val tarball = File(temporaryDir, "sherpa-onnx-android.tar.bz2")
-
-        if (!downloadWithMirrors(githubUrls(url), tarball, temporaryDir, "prebuilt sherpa-onnx JNI library")) {
-            println("WARNING: sherpa-onnx JNI download failed. ASR will use online mode only.")
-            return@doLast
-        }
-
-        for (abi in abis) {
-            copy {
-                from(tarTree(tarball)) {
-                    include("**/$abi/libsherpa-onnx-jni.so")
-                    eachFile { relativePath = RelativePath(true, name) }
-                    includeEmptyDirs = false
-                }
-                into(file("$jniLibsDir/$abi"))
-            }
-        }
-
-        if (sherpaOnnxSos.all { it.exists() }) {
-            println("sherpa-onnx JNI deployed for all ABIs: ${abis.joinToString()}")
-        } else {
-            println("WARNING: sherpa-onnx JNI download incomplete. ASR will use online mode only.")
-        }
-    }
-}
-
 val buildTrie by tasks.registering {
     val inputFile = file("src/main/assets/english.txt")
     val outputFile = file("src/main/assets/english_trie.bin")
@@ -315,6 +269,81 @@ val buildTrie by tasks.registering {
 
 tasks.named("preBuild").configure {
     dependsOn(downloadOnnx)
-    dependsOn(buildSherpaOnnx)
     dependsOn(buildTrie)
+    dependsOn(downloadKnf)
+}
+
+// kaldi-native-fbank + kissfft are fetched into jni/third_party/knf (gitignored)
+// at build time, then consumed by CMake as local source dirs. Reference:
+//   - KNF: https://github.com/csukuangfj/kaldi-native-fbank (Apache-2.0)
+//   - kissfft: https://github.com/mborgerding/kissfft (BSD)
+val downloadKnf by tasks.registering {
+    val knfVersion = "1.22.3"
+    val kissfftTag = "131.2.0"
+    val knfRoot = file("src/main/jni/third_party/knf")
+    val knfSrc = file("$knfRoot/kaldi-native-fbank-${knfVersion}")
+    val kissfftSrc = file("$knfRoot/kissfft")
+
+    outputs.dir(knfSrc)
+    outputs.dir(kissfftSrc)
+
+    doLast {
+        fun isZip(f: File): Boolean {
+            return try {
+                val b = f.readBytes()
+                b.size >= 4 && b[0] == 0x50.toByte() && b[1] == 0x4b.toByte() &&
+                    b[2] == 0x03.toByte() && b[3] == 0x04.toByte()
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        // Download and verify a valid zip, retrying a few times (github archive
+        // can return an error page that downloadWithMirrors treats as success).
+        fun downloadZip(urls: List<String>, target: File, workDir: File, desc: String): Boolean {
+            repeat(5) {
+                if (downloadWithMirrors(urls, target, workDir, desc)) {
+                    if (target.exists() && isZip(target)) return true
+                    target.delete()
+                }
+            }
+            return false
+        }
+
+        knfRoot.mkdirs()
+
+        if (!knfSrc.exists()) {
+            val zip = File(buildDir, "kaldi-native-fbank-${knfVersion}.zip")
+            val url = "https://github.com/csukuangfj/kaldi-native-fbank/archive/refs/tags/v${knfVersion}.zip"
+            if (!downloadZip(listOf(url), zip, buildDir, "kaldi-native-fbank")) {
+                throw GradleException("Failed to download a valid kaldi-native-fbank zip")
+            }
+            copy {
+                from(zipTree(zip))
+                into(knfRoot)
+            }
+            if (!knfSrc.exists()) {
+                throw GradleException("kaldi-native-fbank extract dir not found under $knfRoot")
+            }
+            println("kaldi-native-fbank downloaded to $knfSrc")
+        }
+
+        if (!kissfftSrc.exists()) {
+            val kzip = File(buildDir, "kissfft.zip")
+            val kurl = "https://github.com/mborgerding/kissfft/archive/refs/tags/${kissfftTag}.zip"
+            if (!downloadZip(listOf(kurl), kzip, buildDir, "kissfft")) {
+                throw GradleException("Failed to download a valid kissfft zip")
+            }
+            copy {
+                from(zipTree(kzip))
+                into(knfRoot)
+            }
+            val extracted = file("$knfRoot/kissfft-${kissfftTag}")
+            if (extracted.exists()) extracted.renameTo(kissfftSrc)
+            if (!kissfftSrc.exists()) {
+                throw GradleException("kissfft extract dir not found under $knfRoot")
+            }
+            println("kissfft downloaded to $kissfftSrc")
+        }
+    }
 }
