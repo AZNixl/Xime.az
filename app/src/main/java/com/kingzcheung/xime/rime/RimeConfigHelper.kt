@@ -128,6 +128,12 @@ object RimeConfigHelper {
             if (customFile.exists()) {
                 fileUpdateDigest(digest, customFile)
             }
+            // merged dict 由 app 生成、librime 实际编译，计入 hash 以便其变更（如转发器展开修复）触发重编译
+            val mergedDictFile = File(rimeDir, "${schemaId}_merged.dict.yaml")
+            if (mergedDictFile.exists()) {
+                digest.update("${schemaId}_merged".toByteArray())
+                fileUpdateDigest(digest, mergedDictFile)
+            }
         }
 
         val defaultYaml = File(rimeDir, "default.yaml")
