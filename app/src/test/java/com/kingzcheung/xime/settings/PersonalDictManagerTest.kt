@@ -666,6 +666,32 @@ speller:
         assertEquals(1, text.split("wubi86_merged").size - 1)
     }
 
+    @Test
+    fun `applyMergedDictConfig expands forwarder source dict import_tables`() {
+        val rimeDir = createTempDir()
+        // 转发器：源词典自身无内联词条，仅 import_tables 引用子目录叶子表
+        java.io.File(rimeDir, "wubi98_mint.dict.yaml").writeText(
+            "---\nname: wubi98_mint\nversion: \"1.0\"\nsort: by_weight\nimport_tables:\n  - dicts/wubi98_base\n  - dicts/other_kaomoji\n...\n",
+            Charsets.UTF_8
+        )
+        PersonalDictManager.applyMergedDictConfig(rimeDir, "wubi98_mint")
+        val dictText = File(rimeDir, "wubi98_mint_merged.dict.yaml").readText(Charsets.UTF_8)
+        // 必须展开叶子表，而非引用转发器自身
+        assertTrue(dictText.contains("- dicts/wubi98_base"))
+        assertTrue(dictText.contains("- dicts/other_kaomoji"))
+        assertTrue(dictText.contains("- user_wubi98_mint"))
+        assertFalse("merged dict must not reference the forwarder itself", dictText.contains("- wubi98_mint\n"))
+    }
+
+    @Test
+    fun `readImportTables returns empty for flat dict`() {
+        val rimeDir = createTempDir()
+        val flat = java.io.File(rimeDir, "wubi86.dict.yaml")
+        flat.writeText("name: wubi86\nversion: \"1.0\"\nsort: original\n...\n工\ta\n", Charsets.UTF_8)
+        val result = PersonalDictManager.run { readImportTables(flat) }
+        assertTrue(result.isEmpty())
+    }
+
     // ── insertUnderPatch 合入逻辑 ──
 
     @Test

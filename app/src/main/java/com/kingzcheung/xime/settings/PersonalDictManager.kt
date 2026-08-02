@@ -242,16 +242,11 @@ use_preset_vocabulary: false
             if (dictFile.exists()) dictFile.delete()
             return
         }
-        dictFile.writeText("""# Rime dict
----
-name: $mergedId
-version: "1.0"
-sort: original
-import_tables:
-  - $dictName
-  - $pkName
-...
-""", Charsets.UTF_8)
+        // 源词典若是转发器（自身仅 import_tables，无内联词条），需展开其叶子表，
+        // 否则 librime 只解析 merged dict 一层的 import_tables、不递归，导致收集到 0 词条编译失败。
+        val leafTables = readImportTables(srcDictFile)
+        val importTables = (if (leafTables.isNotEmpty()) leafTables else listOf(dictName)) + pkName
+        dictFile.writeText(buildMergedDictText(mergedId, importTables), Charsets.UTF_8)
         val customFile = java.io.File(rimeDir, "${schemaId}.custom.yaml")
         val entry = "  \"translator/dictionary\": $mergedId\n"
         if (customFile.exists()) {
@@ -266,6 +261,48 @@ import_tables:
             }
         }
         insertUnderPatch(customFile, entry)
+    }
+
+    /** 从源词典文件读取其 `import_tables` 列表（转发器场景）。没有则返回空。 */
+    internal fun readImportTables(dictFile: java.io.File): List<String> {
+        if (!dictFile.exists()) return emptyList()
+        return try {
+            val text = dictFile.readText(Charsets.UTF_8)
+            val tables = mutableListOf<String>()
+            var inImportTables = false
+            for (raw in text.lineSequence()) {
+                val trimmed = raw.trim()
+                if (trimmed.isEmpty() || trimmed.startsWith("#")) continue
+                if (trimmed.startsWith("import_tables:")) {
+                    inImportTables = true
+                    continue
+                }
+                if (inImportTables && trimmed.startsWith("- ")) {
+                    val name = trimmed.removePrefix("- ").trim()
+                        .removeSurrounding("\"").removeSurrounding("'")
+                    if (name.isNotEmpty()) tables.add(name)
+                } else if (inImportTables && !trimmed.startsWith("- ")) {
+                    inImportTables = false
+                }
+            }
+            tables
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    /** 生成 merged dict 文件内容，import_tables 按给定列表展开。 */
+    private fun buildMergedDictText(mergedId: String, importTables: List<String>): String {
+        val tables = importTables.joinToString("\n") { "  - $it" }
+        return """# Rime dict
+---
+name: $mergedId
+version: "1.0"
+sort: original
+import_tables:
+$tables
+...
+"""
     }
 
     /** 提取 patch 块中本代码之前写入的 key 的值（user_* 或旧版 user_simp_*），没有则返回 null。 */
