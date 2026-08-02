@@ -128,7 +128,6 @@ class ModelDownloadManager(private val context: Context) {
 
             FileLogger.i(TAG, "Model $modelId downloaded and extracted successfully")
             onProgress(DownloadState.Complete)
-            Log.d(TAG, "Model $modelId downloaded and extracted successfully")
         } catch (e: Exception) {
             tmpFile.delete()
             FileLogger.e(TAG, "Failed to download model $modelId: ${e.message}", e)
@@ -154,8 +153,6 @@ class ModelDownloadManager(private val context: Context) {
                                 val parts = rawName.split("/", limit = 2)
                                 val entryName = if (parts.size > 1) parts[1] else rawName
 
-                                Log.d(TAG, "Entry #$count: raw='$rawName' -> stripped='$entryName' isDir=${entry.isDirectory}")
-
                                 if (entryName.isEmpty() || entry.isDirectory) {
                                     entry = tarIn.nextEntry
                                     count++
@@ -171,7 +168,6 @@ class ModelDownloadManager(private val context: Context) {
                                         out.write(buffer, 0, len)
                                     }
                                 }
-                                Log.d(TAG, "Extracted: ${outputFile.absolutePath} (${outputFile.length()} bytes)")
                                 entry = tarIn.nextEntry
                                 count++
                             }
@@ -179,7 +175,6 @@ class ModelDownloadManager(private val context: Context) {
                     }
                 }
             }
-            Log.d(TAG, "Extraction complete to ${targetDir.absolutePath}")
         } catch (e: Exception) {
             Log.e(TAG, "Extraction failed", e)
             throw IOException("Failed to extract archive", e)

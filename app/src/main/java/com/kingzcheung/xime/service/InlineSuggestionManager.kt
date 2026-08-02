@@ -66,11 +66,9 @@ class InlineSuggestionManager {
         isAvailable = true
         val newSuggestions = response.inlineSuggestions
         if (newSuggestions.isEmpty() && suggestions.isNotEmpty()) {
-            Log.d("InlineSuggestionManager", "onInlineSuggestionsResponse: ignoring empty, keeping ${suggestions.size} pending suggestions")
             return true
         }
         suggestions = newSuggestions
-        Log.d("InlineSuggestionManager", "onInlineSuggestionsResponse: ${newSuggestions.size} suggestions stored")
         return true
     }
 

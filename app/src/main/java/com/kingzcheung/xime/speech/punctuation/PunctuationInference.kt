@@ -41,7 +41,6 @@ object PunctuationInference {
             }
             
             vocabLoaded = true
-            Log.d(TAG, "Vocab loaded: ${charToId.size} chars, ${idToPunctuation.size} punctuation labels")
             return true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load vocab: ${e.message}")
@@ -61,7 +60,6 @@ object PunctuationInference {
         }
         
         nativeLoaded = true
-        Log.d(TAG, "All native libraries loaded successfully")
         return true
     }
     
@@ -70,14 +68,11 @@ object PunctuationInference {
         
         try {
             System.loadLibrary(simpleName)
-            Log.d(TAG, "Loaded $libName via System.loadLibrary")
             return true
         } catch (e: UnsatisfiedLinkError) {
             if (e.message?.contains("already opened") == true || e.message?.contains("already loaded") == true) {
-                Log.d(TAG, "$libName already loaded, skipping")
                 return true
             }
-            Log.d(TAG, "System.loadLibrary failed for $libName: ${e.message}")
             
             val nativeLibDir = context.applicationInfo?.nativeLibraryDir
             if (nativeLibDir != null) {
@@ -85,7 +80,6 @@ object PunctuationInference {
                 if (libFile.exists()) {
                     try {
                         System.load(libFile.absolutePath)
-                        Log.d(TAG, "Loaded $libName from nativeLibraryDir")
                         return true
                     } catch (e2: UnsatisfiedLinkError) {
                         if (e2.message?.contains("already opened") == true || e2.message?.contains("already loaded") == true) {
@@ -148,7 +142,6 @@ object PunctuationInference {
             }
             
             vocabLoaded = true
-            Log.d(TAG, "Vocab loaded from file: ${charToId.size} chars, ${idToPunctuation.size} punctuation labels")
             return true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load vocab from file: ${e.message}")
@@ -172,11 +165,9 @@ object PunctuationInference {
         
         try {
             nativeInitialize(modelPath)
-            Log.d(TAG, "Native method already available")
             ModelRuntime.markLoaded("punctuation")
             return true
-        } catch (e: UnsatisfiedLinkError) {
-            Log.d(TAG, "Native method not available, loading libraries...")
+        } catch (_: UnsatisfiedLinkError) {
         }
         
         if (!loadNativeLibrary(context)) {
@@ -254,8 +245,7 @@ object PunctuationInference {
     fun release() {
         try {
             nativeRelease()
-        } catch (e: UnsatisfiedLinkError) {
-            Log.d(TAG, "Native release not available")
+        } catch (_: UnsatisfiedLinkError) {
         }
         nativeLoaded = false
         ModelRuntime.markUnloaded("punctuation")

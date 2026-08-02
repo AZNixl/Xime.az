@@ -107,7 +107,6 @@ class RimeEngine {
 
         init {
             System.loadLibrary("rime_jni")
-            Log.d(TAG, "Native library loaded")
         }
 
         fun getInstance(): RimeEngine {
@@ -144,8 +143,6 @@ class RimeEngine {
             synchronized(initLock) {
                 if (!isInitialized) {
                     try {
-                        Log.d(TAG, "Initializing Rime: userDataDir=$userDataDir, sharedDataDir=$sharedDataDir")
-
                         notifyDeploymentStatus(true, "正在加载输入法引擎...")
                         nativeInitialize(userDataDir, sharedDataDir)
                         isInitialized = true
@@ -155,7 +152,6 @@ class RimeEngine {
                         // 部署在后台异步运行，不阻塞
 
                         notifyDeploymentStatus(false, "")
-                        Log.d(TAG, "Rime engine initialized (session deferred)")
                     } catch (e: Exception) {
                         Log.e(TAG, "Error during Rime initialization", e)
                         notifyDeploymentStatus(false, "初始化失败")
@@ -180,7 +176,6 @@ class RimeEngine {
                 return false
             }
             waited += 1000
-            Log.d(TAG, "ensureSession: waiting for maintenance... (${waited / 1000}s)")
         }
 
         synchronized(rimeLock) {
@@ -190,7 +185,6 @@ class RimeEngine {
                     nativeCreateSession()
                 }
                 if (getAvailableSchemas().isNotEmpty()) {
-                    Log.d(TAG, "ensureSession: schemas ready after ${waited}ms")
                     return true
                 }
                 try {
@@ -199,7 +193,6 @@ class RimeEngine {
                     return false
                 }
                 waited += 1000
-                Log.d(TAG, "ensureSession: waiting for schemas... (${waited / 1000}s)")
             }
             Log.w(TAG, "ensureSession: schemas not available after ${timeoutMs}ms, deployment may still be running")
             return false
@@ -270,15 +263,9 @@ class RimeEngine {
      * 是 T9 路径 updateUI 的首选查询接口，可替代多次独立 JNI 调用。
      */
     fun getComposition(): RimeComposition {
-        val t0 = System.nanoTime()
-        val result: RimeComposition = synchronized(rimeLock) {
-            nativeGetComposition()
+        synchronized(rimeLock) {
+            return nativeGetComposition()
         }
-        val elapsed = (System.nanoTime() - t0) / 1_000_000L
-        if (elapsed > 1) {
-            Log.d(TAG, "getComposition() took ${elapsed}ms (input='${result.input}')")
-        }
-        return result
     }
 
     fun selectCandidate(index: Int): Boolean {
@@ -340,18 +327,11 @@ class RimeEngine {
      * @return 是否设置成功
      */
     fun setInput(input: String): Boolean {
-        val t0 = System.nanoTime()
         if (!isInitialized) return false
-        var result = false
         synchronized(rimeLock) {
-            if (!nativeHasSession() && !nativeCreateSession()) return@synchronized
-            result = nativeSetInput(input)
+            if (!nativeHasSession() && !nativeCreateSession()) return false
+            return nativeSetInput(input)
         }
-        val elapsed = (System.nanoTime() - t0) / 1_000_000L
-        if (elapsed > 5) {
-            Log.d(TAG, "setInput('$input') took ${elapsed}ms")
-        }
-        return result
     }
 
     fun toggleAsciiMode(): Boolean {
@@ -419,7 +399,6 @@ class RimeEngine {
     fun destroy() {
         if (isInitialized) {
             synchronized(rimeLock) {
-                Log.d(TAG, "Destroying Rime engine")
                 nativeDestroy()
                 isInitialized = false
             }
@@ -543,7 +522,6 @@ class RimeEngine {
 
     fun deploySchema(schemaId: String): Boolean {
         if (!isInitialized) return false
-        Log.d(TAG, "Deploying single schema: $schemaId")
         return nativeDeploySchema(schemaId)
     }
 

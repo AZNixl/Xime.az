@@ -65,7 +65,6 @@ object XimeIndexSource {
         if (cfg.baseUrls != baseUrls) {
             baseUrls = cfg.baseUrls
             mirrors = buildMirrors(baseUrls)
-            Log.d(TAG, "XimeIndex configured: baseUrls=$baseUrls")
         }
     }
 

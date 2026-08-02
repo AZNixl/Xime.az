@@ -313,14 +313,12 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                             android.view.WindowInsets.Type.navigationBars()
                         ).bottom
                         val dp = (px / resources.displayMetrics.density).roundToInt()
-                        Log.d(TAG, "NavBar: ignoringVisibility px=$px dp=$dp")
                         return dp
                     }
                 }
             }
             val resId = resources.getIdentifier("navigation_bar_height", "dimen", "android")
             val dp = if (resId > 0) (resources.getDimensionPixelSize(resId) / resources.displayMetrics.density).roundToInt() else 0
-            Log.d(TAG, "NavBar: resourceFallback resId=$resId dp=$dp")
             return dp
         } catch (e: Exception) {
             Log.w(TAG, "NavBar: error", e)
@@ -339,12 +337,10 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                             android.view.WindowInsets.Type.navigationBars()
                         ).bottom
                         val dp = if (px > 0) (px / resources.displayMetrics.density).roundToInt() else 0
-                        Log.d(TAG, "NavBar: visibleOnly px=$px dp=$dp")
                         return dp
                     }
                 }
             }
-            Log.d(TAG, "NavBar: visibleOnly 0 (no R or null)")
             0
         } catch (e: Exception) {
             Log.w(TAG, "NavBar: visibleOnly error", e)
@@ -369,34 +365,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             val resId = resources.getIdentifier("status_bar_height", "dimen", "android")
             if (resId > 0) (resources.getDimensionPixelSize(resId) / resources.displayMetrics.density).roundToInt() else 0
         } catch (e: Exception) { 0 }
-    }
-
-    private fun dumpAllInsets() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
-        try {
-            val decorView = window.window?.decorView ?: return
-            val insets = decorView.rootWindowInsets ?: return
-            val density = resources.displayMetrics.density
-            val types = mapOf(
-                "nav" to android.view.WindowInsets.Type.navigationBars(),
-                "status" to android.view.WindowInsets.Type.statusBars(),
-                "system" to android.view.WindowInsets.Type.systemBars(),
-                "tappable" to android.view.WindowInsets.Type.tappableElement(),
-                "sysGestures" to android.view.WindowInsets.Type.systemGestures(),
-                "mandatoryGest" to android.view.WindowInsets.Type.mandatorySystemGestures(),
-                "caption" to android.view.WindowInsets.Type.captionBar(),
-            )
-            val sb = StringBuilder("AllInsets:")
-            for ((name, type) in types) {
-                val ign = insets.getInsetsIgnoringVisibility(type)
-                val vis = insets.getInsets(type)
-                sb.append(" $name=b(ign=${(ign.bottom/density).roundToInt()},vis=${(vis.bottom/density).roundToInt()})")
-            }
-            sb.append(" decorH=${(decorView.height/density).roundToInt()}")
-            Log.d(TAG, sb.toString())
-        } catch (e: Exception) {
-            Log.w(TAG, "dumpAllInsets error", e)
-        }
     }
 
     private fun extractBottomInset(
@@ -433,16 +401,13 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             when (key) {
                 "dark_mode", "keyboard_theme", "show_bottom_buttons", "keyboard_height_dp", "keyboard_bottom_padding_dp" -> {
                     loadDarkModePreference()
-                    Log.d(TAG, "Settings changed: $key, updated UI state")
                 }
                 "floating_mode", "floating_mode_landscape" -> {
                     loadDarkModePreference()
                     applyFloatingWindowBackground()
-                    Log.d(TAG, "Floating mode changed: $key")
                 }
                 "stt_enabled" -> {
                     uiState.value = uiState.value.copy(isSttEnabled = SettingsPreferences.isSttEnabled(this@XimeInputMethodService))
-                    Log.d(TAG, "STT setting changed: $key -> ${SettingsPreferences.isSttEnabled(this@XimeInputMethodService)}")
                 }
             }
         }
@@ -792,7 +757,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                 val effectiveScreenH = if (state.isFloatingMode) physicalScreenDp - statusBarHeightDp else screenHeightDp
                 val windowVisibleHeightDp = effectiveScreenH
                 val navBarAlreadyExcluded = (physicalScreenDp - screenHeightDp) >= (navBarHeightDp + statusBarHeightDp - 3)
-                Log.d(TAG, "ScreenInfo: physicalH=$physicalScreenDp configH=$screenHeightDp statusBar=$statusBarHeightDp navBar=$navBarHeightDp visibleNavBar=$visibleNavBarHeightDp navBarExcluded=$navBarAlreadyExcluded")
                 val floatingMinY = if (navBarAlreadyExcluded) 0 else visibleNavBarHeightDp
 
                 val screenWidthDp = resources.configuration.screenWidthDp
@@ -821,7 +785,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                 val effectiveKeyboardHeight = (keyboardHeight * floatScale).toInt()
                 val floatingDragBarHeight = if (state.isFloatingMode) 18 else 0
                 val floatingCardContentHeight = effectiveKeyboardHeight + floatingDragBarHeight
-                Log.d(TAG, "ComposeHeight: showResize=${state.showKeyboardResize} orientHeight=$orientationHeight displayHeight=$displayHeight keyboardHeight=$keyboardHeight floatScale=$floatScale effectiveHeight=$effectiveKeyboardHeight isFloatingMode=${state.isFloatingMode} isLandscape=$isLandscape")
                 
                 val density = LocalDensity.current
                 // 优先使用 Compose 的 navigationBars 检测（标准设备正常返回值）
@@ -853,7 +816,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                         val contentHeight = if (state.showKeyboardResize) state.resizePreviewHeightDp else floatingCardContentHeight + quickSendFormExtra
                         val totalDp = if (state.isCompact || state.isFloatingMode) effectiveScreenH
                             else contentHeight + state.keyboardBottomPaddingDp + activeBottomDp
-                        Log.d(TAG, "HeightSync: mode=${if (state.showKeyboardResize) "resize" else "normal"} height=$contentHeight navBarDp=${navBarDp.value} padding=${state.keyboardBottomPaddingDp} hasNavBar=$hasNavBar totalDp=$totalDp")
                         SideEffect {
                             keyboardContainer.updateHeight(totalDp)
                             currentEffectiveKeyboardHeight = if (state.isFloatingMode) keyboardHeight + floatingDragBarHeight + 50 + state.keyboardBottomPaddingDp
@@ -987,7 +949,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                                         pendingEnglishText = "",
                                                         associationCandidates = emptyList()
                                                     )
-                                                    Log.d(TAG, "Confirmed pending English: '$text'")
                                                 } else {
                                                     // 键入时已用 setComposingText 建立 composing region，
                                                     // commitText 自然替换 composing 文本，终端也兼容。
@@ -996,7 +957,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                                         pendingEnglishText = "",
                                                         associationCandidates = emptyList()
                                                     )
-                                                    Log.d(TAG, "Replaced '$pendingEnglish' with association: '$text'")
                                                 }
                                             } else {
                                                 commitText(text)
@@ -1008,11 +968,11 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                         candidateState.value = candidateState.value.copy(associationCandidates = emptyList())
                                     },
                                     onToggleDarkMode = { toggleDarkMode() },
-                                    onClipboard = { Log.d(TAG, "Clipboard clicked") },
+                                    onClipboard = {},
                                     onClipboardSelect = { text -> selectClipboardItem(text) },
                                     onCommitText = { text -> commitClipboardText(text) },
                                     onDeleteText = { count -> deleteClipboardChars(count) },
-                                    onQuickSend = { Log.d(TAG, "QuickSend clicked") },
+                                    onQuickSend = {},
                                     onKeyboardResize = {
                                         val config = resources.configuration
                                         val isLandscape = config.screenWidthDp > config.screenHeightDp
@@ -1045,7 +1005,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                         }
                                     },
                                     onVoiceModeChange = { enabled ->
-                                        Log.d("VoiceButtons", "onVoiceModeChange called: enabled=$enabled")
                                         uiState.value = uiState.value.copy(
                                             isVoiceMode = enabled,
                                             voiceButtonState = if (enabled) VoiceButtonState(bottomActive = true) else VoiceButtonState(),
@@ -1058,7 +1017,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                             keyboardContainer.enableVoiceButtonTracking()
                                             voiceRecordingStarted = true
                                             voiceRecognitionHandler.startRecognition()
-                                            Log.d("VoiceButtons", "Speech recognition starting...")
                                         } else {
                                             keyboardViewModel.exitVoice()
                                             isTrackingVoiceButtons = false
@@ -1143,7 +1101,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                         SettingsPreferences.setFloatingOffsetY(this@XimeInputMethodService, s.floatingOffsetY, isLandscape)
                                     },
                                     onT9ReplaceFullPinyin = { pinyin ->
-                                        val t0 = System.nanoTime()
                                         serviceScope.launch(keyProcessingDispatcher) {
                                             when {
                                                 pinyin == T9InputController.CLEAR_COMPOSITION_ONLY -> {
@@ -1163,10 +1120,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                             }
                                             val composition = rimeEngine.getComposition()
                                             withContext(Dispatchers.Main) {
-                                                val totalMs = (System.nanoTime() - t0) / 1_000_000L
-                                                if (totalMs > 10) {
-                                                    Log.d(TAG, "T9 replaceFullPinyin: '${pinyin.take(20)}' total=${totalMs}ms")
-                                                }
                                                 mainHandler.post { applyComposition(composition) }
                                             }
                                         }
@@ -1292,7 +1245,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                        )
                                    },
                                   onConfirm = { newHeight, newPadding ->
-                                       Log.d(TAG, "onConfirm: newHeight=$newHeight newPadding=$newPadding")
                                        setKeyboardHeight(newHeight)
                                        SettingsPreferences.setKeyboardBottomPaddingDp(this@XimeInputMethodService, newPadding)
                                        uiState.value = uiState.value.copy(
@@ -1350,7 +1302,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         val e = event ?: return super.onKeyDown(keyCode, event)
-        Log.d(TAG, "onKeyDown: keyCode=$keyCode")
         if (hasHardwareKeyboard && candidateState.value.candidates.isNotEmpty()) {
             when (keyCode) {
                 KeyEvent.KEYCODE_DPAD_DOWN -> {
@@ -1435,16 +1386,11 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         
         val charsToDelete = currentLength - voiceRecognitionHandler.textLengthBeforeVoiceInput
         
-        Log.d("VoiceButtons", "Undo: currentLength=$currentLength, savedLength=${voiceRecognitionHandler.textLengthBeforeVoiceInput}, charsToDelete=$charsToDelete")
-        
         if (charsToDelete > 0) {
             for (i in 0 until charsToDelete) {
                 currentInputConnection?.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL))
                 currentInputConnection?.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DEL))
             }
-            Log.d("VoiceButtons", "Deleted $charsToDelete characters")
-        } else {
-            Log.d("VoiceButtons", "No characters to delete")
         }
         
         voiceRecognitionHandler.textBeforeVoiceInput = ""
@@ -1611,7 +1557,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                 InputConnection.CURSOR_UPDATE_MONITOR or InputConnection.CURSOR_UPDATE_IMMEDIATE
             )
         }
-        Log.d(TAG, "onStartInputView: inputType=0x${info?.inputType?.toString(16)} package=${info?.packageName}")
     }
 
     private var anchorCoords = floatArrayOf(0f, 0f, 0f, 0f)
@@ -1709,7 +1654,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         val imeOptions = editorInfo.imeOptions
         val action = imeOptions and EditorInfo.IME_MASK_ACTION
         val noEnterAction = imeOptions and EditorInfo.IME_FLAG_NO_ENTER_ACTION != 0
-        Log.d(TAG, "updateEnterKeyText: imeOptions=0x${imeOptions.toString(16)}, action=0x${action.toString(16)}, noEnterAction=$noEnterAction")
         val enterText = when {
             noEnterAction -> "换行"
             action == EditorInfo.IME_ACTION_GO -> "前往"
@@ -1805,9 +1749,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         val codeInInputBox = SettingsPreferences.getInputTextLocation(this) == SettingsPreferences.INPUT_TEXT_INPUT_BOX
         val preeditText = composition.preedit
         val candidatesWithComments = composition.candidates.toList()
-        if (candidatesWithComments.isNotEmpty() || inputText.isNotEmpty()) {
-            Log.d(TAG, "updateUI: input='$inputText' preedit='$preeditText' candidates=${candidatesWithComments.joinToString { "'${it.text}'/${it.comment}'" }}")
-        }
         val isAsciiMode = composition.isAsciiMode
         val hasNextPage = composition.hasNextPage
         val hasPrevPage = composition.hasPrevPage
@@ -1838,7 +1779,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         if (isT9Schema) {
             val rawPreedit = if (preeditText.isNotEmpty()) preeditText else inputText
             val firstComment = candidatesWithComments.firstOrNull()?.comment ?: ""
-            Log.d(TAG, "T9DIAG applyComposition: rawPreedit='$rawPreedit' firstComment='$firstComment' t9DisplayOriginal=$t9DisplayOriginalPreedit candidates=${candidatesWithComments.size}")
             val convertedPreedit = if (t9DisplayOriginalPreedit) rawPreedit
                 else convertT9PreeditToPinyin(rawPreedit, firstComment)
             val display = buildT9DisplayState(
@@ -1873,7 +1813,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         if (pendingEnglish.isNotEmpty()) {
             serviceScope.launch {
                 val candidates = predictionManager.getEnglishAssociations(pendingEnglish, PredictionManager.MAX_ASSOCIATION_COUNT)
-                Log.d(TAG, "English association for pending '$pendingEnglish': ${candidates.joinToString()}")
                 withContext(Dispatchers.Main) {
                     candidateState.value = candidateState.value.copy(associationCandidates = candidates)
                 }
@@ -1903,16 +1842,11 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     }
 
     private fun updateUIWithResult(result: com.kingzcheung.xime.rime.RimeProcessResult) {
-        val t0 = System.nanoTime()
         val isAsciiMode = result.isAsciiMode
         val candidatesWithComments = result.candidates
-        if (candidatesWithComments.isNotEmpty() || result.inputText.isNotEmpty()) {
-            Log.d(TAG, "updateUIWithResult: input='${result.inputText}' preedit='${result.preeditText}' candidates=${candidatesWithComments.joinToString { "'${it.text}'/${it.comment}'" }}")
-        }
 
         val pendingEnglish = candidateState.value.pendingEnglishText
 
-        val tFilter = System.nanoTime()
         val (filteredTexts, filteredComments) = if (isAsciiMode) {
             val filtered = candidatesWithComments.filterNot { candidate ->
                 candidate.text.any { it.code in 0x4E00..0x9FFF }
@@ -1939,7 +1873,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         if (isT9Schema) {
             val rawPreedit = if (result.preeditText.isNotEmpty()) result.preeditText else result.inputText
             val firstComment = candidatesWithComments.firstOrNull()?.comment ?: ""
-            Log.d(TAG, "T9DIAG updateUIWithResult: rawPreedit='$rawPreedit' firstComment='$firstComment' t9DisplayOriginal=$t9DisplayOriginalPreedit input='${result.inputText}'")
             val convertedPreedit = if (t9DisplayOriginalPreedit) rawPreedit
                 else convertT9PreeditToPinyin(rawPreedit, firstComment)
             val display = buildT9DisplayState(
@@ -1976,7 +1909,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         if (pendingEnglish.isNotEmpty()) {
             serviceScope.launch {
                 val candidates = predictionManager.getEnglishAssociations(pendingEnglish, PredictionManager.MAX_ASSOCIATION_COUNT)
-                Log.d(TAG, "English association for pending '$pendingEnglish': ${candidates.joinToString()}")
                 withContext(Dispatchers.Main) {
                     candidateState.value = candidateState.value.copy(associationCandidates = candidates)
                 }
@@ -2220,7 +2152,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                         candidateState.value = candidateState.value.copy(associationCandidates = candidates)
                                     }
                                 }
-                                Log.d(TAG, "Delete: one char from pending English, now '$newPending'")
                             } else {
                                 withContext(Dispatchers.Main) {
                                     sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL)
@@ -2232,7 +2163,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                         isShowingRecentClipboard = false
                                     )
                                 }
-                                Log.d(TAG, "Delete: last pending English char, cleared")
                             }
                         }
                         
@@ -2262,13 +2192,10 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                 updateUIWithResult(result)
                                 if (calculatorEngine.isActive()) updateCalculatorCandidates()
                             }
-                            Log.d(TAG, "Delete: processed Rime backspace, remaining='${result.inputText}'")
                         }
                         
                         // 3. 联想词或剪贴板：仅清空候选栏，不回删已上屏字符
                         candState.associationCandidates.isNotEmpty() || candState.isShowingRecentClipboard -> {
-                            Log.d(TAG, "Delete: cleared predictions, clipboard=${candState.isShowingRecentClipboard}")
-                            
                             candidateState.value = candidateState.value.copy(
                                 candidates = emptyList(),
                                 candidateComments = emptyList(),
@@ -2280,7 +2207,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                         // 4. 无候选也无编码：直接回删已上屏文本
                         else -> {
                             predictionManager.deleteLastChar()
-                            Log.d(TAG, "Delete committed text, remaining: '${predictionManager.lastCommittedText}'")
                             
                             withContext(Dispatchers.Main) {
                                 sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL)
@@ -2307,7 +2233,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                         isShowingRecentClipboard = false
                     )
                     needsUIUpdate = true
-                    Log.d(TAG, "Clear composition: cleared all")
                 }
                 "clear_all" -> {
                     calculatorEngine.clear()
@@ -2338,7 +2263,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                         }
                     }
                     needsUIUpdate = true
-                    Log.d(TAG, "Clear all: saved='$lastClearedText'")
                 }
                 "undo_clear" -> {
                     val text = lastClearedText
@@ -2352,7 +2276,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                         }
                     }
                     needsUIUpdate = true
-                    Log.d(TAG, "Undo clear: restored='$text'")
                 }
                 "enter" -> {
                     calculatorEngine.clear()
@@ -2425,7 +2348,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                 associationCandidates = emptyList()
                             )
                         }
-                        Log.d(TAG, "Space: committed '$pendingEnglish '")
                     } else if (candState.isComposing) {
                         if (candState.candidates.isNotEmpty()) {
                             selectCandidateAsync(0)
@@ -2540,7 +2462,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                 associationCandidates = emptyList()
                             )
                         }
-                        Log.d(TAG, "Symbol: committed '$pendingEnglish$finalKey'")
                     } else {
                         val isChinese = !state.isAsciiMode
                         val char = key
@@ -2562,16 +2483,13 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                         updateUIWithResult(result)
                                         if (calculatorEngine.isActive()) updateCalculatorCandidates()
                                     }
-                                    Log.d(TAG, "Shift+symbol: Rime processed charCode=$charCode, result='${result.committedText}'")
                                 } else {
                                     committedText = char
                                     needsUIUpdate = true
-                                    Log.d(TAG, "Shift+symbol: Rime unprocessed, committing '$char' directly")
                                 }
                             } else {
                                 committedText = char
                                 needsUIUpdate = true
-                                Log.d(TAG, "Shift+symbol: multi-char '$char' committed directly")
                             }
                         } else {
                             val result = rimeEngine.processKeyAndGetResult(keyCode, mask)
@@ -2580,7 +2498,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                     rimeEngine.clearComposition()
                                     committedText = char
                                     needsUIUpdate = true
-                                    Log.d(TAG, "Shift+letter in Chinese mode: Rime consumed key but didn't produce uppercase, committing '$char' directly")
                                 } else {
                                     val committed = result.committedText
                                     if (state.isAsciiMode && committed.isNotEmpty() && result.inputText.isEmpty() && result.candidates.isEmpty()) {
@@ -2618,7 +2535,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                                             associationCandidates = emptyList()
                                                         )
                                                         needsUIUpdate = true
-                                                        Log.d(TAG, "English mode: setComposingText '$newPending'")
                                     } else {
                                         committedText = char
                                         needsUIUpdate = true
@@ -2744,7 +2660,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             }
             rimeEngine.selectCandidate(rimeIndex)
         }
-        Log.d(TAG, "T9 selectCandidate: index=$index selected='${selectedCandidate ?: "null"}' isT9=$isT9 pinyin='${candidatePinyin ?: "null"}' fullyConsumed=$fullyConsumed partialTexts=$t9PartialCommitTexts selectRime=$selectRimeOk")
         if (!selectRimeOk) return
 
         // T9：跳过 rimeEngine.commit()，用用户点选的 selectedCandidate 作为权威上屏文本。
@@ -2762,7 +2677,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                 if (predictionManager.lastCommittedText.isNotEmpty()) {
                     val lastChar = predictionManager.lastCommittedText.last().toString()
                     predictionManager.recordInputPair(lastChar, selectedCandidate)
-                    Log.d(TAG, "Learned: '$lastChar' + '$selectedCandidate'")
                 }
             }
             // T9 full commit：以用户点选的候选词文本为权威上屏文本；
@@ -2928,7 +2842,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     }
     
     private suspend fun switchInputMethod() {
-        Log.d(TAG, "Toggling ascii mode")
         val candState = candidateState.value
         val pendingEnglish = candState.pendingEnglishText
         if (pendingEnglish.isNotEmpty()) {
@@ -2955,8 +2868,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     }
     
     private fun reloadConfig() {
-        Log.d(TAG, "========== reloadConfig CALLED ==========")
-        Log.d(TAG, "Deploying schema...")
         
         mainHandler.post {
             requestHideSelf(0)
@@ -2974,27 +2885,21 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                 // 清空 build 目录，强制 Rime 全量重新编译
                 val buildDir = File(userDataDir, "build")
                 if (buildDir.exists()) {
-                    Log.d(TAG, "Cleaning build directory")
                     buildDir.deleteRecursively()
                 }
                 
-                Log.d(TAG, "Starting deployment...")
-                val deployResult = rimeEngine.deploy()
-                Log.d(TAG, "Deploy result: $deployResult")
+                rimeEngine.deploy()
                 
                 // 部署完成后重新加载配置（Rime 可能在部署过程中改写文件）
                 KeysConfigHelper.loadConfig(this@XimeInputMethodService)
                 KeyboardThemes.reload(this@XimeInputMethodService)
                 
                 val availableSchemas = rimeEngine.getAvailableSchemas()
-                Log.d(TAG, "Available schemas: ${availableSchemas.joinToString()}")
                 
                 val savedSchema = SettingsPreferences.getCurrentSchema(this@XimeInputMethodService)
-                Log.d(TAG, "Saved schema: $savedSchema")
                 if (savedSchema in availableSchemas) {
                     applyPageSizeSetting(savedSchema)
-                    val switchResult = rimeEngine.switchSchema(savedSchema)
-                    Log.d(TAG, "Switch schema result: $switchResult")
+                    rimeEngine.switchSchema(savedSchema)
                 } else {
                     Log.w(TAG, "Schema $savedSchema not found in available schemas")
                 }
@@ -3012,7 +2917,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                     )
                     updateUI()
                     android.widget.Toast.makeText(this@XimeInputMethodService, "方案部署完成", android.widget.Toast.LENGTH_SHORT).show()
-                    Log.d(TAG, "Schema deployed successfully")
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to reload config", e)
@@ -3021,7 +2925,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     }
     
     private fun deploySchema() {
-        Log.d(TAG, "Deploying schema...")
         try {
             rimeEngine.deploy()
             val savedSchema = SettingsPreferences.getCurrentSchema(this)
@@ -3033,14 +2936,12 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                 currentSchemaId = currentSchemaId,
             )
             updateUI()
-            Log.d(TAG, "Schema deployed successfully")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to deploy schema", e)
         }
     }
     
     private fun openSettings() {
-        Log.d(TAG, "Opening settings...")
         try {
             val intent = Intent(this, MainActivity::class.java)
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -3138,12 +3039,10 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         val userPageSize = SettingsPreferences.getPageSize(this)
         if (userPageSize > 0) {
             rimeEngine.setPageSize(schemaId, userPageSize)
-            Log.d(TAG, "Set page_size=$userPageSize for schema '$schemaId' via schema_open API")
         }
     }
 
     private fun switchSchema(schemaId: String) {
-        Log.d(TAG, "Switching schema to: $schemaId")
         if (schemaId == HANDWRITING_SCHEMA_ID) {
             // 检查手写模型文件是否已下载
             val modelFile = java.io.File(filesDir, "ochwpro.onnx")
@@ -3163,7 +3062,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                 return
             }
             previousSchemaId = rimeEngine.getCurrentSchema()
-            Log.d(TAG, "Entering handwriting mode, previous schema: $previousSchemaId")
             SettingsPreferences.setCurrentSchema(this, schemaId)
             keyboardViewModel.switchMain(com.kingzcheung.xime.keyboard.MainType.HANDWRITING)
             updateSchemaName()
@@ -3192,14 +3090,12 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                 )
             )
             Toast.makeText(this, "已切换输入方案", Toast.LENGTH_SHORT).show()
-            Log.d(TAG, "Switched to schema: $schemaId")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to switch schema", e)
         }
     }
     
     private fun downloadSchema(schemaId: String) {
-        Log.d(TAG, "Downloading schema: $schemaId")
         serviceScope.launch(Dispatchers.IO) {
             notifyDeploymentStatus(true, "正在下载 $schemaId...")
             
@@ -3217,8 +3113,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     }
     
     private fun deploy() {
-        Log.d(TAG, "========== deploy() CALLED ==========")
-        Log.d(TAG, "Deploying schemas")
         serviceScope.launch(Dispatchers.IO) {
             // 部署前刷新手势配置和配色方案缓存
             KeysConfigHelper.loadConfig(this@XimeInputMethodService)
@@ -3241,12 +3135,10 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     }
     
     private fun updateKeyboardHeightPreview(heightDp: Int) {
-        Log.d(TAG, "Preview keyboard height: $heightDp")
         keyboardContainer.updateHeight(heightDp)
     }
     
     private fun setKeyboardHeight(heightDp: Int) {
-        Log.d(TAG, "Setting keyboard height to: $heightDp")
         val isLandscape = resources.configuration.screenWidthDp > resources.configuration.screenHeightDp
         SettingsPreferences.setKeyboardHeightDp(this, heightDp, isLandscape)
         uiState.value = uiState.value.copy(keyboardHeightDp = heightDp)
@@ -3254,8 +3146,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     }
 
     private fun toggleFloatingMode(enabled: Boolean, navBarDp: Int = 0) {
-        val effectiveNavBarDp = navBarDp
-        Log.d(TAG, "toggleFloatingMode: $enabled navBarDp=$navBarDp")
         val isLandscape = resources.configuration.screenWidthDp > resources.configuration.screenHeightDp
         SettingsPreferences.setFloatingMode(this, enabled, isLandscape)
         SettingsPreferences.setFloatingMode(this, enabled, !isLandscape)
@@ -3289,18 +3179,14 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
 
     override fun onCreateInlineSuggestionsRequest(uiExtras: Bundle): InlineSuggestionsRequest? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
-        Log.d(TAG, "onCreateInlineSuggestionsRequest(Bundle) called, manager=${inlineSuggestionManager}")
         if (inlineSuggestionManager == null) return null
         updateInlineSuggestionTheme()
         val result = inlineSuggestionManager.onCreateInlineSuggestionsRequest(uiExtras)
-        Log.d(TAG, "onCreateInlineSuggestionsRequest: returning ${if (result != null) "request" else "null"}")
         return result
     }
 
     override fun onInlineSuggestionsResponse(response: InlineSuggestionsResponse): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
-        val count = response.inlineSuggestions.size
-        Log.d(TAG, "onInlineSuggestionsResponse: received $count suggestions")
         return inlineSuggestionManager?.onInlineSuggestionsResponse(response) ?: false
     }
 

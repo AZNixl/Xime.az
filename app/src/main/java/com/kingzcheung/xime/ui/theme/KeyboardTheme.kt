@@ -106,7 +106,6 @@ object KeyboardThemes {
     /** 重新加载 xime.yaml/xime.custom.yaml 中的配色方案并更新缓存。 */
     fun reload(context: Context) {
         configOverrides = KeysConfigHelper.loadColorSchemes(context)
-        android.util.Log.d("KeyboardTheme", "reload: configOverrides=${configOverrides.keys}")
         // 1) 对硬编码主题应用配置覆盖
         val overridden = defaultThemes.map { applyConfigOverrides(context, it) }
         // 2) 把配置中有但硬编码列表中没有的新主题也加入缓存
@@ -116,7 +115,6 @@ object KeyboardThemes {
             .map { (id, entry) -> buildSchemeFromConfig(context, id, entry) }
         themesCache = overridden + newThemes
         themesMapCache = themesCache.associateBy { it.id }
-        android.util.Log.d("KeyboardTheme", "reload: themesCache ids=${themesCache.map { it.id }}")
     }
 
 

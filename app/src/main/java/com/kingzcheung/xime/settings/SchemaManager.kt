@@ -487,7 +487,6 @@ object SchemaManager {
             val updated = replaceSchemaListBlock(text, schemaIds)
             if (updated != text) {
                 defaultYaml.writeText(updated)
-                Log.d(TAG, "default.yaml schema_list -> $schemaIds")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to write default.yaml schema_list", e)
@@ -791,7 +790,6 @@ object SchemaManager {
         }
         try {
             getCustomYamlFile(context).writeText(sb.toString())
-            Log.d(TAG, "Updated custom.yaml with schemas: $schemaIds")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to write custom.yaml", e)
         }
@@ -950,8 +948,6 @@ object SchemaManager {
         return withContext(Dispatchers.IO) {
             val displayName = getFileName(context, uri) ?: return@withContext ImportResult(false)
 
-            Log.d(TAG, "importSchemaFile: displayName=$displayName, isArchive=${isArchive(displayName)}")
-
             val inputStream = when (uri.scheme) {
                 "file" -> java.io.FileInputStream(uri.path!!)
                 else -> context.contentResolver.openInputStream(uri)
@@ -1057,7 +1053,6 @@ object SchemaManager {
                                         importedSchemas.add(name.removeSuffix(".dict.yaml").substringAfterLast('/'))
                                 }
 
-                                Log.d(TAG, "Extracted: $name")
                             }
                         }
                         zis.closeEntry()
@@ -1360,12 +1355,10 @@ object SchemaManager {
                     val name = originalName.removePrefix(baseDir)
                     val file = if (isProtectedImportName(name)) null else safeChild(targetDir, name)
                     if (file == null) {
-                        Log.d(TAG, "Skip protected/unsafe entry: $name")
                     } else {
                         file.parentFile?.mkdirs()
                         FileOutputStream(file).use { output -> tarIn.copyTo(output) }
                         count++
-                        Log.d(TAG, "Extracted tar.gz entry: $name")
                     }
                     entry = tarIn.nextEntry
                 }

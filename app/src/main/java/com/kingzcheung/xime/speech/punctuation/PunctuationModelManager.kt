@@ -100,7 +100,6 @@ class PunctuationModelManager(private val context: Context) {
 
             FileLogger.i(TAG, "Punctuation model downloaded successfully")
             onProgress(DownloadState.Complete)
-            Log.d(TAG, "Punctuation model downloaded to ${modelFile.absolutePath}")
         } catch (e: Exception) {
             modelFile.delete()
             vocabFile.delete()

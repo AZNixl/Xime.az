@@ -17,7 +17,6 @@ object HandwritingNativeEngine {
             }
         }
         nativeLoaded = true
-        Log.d(TAG, "All native libraries loaded successfully")
         return true
     }
 
@@ -25,21 +24,17 @@ object HandwritingNativeEngine {
         val simpleName = libName.removePrefix("lib").removeSuffix(".so")
         try {
             System.loadLibrary(simpleName)
-            Log.d(TAG, "Loaded $libName via System.loadLibrary")
             return true
         } catch (e: UnsatisfiedLinkError) {
             if (e.message?.contains("already opened") == true || e.message?.contains("already loaded") == true) {
-                Log.d(TAG, "$libName already loaded, skipping")
                 return true
             }
-            Log.d(TAG, "System.loadLibrary failed for $libName: ${e.message}")
             val nativeLibDir = context.applicationInfo?.nativeLibraryDir
             if (nativeLibDir != null) {
                 val libFile = File(nativeLibDir, libName)
                 if (libFile.exists()) {
                     try {
                         System.load(libFile.absolutePath)
-                        Log.d(TAG, "Loaded $libName from nativeLibraryDir")
                         return true
                     } catch (e2: UnsatisfiedLinkError) {
                         if (e2.message?.contains("already opened") == true || e2.message?.contains("already loaded") == true) {
@@ -56,10 +51,8 @@ object HandwritingNativeEngine {
     fun initialize(context: Context, modelPath: String): Boolean {
         try {
             nativeInitialize(modelPath)
-            Log.d(TAG, "Native method already available")
             return true
         } catch (e: UnsatisfiedLinkError) {
-            Log.d(TAG, "Native method not available, loading libraries...")
         }
         if (!loadNativeLibrary(context)) {
             Log.e(TAG, "Native libraries not loaded")

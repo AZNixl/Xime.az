@@ -42,15 +42,12 @@ object HandwritingEngine {
             return false
         }
 
-        Log.d(TAG, "Model file size: ${modelFile!!.length()}, char_index size: ${charIndexFile!!.length()}")
-
         try {
             if (!loadCharIndex(context)) {
                 Log.e(TAG, "Failed to load char_index.json")
                 return false
             }
 
-            Log.d(TAG, "Initializing ONNX engine with: ${modelFile!!.absolutePath}")
             val ok = HandwritingNativeEngine.initialize(context, modelFile!!.absolutePath)
             if (!ok) {
                 Log.e(TAG, "Failed to initialize HandwritingNativeEngine")
@@ -118,7 +115,6 @@ object HandwritingEngine {
             }
 
             chars = extracted.toList()
-            Log.d(TAG, "Loaded ${chars.size} characters from char_index")
             true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load char_index: ${e.message}", e)
@@ -258,6 +254,5 @@ object HandwritingEngine {
         HandwritingNativeEngine.release()
         initialized = false
         chars = emptyList()
-        Log.d(TAG, "Handwriting engine released")
     }
 }

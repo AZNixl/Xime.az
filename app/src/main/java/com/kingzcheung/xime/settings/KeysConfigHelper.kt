@@ -500,7 +500,6 @@ object KeysConfigHelper {
                 }
             }
             _configVersion.value++
-            Log.d(TAG, "Loaded config: ${keyGestureConfig.size} keys (v${_configVersion.value})")
         } catch (e: Exception) {
             Log.w(TAG, "Failed to load xime config", e)
         }
@@ -561,7 +560,6 @@ object KeysConfigHelper {
         }
         val zh = if (customZh != null) defaultZh + customZh else defaultZh
         val en = if (customEn != null) defaultEn + customEn else defaultEn
-        Log.d(TAG, "parseKeyboardFromAssets: zh=${zh.size}keys, en=${en.size}keys")
         return Pair(zh, en)
     }
 
@@ -696,18 +694,14 @@ object KeysConfigHelper {
         val defaultText = readAssetText(context, XIME_CONFIG_FILE) ?: return Pair(ButtonLayout.STANDARD, ButtonLayout.STANDARD)
         val defaultZh = parseButtonLayoutYamlText(defaultText, "qwerty")
         val defaultEn = parseButtonLayoutYamlText(defaultText, "qwerty_en")
-        Log.d(TAG, "parseButtonLayout: defaultZh=$defaultZh, defaultEn=$defaultEn")
         val customText = readUserDataText(context, XIME_CUSTOM_CONFIG_FILE)
             ?: readAssetText(context, XIME_CUSTOM_CONFIG_FILE)
-        Log.d(TAG, "parseButtonLayout: customText exists=${customText != null}, length=${customText?.length ?: 0}")
         val customZh = customText?.let { parseButtonLayoutYamlText(it, "qwerty") }
         val customEn = customText?.let { parseButtonLayoutYamlText(it, "qwerty_en") }
-        Log.d(TAG, "parseButtonLayout: customZh=$customZh, customEn=$customEn")
         val result = Pair(
             customZh ?: defaultZh ?: ButtonLayout.STANDARD,
             customEn ?: defaultEn ?: ButtonLayout.STANDARD,
         )
-        Log.d(TAG, "parseButtonLayout: result zh=${result.first}, en=${result.second}")
         return result
     }
 
@@ -769,7 +763,6 @@ object KeysConfigHelper {
             val gestureMap = vNode as? YamlMap ?: continue
             result[key] = parseKeyGestureConfig(gestureMap)
         }
-        Log.d(TAG, "parseKeyboardYamlSection($section): keys=${result.size} [${result.keys.joinToString("")}]")
         return result
     }
 
@@ -783,7 +776,6 @@ object KeysConfigHelper {
             ?.let { parseConfig(it) }
             ?: readAssetText(context, XIME_CUSTOM_CONFIG_FILE)
                 ?.let { parseConfig(it) }
-        Log.d(TAG, "loadMergedConfig: custom=${custom != null}")
         val config = mergeConfig(default, custom)
         mergedConfigCache = config
         mergedConfigVersion = currentVersion
@@ -838,11 +830,9 @@ object KeysConfigHelper {
     /** 从用户数据目录 (context.filesDir/rime/) 读取文件。 */
     private fun readUserDataText(context: Context, fileName: String): String? {
         val file = File(context.filesDir, "rime/$fileName")
-        Log.d(TAG, "readUserDataText: path=${file.absolutePath}, exists=${file.exists()}")
         if (!file.exists()) return null
         return try {
             val text = file.readText().trimStart('\uFEFF')
-            Log.d(TAG, "readUserDataText: read ${text.length} chars, first 80=${text.take(80)}")
             text
         } catch (e: Exception) {
             Log.w(TAG, "readUserDataText: failed", e)

@@ -134,7 +134,6 @@ class VoiceRecognitionHandler(
 
         textBeforeVoiceInput = getInputConnection()?.getTextBeforeCursor(1000, 0)?.toString() ?: ""
         textLengthBeforeVoiceInput = textBeforeVoiceInput.length
-        Log.d("VoiceButtons", "Saved text before voice: length=$textLengthBeforeVoiceInput")
 
         val useLocal = SettingsPreferences.isSttUseLocal(context)
         val providerName = if (useLocal) {
@@ -147,7 +146,6 @@ class VoiceRecognitionHandler(
         onStateChanged(getState().copy(voicePluginName = providerName))
 
         speechRecognitionManager.startRecognition()
-        Log.d("VoiceButtons", "Speech recognition starting")
     }
 
     fun stopRecognition() {

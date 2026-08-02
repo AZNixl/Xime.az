@@ -325,9 +325,31 @@ bool T9Processor::SelectCandidate(int candidate_index) {
             return true;
         }
     } else {
-        // Left-column selections exist: keep only the digits not consumed by selections.
-        remaining = digit_buffer_.GetRemainingDigits();
-        T9LOG("SelectCandidate: partial commit, resetting buffer to remaining='%s'", remaining.c_str());
+        // Left-column selections exist: the candidate's comment covers the leading
+        // selections. Keep the digits of the selections NOT covered by the comment,
+        // plus any trailing unconsumed digits.
+        // GetRemainingDigits() is wrong here: it assumes the candidate covers ALL
+        // pinned selections, so when the selections consume every digit it returns ""
+        // and wipes the whole buffer. E.g. pin die-ba-die-ba on "3432234322" then
+        // select "跌"(die): only the first selection is covered, "ba-die-ba"(2234322)
+        // must be preserved.
+        size_t covered = 0;
+        size_t max_check = std::min(comment_syllables.size(),
+                                    digit_buffer_.selections().size());
+        for (size_t i = 0; i < max_check; ++i) {
+            if (DigitCode(digit_buffer_.selections()[i].pinyin[0]) ==
+                DigitCode(comment_syllables[i][0])) {
+                covered++;
+            } else {
+                break;
+            }
+        }
+        int consumed = 0;
+        for (size_t i = 0; i < covered; ++i)
+            consumed += digit_buffer_.selections()[i].digit_length;
+        remaining = digit_buffer_.raw_digits().substr(consumed);
+        T9LOG("SelectCandidate: partial commit (selections), covered=%zu consumed=%d remaining='%s'",
+              covered, consumed, remaining.c_str());
     }
     digit_buffer_.Clear();
     for (char d : remaining) {

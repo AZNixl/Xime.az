@@ -90,7 +90,6 @@ class PredictionManager(
         serviceScope.launch {
             try {
                 if (!AssociationManager.isInitialized()) {
-                    Log.d(TAG, "AssociationManager not initialized, initializing...")
                     val initSuccess = withContext(Dispatchers.IO) {
                         AssociationManager.initialize(context)
                     }
@@ -104,8 +103,6 @@ class PredictionManager(
                 }
                 
                 val candidates = AssociationManager.predict(contextText, MAX_ASSOCIATION_COUNT)
-                
-                Log.d(TAG, "Prediction candidates: ${candidates.map { it.text }}")
                 
                 withContext(Dispatchers.Main) {
                     onPredictionResult(candidates.map { it.text })
@@ -143,7 +140,6 @@ class PredictionManager(
     suspend fun getChineseAssociations(text: String, limit: Int = MAX_ASSOCIATION_COUNT): List<String> {
         return try {
             if (!AssociationManager.isInitialized()) {
-                Log.d(TAG, "AssociationManager not initialized, initializing...")
                 AssociationManager.initialize(context)
             }
             

@@ -40,14 +40,11 @@ class PluginsSettingsViewModel(application: Application) : AndroidViewModel(appl
             
             try {
                 withContext(Dispatchers.IO) {
-                    val scanned = PluginManager.scanAndInstallSystemPlugins()
-                    Log.d(TAG, "Scanned $scanned new plugins")
-                    val loaded = PluginManager.loadEnabledPlugins()
-                    Log.d(TAG, "Loaded $loaded plugins")
+                    PluginManager.scanAndInstallSystemPlugins()
+                    PluginManager.loadEnabledPlugins()
                 }
                 
                 val extensions = PluginManager.getAllInstallPlugins()
-                Log.d(TAG, "Loaded ${extensions.size} plugins: ${extensions.map { it.id }}")
                 
                 _uiState.update { it.copy(
                     extensions = extensions,
