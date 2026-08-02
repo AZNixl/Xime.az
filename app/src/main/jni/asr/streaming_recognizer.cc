@@ -105,7 +105,10 @@ void StreamingRecognizer::DecodeOneChunk() {
   // Build (1, chunk_size, feature_dim) input from the feature buffer at the
   // current processed frame offset.
   const int32_t dim = feature_dim_;
-  std::vector<float> x(chunk_size_ * dim);
+  const std::vector<float>::size_type x_size =
+      static_cast<std::vector<float>::size_type>(chunk_size_) *
+      static_cast<std::vector<float>::size_type>(dim);
+  std::vector<float> x(x_size);
   for (int32_t j = 0; j < chunk_size_; ++j) {
     const float *f = feat_->GetFrame(processed_frames_ + j);
     std::copy(f, f + dim, x.data() + j * dim);
