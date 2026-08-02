@@ -10,8 +10,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -26,11 +33,14 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kingzcheung.xime.handwriting.HandwritingCandidate
 import com.kingzcheung.xime.keyboard.KeyboardPage
@@ -47,6 +57,7 @@ import com.kingzcheung.xime.ui.menubar.ClipboardView
 import com.kingzcheung.xime.ui.menubar.SchemaListView
 import com.kingzcheung.xime.ui.menubar.ToolbarCustomizeView
 import com.kingzcheung.xime.ui.theme.KeyboardThemes
+import com.kingzcheung.xime.ui.theme.keyboardBackground
 import com.kingzcheung.xime.viewmodel.KeyboardUiState
 import com.kingzcheung.xime.viewmodel.KeyboardViewModel
 import kotlin.math.abs
@@ -61,6 +72,7 @@ fun KeyboardView(
     state: KeyboardUiState,
     callbacks: KeyboardCallbacks,
     modifier: Modifier = Modifier,
+    inlineSuggestions: List<*> = listOf<Any>(),
     onCardPositioned: (left: Int, top: Int, right: Int, bottom: Int) -> Unit = { _: Int, _: Int, _: Int, _: Int -> },
 ) {
     val isShifted by viewModel.isShifted.collectAsStateWithLifecycle()
@@ -102,7 +114,13 @@ fun KeyboardView(
 
     SideEffect {
         callbacks.onT9RightCandidateWillBeSelected = { pinyin, textLength ->
-            t9Controller.onRightCandidateSelected(pinyin, textLength)
+            if (pinyin.isNullOrBlank()) {
+                // emoji/符号等无拼音注释的候选词：直接提交上屏，不走消耗算法
+                t9Controller.onRightCandidateSelectedByDirectCommit()
+            } else {
+                t9Controller.onRightCandidateSelected(pinyin, textLength)
+            }
+            t9Controller.inputBuffer.isEmpty
         }
         callbacks.onT9ForceSendToRime = {
             t9Controller.forceSendToRime()
@@ -120,9 +138,6 @@ fun KeyboardView(
         if (keyboardState is KeyboardLayoutState.Number) {
             if (savedNumberAsciiMode == null) {
                 savedNumberAsciiMode = state.isAsciiMode
-                if (!state.isAsciiMode && page is KeyboardPage.Main) {
-                    callbacks.onKeyPress("ime_switch", false)
-                }
             }
         } else {
             savedNumberAsciiMode = null
@@ -132,23 +147,24 @@ fun KeyboardView(
     val kbColors = KeysConfigHelper.getKeyboardColors()
     val kbShadow = KeysConfigHelper.getKeyboardShadow()
     val kbKey = KeysConfigHelper.getKeyboardKeyConfig()
-    val longToColor: (Long) -> androidx.compose.ui.graphics.Color = { androidx.compose.ui.graphics.Color(0xFF000000 or it) }
-    val keyboardBgColor = if (state.isDarkTheme) longToColor(kbColors.keyboardBgColorDark)
-        else longToColor(kbColors.keyboardBgColor)
-    val keyBgColor = if (state.isDarkTheme) longToColor(kbColors.keyBgColorDark)
+    val longToColor: (Long) -> androidx.compose.ui.graphics.Color = { if (it > 0xFFFFFF) androidx.compose.ui.graphics.Color(it) else androidx.compose.ui.graphics.Color(0xFF000000 or it) }
+    val keyboardBgColor = KeyboardThemes.getKeyboardBackgroundColor(state.themeId, state.isDarkTheme)
+    val keyBgColor = KeyboardThemes.getKeyBgColorOverride(state.themeId, state.isDarkTheme)
+        ?: if (state.isDarkTheme) longToColor(kbColors.keyBgColorDark)
         else longToColor(kbColors.keyBgColor)
-    val keyTextColor = if (state.isDarkTheme) longToColor(kbColors.keyTextColorDark)
+    val keyTextColor = KeyboardThemes.getKeyTextColorOverride(state.themeId, state.isDarkTheme)
+        ?: if (state.isDarkTheme) longToColor(kbColors.keyTextColorDark)
         else longToColor(kbColors.keyTextColor)
     val accentColor = KeyboardThemes.getAccentColor(state.themeId, state.isDarkTheme)
+    val themeScheme = KeyboardThemes.getThemeById(state.themeId)
     val themeSpecialKeyColor = KeyboardThemes.getSpecialKeyColor(state.themeId, state.isDarkTheme)
     val specialKeyBgColor = if (state.isDarkTheme) kbColors.specialKeyBgColorDark?.let { longToColor(it) }
         ?: themeSpecialKeyColor
         else kbColors.specialKeyBgColor?.let { longToColor(it) } ?: themeSpecialKeyColor
     val specialKeyTextColor = if (state.isDarkTheme) androidx.compose.ui.graphics.Color.White
         else KeyboardThemes.getSpecialKeyTextColor(state.themeId, false)
-    val candidateBarBg = if (state.isDarkTheme) longToColor(kbColors.candidateBarBgColorDark)
-        else longToColor(kbColors.candidateBarBgColor)
-    val candidateTextColor = if (state.isDarkTheme) longToColor(kbColors.candidateTextColorDark)
+    val candidateTextColor = KeyboardThemes.getCandidateTextColorOverride(state.themeId, state.isDarkTheme)
+        ?: if (state.isDarkTheme) longToColor(kbColors.candidateTextColorDark)
         else longToColor(kbColors.candidateTextColor)
     val dividerColor = if (state.isDarkTheme) androidx.compose.ui.graphics.Color(0xFF3C4043) else androidx.compose.ui.graphics.Color(0xFFDADCE0)
 
@@ -162,7 +178,7 @@ fun KeyboardView(
     val floatScaleFactor = if (state.isFloatingMode) cardWidthDp.toFloat() / screenW.toFloat() else 0.85f
     val floatFontScale = if (state.isFloatingMode) cardWidthDp.toFloat() / portraitScreenWidth.toFloat() else 1f
 
-    val contentModifier = modifier.background(keyboardBgColor)
+    val contentModifier = modifier.keyboardBackground(themeScheme.keyboardBackground, state.isDarkTheme, keyboardBgColor)
     FloatingKeyboardContainer(
         isFloatingMode = state.isFloatingMode,
         scaleFactor = floatScaleFactor,
@@ -214,6 +230,32 @@ fun KeyboardView(
                 }
             }
 
+            if (state.showQuickSendForm) {
+                QuickSendFormArea(
+                    backgroundColor = Color.Transparent,
+                    textColor = keyTextColor,
+                    accentColor = accentColor,
+                    isFocused = state.quickSendFormFocused,
+                    initialText = state.quickSendEditingItemText,
+                    cardBgColor = keyBgColor,
+                    editingItemId = state.quickSendEditingItemId,
+                    onClose = { text: String ->
+                        if (text.isNotBlank()) {
+                            val editingId = state.quickSendEditingItemId
+                            if (editingId != null) {
+                                viewModel.updateQuickSendItem(editingId, text)
+                            } else {
+                                viewModel.addQuickSendText(text)
+                            }
+                        }
+                        callbacks.onHideQuickSendForm?.invoke()
+                    },
+                    onFocusChange = { focused: Boolean ->
+                        callbacks.onQuickSendFormFocusChange?.invoke(focused)
+                    },
+                )
+            }
+
             CandidateBar(
                 state = candidateBarState,
                 page = page,
@@ -238,11 +280,12 @@ fun KeyboardView(
                         ToolbarButton.END -> ({ callbacks.onToolbarEditingAction?.invoke("end") })
                         ToolbarButton.FLOAT -> ({ callbacks.onFloatingModeChange?.invoke(!state.isFloatingMode) })
                         ToolbarButton.HANDWRITING_LOOKUP -> ({ isHandwritingLookup = !isHandwritingLookup })
+                        ToolbarButton.EDIT -> ({ viewModel.showOverlay(OverlayRoute.Edit) })
                     }
                     ToolbarAction(button, onClick)
                 },
                 visuals = CandidateBarVisuals(
-                    backgroundColor = candidateBarBg,
+                    backgroundColor = Color.Transparent,
                     textColor = candidateTextColor,
                     dividerColor = dividerColor,
                     accentColor = accentColor,
@@ -308,7 +351,8 @@ fun KeyboardView(
                             callbacks.onAssociationSelect?.invoke(index)
                         }
                     },
-                )
+                ),
+                inlineSuggestions = inlineSuggestions,
             )
 
             val isMainKeyboard = page is KeyboardPage.Main
@@ -384,6 +428,7 @@ fun KeyboardView(
                                 "shift_single" -> viewModel.singleTapShift()
                                 "shift_caps" -> viewModel.doubleTapShift()
                                 "mode_change" -> {
+                                    callbacks.onCommitCandidateBeforeModeChange?.invoke()
                                     viewModel.setKeyboardState(keyboardState.transition(
                                         modeChangeTarget, state.isAsciiMode
                                     ))
@@ -391,11 +436,13 @@ fun KeyboardView(
                                 }
                                 "mode_change_symbol" -> viewModel.showOverlay(OverlayRoute.Symbol)
                                 "mode_change_number" -> {
+                                    callbacks.onCommitCandidateBeforeModeChange?.invoke()
                                     modeChangeTarget = KeyboardLayoutAction.SwitchToNumber
                                     SettingsPreferences.setModeChangeTargetIsNumber(context, true)
                                     viewModel.setKeyboardState(KeyboardLayoutState.Number)
                                 }
                                 "mode_change_common_symbol" -> {
+                                    callbacks.onCommitCandidateBeforeModeChange?.invoke()
                                     modeChangeTarget = KeyboardLayoutAction.SwitchToCommonSymbol
                                     SettingsPreferences.setModeChangeTargetIsNumber(context, false)
                                     viewModel.setKeyboardState(keyboardState.transition(
@@ -412,6 +459,7 @@ fun KeyboardView(
                         val numberOnKeyPress: (String) -> Unit = { key ->
                             when (key) {
                                 "abc" -> {
+                                    callbacks.onKeyPress("abc", false)
                                     val saved = savedNumberAsciiMode
                                     savedNumberAsciiMode = null
                                     if (saved != null && saved != state.isAsciiMode) {
@@ -446,6 +494,7 @@ fun KeyboardView(
                                     initialKeyboardLayoutState(state.isAsciiMode, state.currentSchemaId)
                                 )
                                 "?123" -> {
+                                    callbacks.onCommitCandidateBeforeModeChange?.invoke()
                                     viewModel.setKeyboardState(keyboardState.transition(
                                         KeyboardLayoutAction.SwitchToNumber, state.isAsciiMode
                                     ))
@@ -643,6 +692,7 @@ fun KeyboardView(
                         keyBackgroundColor = keyBgColor,
                         keyTextColor = keyTextColor,
                         specialKeyBackgroundColor = specialKeyBgColor,
+                        bubbleBackgroundColor = themeSpecialKeyColor,
                         keyboardBackgroundColor = keyboardBgColor,
                         shadowEnabled = kbShadow.enabled,
                         shadowElevation = kbShadow.elevation.dp,
@@ -668,6 +718,7 @@ fun KeyboardView(
                         keyBackgroundColor = keyBgColor,
                         keyTextColor = keyTextColor,
                         specialKeyBackgroundColor = specialKeyBgColor,
+                        bubbleBackgroundColor = themeSpecialKeyColor,
                         keyboardBackgroundColor = keyboardBgColor,
                         shadowEnabled = kbShadow.enabled,
                         shadowElevation = kbShadow.elevation.dp,
@@ -743,7 +794,10 @@ fun KeyboardView(
                             isDarkTheme = state.isDarkTheme,
                             darkMode = state.darkMode,
                             backgroundColor = keyboardBgColor,
+                            keyBgColor = keyBgColor,
+                            keyTextColor = keyTextColor,
                             isFloatingMode = state.isFloatingMode,
+                            schemaSwitches = state.schemaSwitches,
                         ),
                         callbacks = MenuBarCallbacks(
                             onDismiss = { viewModel.closeOverlay() },
@@ -757,15 +811,17 @@ fun KeyboardView(
                             onToggleDarkMode = { callbacks.onToggleDarkMode?.invoke() },
                             onToolbarCustomize = { viewModel.showOverlay(OverlayRoute.ToolbarCustomize) },
                             onFloatingModeToggle = { callbacks.onFloatingModeChange?.invoke(!state.isFloatingMode); viewModel.closeOverlay() },
+                            onToggleSchemaSwitch = { sw -> callbacks.onToggleSchemaSwitch?.invoke(sw); viewModel.closeOverlay() },
                         ),
                         modifier = Modifier.fillMaxWidth().fillMaxHeight()
                     )
                     is OverlayRoute.SchemaList -> SchemaListView(
                         schemas = state.schemas,
                         currentSchemaId = state.currentSchemaId,
-                        isDarkTheme = state.isDarkTheme,
                         backgroundColor = keyboardBgColor,
                         accentColor = accentColor,
+                        keyTextColor = keyTextColor,
+                        keyBgColor = keyBgColor,
                         onSelectSchema = { schemaId ->
                             callbacks.onSwitchSchema?.invoke(schemaId)
                             viewModel.closeOverlay()
@@ -777,8 +833,8 @@ fun KeyboardView(
                         clipboardItems = state.clipboardItems,
                         quickSendItems = state.quickSendItems,
                         selectedTab = p.route.tab,
-                        isDarkTheme = state.isDarkTheme,
                         backgroundColor = keyboardBgColor,
+                        keyTextColor = keyTextColor,
                         viewModel = viewModel,
                         onSelectItem = { text ->
                             callbacks.onClipboardSelect?.invoke(text)
@@ -788,18 +844,46 @@ fun KeyboardView(
                         onBack = { viewModel.closeOverlay() },
                         onClipboardTabChange = { viewModel.pushOverlay(OverlayRoute.Clipboard(it)) },
                         bottomPaddingDp = state.keyboardBottomPaddingDp,
-                        modifier = Modifier.fillMaxWidth().fillMaxHeight()
+                        modifier = Modifier.fillMaxWidth().fillMaxHeight(),
+                        onQuickSendAddClick = {
+                            viewModel.closeOverlay()
+                            callbacks.onShowQuickSendForm?.invoke()
+                        },
+                        onQuickSendEditItem = { id, text ->
+                            viewModel.closeOverlay()
+                            callbacks.onQuickSendEditItem?.invoke(id, text)
+                        },
                     )
                     is OverlayRoute.ToolbarCustomize -> ToolbarCustomizeView(
                         toolbarButtons = state.toolbarButtons,
                         keyTextColor = keyTextColor,
                         backgroundColor = keyboardBgColor,
                         accentColor = accentColor,
+                        keyBgColor = keyBgColor,
                         onUpdateToolbarButtons = callbacks.onUpdateToolbarButtons,
                         onDismiss = { viewModel.closeOverlay() },
                         bottomPaddingDp = state.keyboardBottomPaddingDp,
                         modifier = Modifier.fillMaxWidth().fillMaxHeight()
                     )
+                    is OverlayRoute.Edit -> {
+                        val editAction: (String) -> Unit = { action ->
+                            when (action) {
+                                "delete" -> callbacks.onKeyPress("delete", false)
+                                "enter" -> callbacks.onKeyPress("enter", false)
+                                else -> callbacks.onToolbarEditingAction?.invoke(action)
+                            }
+                        }
+                        EditKeyboardLayout(
+                            onAction = editAction,
+                            onBack = { viewModel.closeOverlay() },
+                            backgroundColor = keyboardBgColor,
+                            textColor = keyTextColor,
+                            accentColor = accentColor,
+                            keyBgColor = keyBgColor,
+                            bottomPaddingDp = state.keyboardBottomPaddingDp,
+                            modifier = Modifier.fillMaxWidth().fillMaxHeight()
+                        )
+                    }
                     is OverlayRoute.Emoji -> EmojiKeyboardLayout(
                         onEmojiSelect = { emoji ->
                             if (emoji == "delete") {
@@ -810,7 +894,7 @@ fun KeyboardView(
                         },
                         onImageEmojiSelect = callbacks.onCommitImage,
                         onBack = { viewModel.closeOverlay() },
-                        backgroundColor = candidateBarBg,
+                        backgroundColor = keyboardBgColor,
                         textColor = keyTextColor,
                         accentColor = accentColor,
                         bottomPaddingDp = state.keyboardBottomPaddingDp,
@@ -825,9 +909,11 @@ fun KeyboardView(
                             }
                         },
                         onBack = { viewModel.closeOverlay() },
-                        backgroundColor = candidateBarBg,
+                        backgroundColor = keyboardBgColor,
                         textColor = keyTextColor,
                         accentColor = accentColor,
+                        keyBgColor = keyBgColor,
+                        bottomPaddingDp = state.keyboardBottomPaddingDp,
                         modifier = Modifier.fillMaxWidth().fillMaxHeight()
                     )
                     is OverlayRoute.CandidatePage -> CandidatePage(
@@ -835,7 +921,7 @@ fun KeyboardView(
                             candidates = state.candidates.toList(),
                             candidateComments = state.candidateComments.toList(),
                             associationCandidates = state.associationCandidates.toList(),
-                            backgroundColor = candidateBarBg,
+                            backgroundColor = keyboardBgColor,
                             textColor = candidateTextColor,
                             hasNextPage = state.hasNextPage,
                             hasPrevPage = state.hasPrevPage,
@@ -875,3 +961,5 @@ fun KeyboardView(
     }
     }
 }
+
+

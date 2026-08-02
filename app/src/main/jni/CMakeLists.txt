@@ -22,7 +22,7 @@ include(Boost)
 
 option(WITH_GFLAGS "Use gflags" OFF)
 option(WITH_GTEST "Use googletest" OFF)
-option(WITH_UNWIND "Enable libunwind support" OFF)
+set(WITH_UNWIND "none" CACHE STRING "Enable libunwind support (values: none, unwind, libunwind)")
 add_subdirectory(librime/deps/glog)
 target_compile_options(glog_internal PRIVATE "-ffile-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}=.")
 
@@ -105,6 +105,7 @@ include_directories(
     "${CMAKE_SOURCE_DIR}/boost/libs/move/include"
     "${CMAKE_SOURCE_DIR}/boost/libs/container/include"
     "${CMAKE_SOURCE_DIR}/boost/libs/container_hash/include"
+    "${CMAKE_SOURCE_DIR}/boost/libs/describe/include"
     "${CMAKE_SOURCE_DIR}/boost/libs/intrusive/include"
     "${CMAKE_SOURCE_DIR}/boost/libs/detail/include"
     "${CMAKE_SOURCE_DIR}/boost/libs/integer/include"
@@ -143,6 +144,20 @@ set_target_properties(onnxruntime PROPERTIES
     INTERFACE_INCLUDE_DIRECTORIES "${ONNXRUNTIME_DIR}/include"
 )
 
+add_library(onnx_env SHARED
+    onnx_env.cc
+    onnx_env.h
+)
+
+target_include_directories(onnx_env PRIVATE
+    ${ONNXRUNTIME_DIR}/include
+)
+
+target_link_libraries(onnx_env
+    onnxruntime
+    log
+)
+
 add_library(onnx_jni SHARED
     onnx_jni.cc
 )
@@ -152,6 +167,7 @@ target_include_directories(onnx_jni PRIVATE
 )
 
 target_link_libraries(onnx_jni
+    onnx_env
     onnxruntime
     log
 )
@@ -168,6 +184,7 @@ target_include_directories(punctuation_jni PRIVATE
 )
 
 target_link_libraries(punctuation_jni
+    onnx_env
     onnxruntime
     log
 )
@@ -184,6 +201,7 @@ target_include_directories(handwriting_jni PRIVATE
 )
 
 target_link_libraries(handwriting_jni
+    onnx_env
     onnxruntime
     log
 )

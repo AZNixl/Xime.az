@@ -2,6 +2,7 @@ package com.kingzcheung.xime.handwriting
 
 import android.content.Context
 import android.util.Log
+import com.kingzcheung.xime.model.ModelStorage
 import com.kingzcheung.xime.util.FileLogger
 import org.json.JSONArray
 import org.json.JSONObject
@@ -30,9 +31,11 @@ object HandwritingEngine {
     fun initialize(context: Context): Boolean {
         if (initialized) return true
 
-        val filesDir = context.filesDir
-        modelFile = File(filesDir, "ochwpro.onnx")
-        charIndexFile = File(filesDir, "char_index.json")
+        val modelDir = ModelStorage.getModelDir(context, "ochwpro")
+        // 兼容旧版：旧版手写模型在 filesDir 根目录
+        ModelStorage.migrateLegacyForModel(context, "ochwpro")
+        modelFile = File(modelDir, "ochwpro.onnx")
+        charIndexFile = File(modelDir, "char_index.json")
 
         if (!modelFile!!.exists() || !charIndexFile!!.exists()) {
             Log.w(TAG, "Model files not found: $modelFile, $charIndexFile")
@@ -251,6 +254,7 @@ object HandwritingEngine {
     }
 
     fun release() {
+        if (!initialized) return
         HandwritingNativeEngine.release()
         initialized = false
         chars = emptyList()

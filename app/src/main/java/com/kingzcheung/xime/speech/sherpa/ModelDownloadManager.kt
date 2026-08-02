@@ -2,6 +2,7 @@ package com.kingzcheung.xime.speech.sherpa
 
 import android.content.Context
 import android.util.Log
+import com.kingzcheung.xime.model.ModelStorage
 import com.kingzcheung.xime.util.FileLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -20,7 +21,6 @@ class ModelDownloadManager(private val context: Context) {
 
     companion object {
         private const val TAG = "ModelDownloadManager"
-        private const val MODELS_DIR = "asr_models"
         private const val CONNECT_TIMEOUT = 30L
         private const val READ_TIMEOUT = 120L
     }
@@ -45,11 +45,14 @@ class ModelDownloadManager(private val context: Context) {
     )
 
     fun getModelsDir(): File {
-        return File(context.filesDir, MODELS_DIR)
+        return ModelStorage.getModelsRoot(context)
     }
 
     fun getModelDir(modelId: String): File {
-        return File(getModelsDir(), modelId)
+        // 统一目录：filesDir/models/<id>/；兼容旧版 asr_models/<id>/（自动迁移）
+        val dir = ModelStorage.getModelDir(context, modelId)
+        ModelStorage.migrateLegacyForModel(context, modelId)
+        return dir
     }
 
     fun isModelDownloaded(modelId: String): Boolean {

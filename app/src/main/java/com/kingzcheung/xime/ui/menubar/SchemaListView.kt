@@ -22,6 +22,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.twotone.Gesture
 import androidx.compose.material.icons.twotone.KeyboardAlt
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -41,16 +42,24 @@ import com.kingzcheung.xime.settings.SchemaInfo
 fun SchemaListView(
     schemas: List<SchemaInfo>,
     currentSchemaId: String,
-    isDarkTheme: Boolean,
     backgroundColor: Color,
     accentColor: Color,
+    keyTextColor: Color,
+    keyBgColor: Color,
     onSelectSchema: (String) -> Unit,
     onBack: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    val itemBgColor = if (isDarkTheme) Color(0xFF45474A) else Color.White
-    val textColor = if (isDarkTheme) Color(0xFFE8EAED) else Color(0xFF202124)
-    val subTextColor = if (isDarkTheme) Color(0xFF9AA0A6) else Color(0xFF5F6368)
+    // 功能 item 背景：与键盘按键背景一致（keyBgColor，浅色纯白、深色跟随 keyboard.colors）
+    val itemBgColor = keyBgColor
+    val textColor = keyTextColor
+    val subTextColor = keyTextColor.copy(alpha = 0.65f)
+    // 图标按钮容器色：surface 与 primary 的混合色调（带种子色但不过于强烈）
+    val iconButtonContainer = androidx.compose.ui.graphics.lerp(
+        MaterialTheme.colorScheme.surface,
+        MaterialTheme.colorScheme.primary,
+        0.35f
+    )
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
     Column(
@@ -70,7 +79,7 @@ fun SchemaListView(
                 modifier = Modifier
                     .size(28.dp)
                     .clip(CircleShape)
-                    .background(if (isDarkTheme) Color(0xFF374151) else Color(0xFFF3F4F6))
+                    .background(iconButtonContainer)
                     .clickable { onBack?.invoke() },
                 contentAlignment = Alignment.Center
             ) {

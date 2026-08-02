@@ -6,20 +6,26 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -30,7 +36,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -45,7 +50,9 @@ fun QuickSendTabContent(
     subTextColor: Color,
     accentColor: Color,
     viewModel: KeyboardViewModel,
-    onSelect: (String) -> Unit
+    onSelect: (String) -> Unit,
+    onQuickSendAddClick: (() -> Unit)? = null,
+    onQuickSendEditItem: ((Long, String) -> Unit)? = null,
 ) {
     if (items.isEmpty()) {
         Box(
@@ -68,11 +75,11 @@ fun QuickSendTabContent(
             items(items, key = { it.id }) { item ->
                 QuickSendCard(
                     item = item,
-                    bgColor = itemBgColor,
                     textColor = textColor,
                     accentColor = accentColor,
                     viewModel = viewModel,
-                    onSelect = { onSelect(item.text) }
+                    onSelect = { onSelect(item.text) },
+                    onQuickSendEditItem = onQuickSendEditItem,
                 )
             }
         }
@@ -82,14 +89,14 @@ fun QuickSendTabContent(
 @Composable
 fun QuickSendCard(
     item: ClipboardItem,
-    bgColor: Color,
     textColor: Color,
     accentColor: Color,
     viewModel: KeyboardViewModel,
-    onSelect: () -> Unit
+    onSelect: () -> Unit,
+    onQuickSendEditItem: ((Long, String) -> Unit)? = null,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    val cardBg = remember(bgColor) { lerp(bgColor, Color.White, 0.15f) }
+    val cardBg = MaterialTheme.colorScheme.surfaceContainerHigh
 
     Column(
         modifier = Modifier
@@ -157,10 +164,35 @@ fun QuickSendCard(
                     )
                 }
 
+                if (onQuickSendEditItem != null) {
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(accentColor.copy(alpha = 0.15f))
+                            .clickable { onQuickSendEditItem(item.id, item.text) }
+                            .padding(horizontal = 10.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Create,
+                            contentDescription = null,
+                            tint = accentColor,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Text(
+                            text = "编辑",
+                            color = accentColor,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+
+                val deleteColor = MaterialTheme.colorScheme.error
                 Row(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
-                        .background(accentColor.copy(alpha = 0.15f))
+                        .background(deleteColor.copy(alpha = 0.12f))
                         .clickable { viewModel.removeQuickSendItem(item.id) }
                         .padding(horizontal = 10.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -169,12 +201,12 @@ fun QuickSendCard(
                     Icon(
                         Icons.Filled.Delete,
                         contentDescription = null,
-                        tint = accentColor,
+                        tint = deleteColor,
                         modifier = Modifier.size(12.dp)
                     )
                     Text(
                         text = "删除",
-                        color = accentColor,
+                        color = deleteColor,
                         fontSize = 12.sp
                     )
                 }

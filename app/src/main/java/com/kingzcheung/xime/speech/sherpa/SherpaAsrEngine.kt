@@ -6,6 +6,7 @@ import android.content.Context
 import android.util.Log
 import com.k2fsa.sherpa.onnx.*
 import com.kingzcheung.xime.model.ModelRuntime
+import com.kingzcheung.xime.model.ModelStorage
 import com.kingzcheung.xime.speech.RecognitionState
 import com.kingzcheung.xime.util.FileLogger
 import kotlinx.coroutines.CoroutineScope
@@ -88,7 +89,10 @@ class SherpaAsrEngine(private val context: Context) {
     
     fun getSelectedModelDir(): File {
         val modelId = getSelectedModelId()
-        return File(context.filesDir, "asr_models/$modelId")
+        val dir = ModelStorage.getModelDir(context, modelId)
+        // 兼容旧版：自动迁移 asr_models/<id>/ 下的模型文件
+        ModelStorage.migrateLegacyForModel(context, modelId)
+        return dir
     }
 
     fun getSelectedModelId(): String {
@@ -165,9 +169,11 @@ class SherpaAsrEngine(private val context: Context) {
         
         try {
             val config = createConfig(modelDir, modelInfo)
+            val t0 = System.nanoTime()
             recognizer = OnlineRecognizer(config = config)
-            FileLogger.i(TAG, "Local ASR model initialized successfully: ${modelInfo.name}")
-            Log.d(TAG, "Recognizer initialized from ${modelDir.absolutePath}")
+            val tMs = (System.nanoTime() - t0) / 1_000_000
+            FileLogger.i(TAG, "Local ASR model initialized successfully: ${modelInfo.name} (${tMs}ms)")
+            Log.d(TAG, "Recognizer initialized from ${modelDir.absolutePath} in ${tMs}ms")
             ModelRuntime.markLoaded("asr")
             return true
         } catch (e: Exception) {
@@ -253,15 +259,19 @@ class SherpaAsrEngine(private val context: Context) {
     fun processAudio(samples: FloatArray) {
         val currentStream = stream
         val currentRecognizer = recognizer
-        if (currentStream == null || currentRecognizer == null) {
+        if (currentStream == null || currentRecognizer == null || samples.isEmpty()) {
             return
         }
         
         currentStream.acceptWaveform(samples, SAMPLE_RATE)
         
+        var decoded = false
         while (currentRecognizer.isReady(currentStream)) {
             currentRecognizer.decode(currentStream)
+            decoded = true
         }
+        
+        if (!decoded) return
         
         val text = currentRecognizer.getResult(currentStream).text
         if (text.isNotEmpty()) {

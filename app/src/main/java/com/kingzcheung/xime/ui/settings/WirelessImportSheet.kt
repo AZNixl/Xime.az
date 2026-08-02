@@ -88,7 +88,7 @@ fun WirelessImportSheet(
             onDismiss()
         },
         sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.background
+        containerColor = MaterialTheme.colorScheme.surface
     ) {
         Column(
             modifier = Modifier

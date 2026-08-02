@@ -71,7 +71,9 @@ fun SmartPredictionSettingsContent(
     val viewModel: SmartPredictionSettingsViewModel = viewModel()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    val predictionModels = remember { ModelManager.getModelsByCategory(ModelCategory.PREDICTION) }
+    // 模型清单来自远程 index，响应式收集以在加载完成后刷新（仅 PREDICTION 类别）
+    val allModels by ModelManager.modelsFlow.collectAsStateWithLifecycle()
+    val predictionModels = allModels.filter { it.category == ModelCategory.PREDICTION }
 
     val savedModelId = remember {
         SettingsPreferences.getPredictionSelectedModel(context)
@@ -92,7 +94,7 @@ fun SmartPredictionSettingsContent(
     }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
             TopAppBar(
                 title = { Text("智能联想") },
@@ -105,8 +107,8 @@ fun SmartPredictionSettingsContent(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 ),
             )
         }

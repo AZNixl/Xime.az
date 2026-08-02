@@ -29,7 +29,7 @@ private val bubbleFillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 private val bubbleTextPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 private val bubbleBgPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 private val bubbleLabelPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-private val SHADOW_COLOR = android.graphics.Color.argb(0x44, 0, 0, 0)
+private val SHADOW_COLOR = android.graphics.Color.argb(0x26, 0, 0, 0)
 
 data class BubbleDrawData(
     val boxLeft: Float,
@@ -98,9 +98,7 @@ fun rememberSwipeBubbleDrawData(
     } else keyBackgroundColor).toArgb()
     val textColor = (if (swipeState.isDanger) Color.White else keyTextColor).toArgb()
 
-    val chaiTypeface = remember {
-        Typeface.createFromAsset(context.assets, "ChaiPUA-0.2.7-snow.ttf")
-    }
+    val chaiTypeface = AppFonts.chaiPuaTypeface
 
     val textPaint = remember {
         Paint().apply {

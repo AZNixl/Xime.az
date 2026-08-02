@@ -1,6 +1,7 @@
 package com.kingzcheung.xime.ui.keyboard
 
 import com.kingzcheung.xime.keyboard.GestureAction
+import com.kingzcheung.xime.viewmodel.SchemaSwitchUiState
 
 data class KeyboardCallbacks(
     val onKeyPress: (String, Boolean) -> Unit,
@@ -19,6 +20,7 @@ data class KeyboardCallbacks(
     val onReloadConfig: (() -> Unit)? = null,
     val onSettings: (() -> Unit)? = null,
     val onSwitchSchema: ((String) -> Unit)? = null,
+    val onToggleSchemaSwitch: ((SchemaSwitchUiState) -> Unit)? = null,
     val onHideKeyboard: (() -> Unit)? = null,
     val onSwitchKeyboard: (() -> Unit)? = null,
     val onToolbarEditingAction: ((String) -> Unit)? = null,
@@ -61,9 +63,13 @@ data class KeyboardCallbacks(
      * @return 过滤后的 (候选词列表, 注释列表)
      */
     var onFilterT9Candidates: ((List<String>, List<String>) -> Pair<List<String>, List<String>>)? = null,
+    val onShowQuickSendForm: (() -> Unit)? = null,
+    val onHideQuickSendForm: (() -> Unit)? = null,
+    val onQuickSendEditItem: ((Long, String) -> Unit)? = null,
+    val onQuickSendFormFocusChange: ((Boolean) -> Unit)? = null,
     /**
-     * T9 键盘状态变更后通知服务层刷新 UI（候选区、preedit 等）。
-     * 服务层读取 rimeEngine.getComposition() 并应用。
+     * 全键盘（中文/英文）切离至其他键盘（数字/符号）时调用。
+     * 服务层负责上屏首位候选词或待确认英文，再由键盘层切换布局。
      */
-    var onT9RefreshComposition: (() -> Unit)? = null,
+    val onCommitCandidateBeforeModeChange: (() -> Unit)? = null,
 )

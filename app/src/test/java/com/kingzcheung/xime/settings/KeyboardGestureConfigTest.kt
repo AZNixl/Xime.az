@@ -444,7 +444,7 @@ class KeyboardGestureConfigTest {
                 "long_press" -> longPress = parseLongPress(vNode)
             }
         }
-        return KeyGestureConfig(tap, swipeUp, swipeDown, longPress)
+        return KeyGestureConfig(tap = tap, swipeUp = swipeUp, swipeDown = swipeDown, longPress = longPress)
     }
 
     private fun parseLongPress(node: com.charleskorn.kaml.YamlNode): LongPressConfig? {

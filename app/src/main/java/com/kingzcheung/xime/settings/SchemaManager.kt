@@ -4,10 +4,12 @@ import android.content.Context
 import android.net.Uri
 import android.os.PowerManager
 import android.util.Log
+import com.kingzcheung.xime.util.FileLogger
 import com.charleskorn.kaml.Yaml
 import com.charleskorn.kaml.YamlConfiguration
 import com.charleskorn.kaml.YamlList
 import com.charleskorn.kaml.YamlMap
+import com.charleskorn.kaml.YamlNode
 import com.charleskorn.kaml.YamlScalar
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -41,6 +43,19 @@ data class SchemaMeta(
     val description: String = ""
 )
 
+/**
+ * 方案中 `switches` 定义的一个开关项。
+ * - [name] 非空时表示布尔开关（如 ascii_mode / full_shape / ascii_punct）。
+ * - [options] 非空时表示多选一开关（如简繁切换，同一时刻只有一个 option 为 true）。
+ * - [abbrev] 自定义缩写（可能每个状态一个），供菜单栏展示用；为空时取 states 首字符。
+ */
+data class SchemaSwitch(
+    val name: String = "",
+    val options: List<String> = emptyList(),
+    val states: List<String> = emptyList(),
+    val abbrev: List<String> = emptyList(),
+)
+
 @Serializable
 internal data class SchemaYaml(val schema: SchemaEntry)
 
@@ -55,7 +70,7 @@ internal data class SchemaEntry(
 object SchemaManager {
     private const val TAG = "SchemaManager"
     private const val CUSTOM_YAML = "default.custom.yaml"
-    internal val yaml = Yaml(configuration = YamlConfiguration(strictMode = false))
+    internal val yaml = Yaml(configuration = YamlConfiguration(strictMode = false, anchorsAndAliases = com.charleskorn.kaml.AnchorsAndAliases.Permitted(maxAliasCount = UInt.MAX_VALUE)))
 
     private val downloadClient = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
@@ -74,6 +89,8 @@ object SchemaManager {
             val name = file.name
             if (name == "default.yaml" || name == "xime.yaml") return@forEach
             if (isProtectedImportName(name)) return@forEach
+            // themes/ 存放用户导入或自定义的背景图片，全量清理时保留
+            if (name == "themes") return@forEach
             if (file.isDirectory) {
                 file.deleteRecursively()
             } else {
@@ -143,7 +160,7 @@ object SchemaManager {
                             if (entry.isDirectory || isAppleDouble(originalName)) return@forEach
                             val name = originalName.removePrefix(baseDir)
                             if (isProtectedImportName(name)) return@forEach
-                            val hash = streamSha256(zip.getInputStream(entry))
+                            val hash = zip.getInputStream(entry).use { streamSha256(it) }
                             result[name] = hash
                         }
                     }
@@ -202,6 +219,7 @@ object SchemaManager {
         val newSchemaIds: List<String> = emptyList(),
         val unresolvedDeps: List<String> = emptyList(),
         val failureReason: String? = null,
+        val parseFailures: List<String> = emptyList(),
     )
 
     /**
@@ -217,65 +235,95 @@ object SchemaManager {
         dependencies: List<String> = emptyList(),
         resolveDepUrl: (String) -> String? = { null },
     ): InstallFromDirResult = withContext(Dispatchers.IO) {
-        val dir = getMarketDir(context, packageId)
-        if (!dir.exists() || dir.listFiles()?.none { it.isFile } != false) {
-            return@withContext InstallFromDirResult(success = false, failureReason = "压缩包不存在")
-        }
+        try {
+            val dir = getMarketDir(context, packageId)
+            if (!dir.exists() || dir.listFiles()?.none { it.isFile } != false) {
+                FileLogger.w(TAG, "installPackageFromMarketDir: dir not found or empty: $dir")
+                return@withContext InstallFromDirResult(success = false, failureReason = "压缩包不存在")
+            }
 
-        val targetFiles = listInstallTargetFiles(context, packageId)
-        if (targetFiles.isEmpty()) {
-            return@withContext InstallFromDirResult(success = false, failureReason = "归档中没有文件")
-        }
+            val targetFiles = listInstallTargetFiles(context, packageId)
+            if (targetFiles.isEmpty()) {
+                FileLogger.w(TAG, "installPackageFromMarketDir: no target files in $packageId")
+                return@withContext InstallFromDirResult(success = false, failureReason = "归档中没有文件")
+            }
+            FileLogger.i(TAG, "installPackageFromMarketDir: found ${targetFiles.size} target files for $packageId")
 
-        val sha256Map = computeTargetSha256Map(context, packageId)
-        val conflicts = SchemaManifestManager.detectConflicts(context, packageId, targetFiles, sha256Map)
-        if (conflicts.isNotEmpty()) {
-            return@withContext InstallFromDirResult(success = false, conflicts = conflicts)
-        }
+            val sha256Map = computeTargetSha256Map(context, packageId)
+            FileLogger.i(TAG, "installPackageFromMarketDir: computed sha256 for ${sha256Map.size} files")
 
-        val before = discoverSchemas(context).map { it.schemaId }.toSet()
-        val ok = installFromMarketToRime(context, packageId)
-        if (!ok) return@withContext InstallFromDirResult(success = false, failureReason = "安装失败")
+            val conflicts = SchemaManifestManager.detectConflicts(context, packageId, targetFiles, sha256Map)
+            if (conflicts.isNotEmpty()) {
+                FileLogger.w(TAG, "installPackageFromMarketDir: conflicts detected: ${conflicts.map { "${it.fileName} (${it.claimedBy})" }}")
+                return@withContext InstallFromDirResult(success = false, conflicts = conflicts)
+            }
 
-        val after = discoverSchemas(context).map { it.schemaId }.toSet()
-        val newIds = (after - before).toList()
+            val before = discoverSchemas(context).map { it.schemaId }.toSet()
+            FileLogger.i(TAG, "installPackageFromMarketDir: schemas before install: $before")
 
-        var unresolved = emptyList<String>()
-        var dependencyIds = emptyList<String>()
-        if (dependencies.isNotEmpty()) {
-            val completion = RimeDependencyResolver.complete(
+            val ok = installFromMarketToRime(context, packageId)
+            if (!ok) {
+                FileLogger.e(TAG, "installPackageFromMarketDir: installFromMarketToRime returned false")
+                return@withContext InstallFromDirResult(success = false, failureReason = "安装失败")
+            }
+
+            val after = discoverSchemas(context).map { it.schemaId }.toSet()
+            val newIds = (after - before).toList()
+            FileLogger.i(TAG, "installPackageFromMarketDir: schemas after install: $after, new: $newIds")
+
+            // 检查 target 中的 .schema.yaml 是否都解析成功
+            val targetSchemaIds = targetFiles
+                .filter { it.endsWith(".schema.yaml") }
+                .map { it.removeSuffix(".schema.yaml") }
+                .toSet()
+            val failedIds = targetSchemaIds - after
+            val parseFailures = if (failedIds.isEmpty()) emptyList()
+                else failedIds.map { "$it.schema.yaml 解析失败" }
+            if (parseFailures.isNotEmpty()) {
+                FileLogger.w(TAG, "installPackageFromMarketDir: some schemas failed to parse: $parseFailures")
+            }
+
+            var unresolved = emptyList<String>()
+            var dependencyIds = emptyList<String>()
+            if (dependencies.isNotEmpty()) {
+                val completion = RimeDependencyResolver.complete(
+                    context = context,
+                    schemaId = newIds.firstOrNull() ?: packageId,
+                    dependencies = dependencies,
+                    resolveUrl = resolveDepUrl,
+                )
+                unresolved = (completion.unresolved + completion.stillMissingFiles).distinct()
+                dependencyIds = completion.downloaded
+            }
+
+            SchemaManifestManager.createManifest(
                 context = context,
-                schemaId = newIds.firstOrNull() ?: packageId,
-                dependencies = dependencies,
-                resolveUrl = resolveDepUrl,
+                schemeId = packageId,
+                displayName = displayName,
+                version = version,
+                fromMarket = fromMarket,
+                extractedFiles = targetFiles,
+                dependencyIds = dependencyIds,
             )
-            unresolved = (completion.unresolved + completion.stillMissingFiles).distinct()
-            dependencyIds = completion.downloaded
+
+            if (fromMarket) {
+                SettingsPreferences.addInstalledMarketId(context, packageId)
+            }
+
+            // 至少启用一个新方案，避免 RimeEngine 因 schema_list 为空而挂起
+            val firstSchema = newIds.firstOrNull()
+                ?: targetFiles.firstOrNull { it.endsWith(".schema.yaml") }
+                    ?.removeSuffix(".schema.yaml")
+            if (firstSchema != null) {
+                setEnabledSchemas(context, listOf(firstSchema))
+            }
+
+            FileLogger.i(TAG, "installPackageFromMarketDir: success for $packageId, firstSchema=$firstSchema")
+            InstallFromDirResult(success = true, newSchemaIds = newIds, unresolvedDeps = unresolved, parseFailures = parseFailures)
+        } catch (e: Exception) {
+            FileLogger.e(TAG, "installPackageFromMarketDir: UNCAUGHT exception for $packageId", e)
+            return@withContext InstallFromDirResult(success = false, failureReason = "安装异常: ${e.message}")
         }
-
-        SchemaManifestManager.createManifest(
-            context = context,
-            schemeId = packageId,
-            displayName = displayName,
-            version = version,
-            fromMarket = fromMarket,
-            extractedFiles = targetFiles,
-            dependencyIds = dependencyIds,
-        )
-
-        if (fromMarket) {
-            SettingsPreferences.addInstalledMarketId(context, packageId)
-        }
-
-        // 至少启用一个新方案，避免 RimeEngine 因 schema_list 为空而挂起
-        val firstSchema = newIds.firstOrNull()
-            ?: targetFiles.firstOrNull { it.endsWith(".schema.yaml") }
-                ?.removeSuffix(".schema.yaml")
-        if (firstSchema != null) {
-            setEnabledSchemas(context, listOf(firstSchema))
-        }
-
-        InstallFromDirResult(success = true, newSchemaIds = newIds, unresolvedDeps = unresolved)
     }
 
     /** 解析单个归档（或普通文件）将被释放到 rime/ 的目标文件名列表。 */
@@ -341,7 +389,7 @@ object SchemaManager {
                 val isArchive = name.endsWith(".zip", ignoreCase = true) ||
                     name.endsWith(".tar.gz", ignoreCase = true) || name.endsWith(".tgz", ignoreCase = true)
                 if (isArchive && !validateArchive(file)) {
-                    Log.e(TAG, "installFromMarketToRime: ${file.name} is corrupted for $schemeId, deleting")
+                    FileLogger.e(TAG, "installFromMarketToRime: ${file.name} is corrupted for $schemeId, deleting")
                     file.delete()
                     allOk = false
                     continue
@@ -353,17 +401,17 @@ object SchemaManager {
                     else -> {
                         val target = File(rimeDir, file.name)
                         file.copyTo(target, overwrite = true)
-                        Log.i(TAG, "Copied ${file.name} to rime dir")
+                        FileLogger.i(TAG, "Copied ${file.name} to rime dir")
                         true
                     }
                 }
                 if (!ok) {
-                    Log.e(TAG, "installFromMarketToRime: failed to process ${file.name} for $schemeId, deleting")
+                    FileLogger.e(TAG, "installFromMarketToRime: failed to process ${file.name} for $schemeId, deleting")
                     file.delete()
                     allOk = false
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "installFromMarketToRime: error processing ${file.name} for $schemeId, deleting", e)
+                FileLogger.e(TAG, "installFromMarketToRime: error processing ${file.name} for $schemeId, deleting", e)
                 file.delete()
                 allOk = false
             }
@@ -453,10 +501,10 @@ object SchemaManager {
 
     fun streamSha256(input: InputStream): String {
         val digest = MessageDigest.getInstance("SHA-256")
-        DigestInputStream(input, digest).use { dis ->
-            val buffer = ByteArray(8192)
-            while (dis.read(buffer) != -1) { }
-        }
+        val dis = DigestInputStream(input, digest)
+        val buffer = ByteArray(8192)
+        while (dis.read(buffer) != -1) { }
+        // 不关闭 dis——调用方负责管理流的生命周期
         return digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
     }
 
@@ -550,10 +598,10 @@ object SchemaManager {
     internal fun parseSchemaYaml(file: File): SchemaMeta? {
         return try {
             val text = file.readText().trimStart('\uFEFF')
-            val entry = yaml.decodeFromString(SchemaYaml.serializer(), text).schema
+            val schemaBlock = extractSchemaBlock(text) ?: return null
+            val entry = yaml.decodeFromString(SchemaYaml.serializer(), schemaBlock).schema
             if (entry.schemaId.isEmpty()) return null
 
-            // author 可为标量或列表，从原始 YAML 节点手动提取
             val author = parseAuthorFromText(text)
 
             SchemaMeta(
@@ -564,9 +612,32 @@ object SchemaManager {
                 description = entry.description ?: ""
             )
         } catch (e: Exception) {
-            try { Log.w(TAG, "Failed to parse schema file: ${file.name}, skip") } catch (_: Exception) {}
+            try { Log.w(TAG, "Failed to parse schema file: ${file.name}, error=${e.message}, skip", e) } catch (_: Exception) {}
             null
         }
+    }
+
+    /**
+     * 从 YAML 文本中提取顶层 `schema:` 块及其子内容，返回一个可独立解析的 YAML 片段。
+     * 避免 kaml 因为文件的其他部分（重复 `__include`、锚点等）而报错。
+     */
+    internal fun extractSchemaBlock(yamlText: String): String? {
+        val lines = yamlText.lines()
+        val schemaLineIndex = lines.indexOfFirst {
+            it.trimStart().let { t -> t.startsWith("schema:") && (t.length == 7 || t[7] == ' ') }
+        }
+        if (schemaLineIndex < 0) return null
+
+        val schemaIndent = lines[schemaLineIndex].length - lines[schemaLineIndex].trimStart().length
+        val result = mutableListOf("schema:")
+        for (i in schemaLineIndex + 1 until lines.size) {
+            val line = lines[i]
+            if (line.isBlank()) continue
+            val indent = line.length - line.trimStart().length
+            if (indent <= schemaIndent) break
+            result.add(line)
+        }
+        return result.joinToString("\n")
     }
 
     private fun parseAuthorFromText(yamlText: String): String {
@@ -603,6 +674,77 @@ object SchemaManager {
             try { Log.e(TAG, "Failed to parse schema name for $schemaId", e) } catch (_: Exception) {}
             null
         }
+    }
+
+    /**
+     * 读取方案顶层 `switches:` 中可展示的开关项（name 或 options 存在且有 states）。
+     * `switches` 位于 schema 块之外，需单独解析。解析失败或不存在时返回空列表。
+     */
+    fun getSchemaSwitches(context: Context, schemaId: String): List<SchemaSwitch> {
+        val file = File(getRimeDir(context), "$schemaId.schema.yaml")
+        if (!file.exists()) return emptyList()
+        return parseSchemaSwitches(file)
+    }
+
+    /** 纯解析：从 .schema.yaml 读取 switches。 */
+    internal fun parseSchemaSwitches(file: File): List<SchemaSwitch> {
+        return try {
+            val text = file.readText().trimStart('\uFEFF')
+            val block = extractSwitchesBlock(text) ?: return emptyList()
+            val listNode = yaml.parseToYamlNode(block) as? YamlList ?: return emptyList()
+            listNode.items.mapNotNull { item ->
+                parseSwitchEntry(item as? YamlMap ?: return@mapNotNull null)
+            }
+        } catch (e: Exception) {
+            try { Log.w(TAG, "Failed to parse switches for ${file.name}: ${e.message}", e) } catch (_: Exception) {}
+            emptyList()
+        }
+    }
+
+    private fun parseSwitchEntry(entry: YamlMap): SchemaSwitch? {
+        val states = (entry["states"] as? YamlList)
+            ?.items?.mapNotNull { (it as? YamlScalar)?.content }
+            .orEmpty()
+        if (states.isEmpty()) return null
+        val name = (entry["name"] as? YamlScalar)?.content.orEmpty()
+        val options = (entry["options"] as? YamlList)
+            ?.items?.mapNotNull { (it as? YamlScalar)?.content }
+            .orEmpty()
+        val abbrev = parseAbbrev(entry["abbrev"])
+        return when {
+            name.isNotBlank() -> SchemaSwitch(name = name, options = emptyList(), states = states, abbrev = abbrev)
+            options.isNotEmpty() -> SchemaSwitch(name = "", options = options, states = states, abbrev = abbrev)
+            else -> null
+        }
+    }
+
+    /** abbrev 可以是单个字符串或每个状态一个的字符串列表。 */
+    private fun parseAbbrev(node: YamlNode?): List<String> = when (node) {
+        is YamlScalar -> listOf(node.content)
+        is YamlList -> node.items.mapNotNull { (it as? YamlScalar)?.content }
+        else -> emptyList()
+    }
+
+    /**
+     * 从 YAML 文本中提取顶层 `switches:` 的列表项内容（不含 `switches:` 头行），
+     * 返回一个可独立作为列表解析的 YAML 片段；不存在时返回 null。
+     */
+    internal fun extractSwitchesBlock(yamlText: String): String? {
+        val lines = yamlText.lines()
+        val idx = lines.indexOfFirst {
+            it.trimStart().let { t -> t == "switches:" || (t.startsWith("switches:") && t[9] == ' ') }
+        }
+        if (idx < 0) return null
+        val result = mutableListOf<String>()
+        for (i in idx + 1 until lines.size) {
+            val line = lines[i]
+            if (line.isBlank()) continue
+            val indent = line.length - line.trimStart().length
+            if (indent == 0) break
+            result.add(line)
+        }
+        if (result.isEmpty()) return null
+        return result.joinToString("\n")
     }
 
     fun getEnabledSchemas(context: Context): List<String> {
@@ -683,9 +825,10 @@ object SchemaManager {
         } else {
             // 降级到传统逻辑（无清单的旧方案）
             val rimeDir = getRimeDir(context)
+            // 先读 dictName 再删 schema.yaml，否则 getReferencedDictName 永远返回 null
+            val dictName = getReferencedDictName(context, schemaId) ?: schemaId
             val schemaFile = File(rimeDir, "$schemaId.schema.yaml")
             if (schemaFile.exists()) schemaFile.delete()
-            val dictName = getReferencedDictName(context, schemaId) ?: schemaId
             val dictFile = File(rimeDir, "$dictName.dict.yaml")
             if (dictFile.exists()) dictFile.delete()
             Log.i(TAG, "Legacy uninstall for $schemaId (dict=$dictName)")
@@ -699,35 +842,122 @@ object SchemaManager {
         return true
     }
 
-    suspend fun importSchemaFile(context: Context, uri: Uri): Boolean {
-        return withContext(Dispatchers.IO) {
+    data class ImportResult(val success: Boolean, val installedDirect: Boolean = false)
+
+    /** 判断文件名是否为压缩包。 */
+    fun isArchive(name: String): Boolean =
+        name.endsWith(".zip", ignoreCase = true) ||
+        name.endsWith(".tar.gz", ignoreCase = true) ||
+        name.endsWith(".tgz", ignoreCase = true)
+
+    /** 判断文件名是否为图片（背景图等，导入到 themes/）。 */
+    fun isImage(name: String): Boolean =
+        name.endsWith(".jpg", ignoreCase = true) ||
+        name.endsWith(".jpeg", ignoreCase = true) ||
+        name.endsWith(".png", ignoreCase = true)
+
+    /** themes 目录：rime/themes/，存放用户导入或自定义的背景图片。 */
+    fun getThemesDir(context: Context): File =
+        File(getRimeDir(context), "themes")
+
+    /**
+     * 某些 Android 内容提供器会将未知 MIME 类型的文件（如 .yaml）自动追加 .txt 后缀，
+     * 导致 xime.custom.yaml 变成 xime.custom.yaml.txt。此处修复已知情况。
+     */
+    fun sanitizeDisplayName(name: String): String {
+        return when {
+            name.endsWith(".yaml.txt", ignoreCase = true) ->
+                name.removeSuffix(".txt")
+            name.endsWith(".dict.yaml.txt", ignoreCase = true) ->
+                name.removeSuffix(".txt")
+            else -> name
+        }
+    }
+
+    /**
+     * 统一保存导入的文件：
+     * - 压缩包（zip/tar.gz/tgz）→ market/{importId}/，等待用户手动安装
+     * - 非压缩包（yaml/txt/bin 等）→ 直接放入 rime/
+     * 所有导入路径（文件选择器、无线导入、URL 下载等）最终都汇聚于此。
+     */
+    suspend fun saveImportedFile(
+        context: Context,
+        displayName: String,
+        inputStream: java.io.InputStream,
+        autoEnable: Boolean = true,
+    ): ImportResult = withContext(Dispatchers.IO) {
+        val name = sanitizeDisplayName(displayName)
+        if (isImage(name)) {
+            // 图片：背景图等，保存到 rime/themes/，供主题使用
+            val themesDir = getThemesDir(context)
+            try {
+                themesDir.mkdirs()
+                val target = File(themesDir, name)
+                inputStream.use { input ->
+                    target.outputStream().use { output -> input.copyTo(output) }
+                }
+                FileLogger.i(TAG, "Imported $name -> rime/themes/")
+                ImportResult(true)
+            } catch (e: Exception) {
+                FileLogger.e(TAG, "Failed to import image $name", e)
+                ImportResult(false)
+            }
+        } else if (isArchive(name)) {
+            // 压缩包：保存到 market/ 等待用户手动安装
             val importId = generateImportId()
             val pkgDir = getMarketDir(context, importId)
             try {
-                val displayName = getFileName(context, uri) ?: run {
-                    pkgDir.deleteRecursively(); return@withContext false
-                }
                 pkgDir.mkdirs()
-                val archiveFile = File(pkgDir, displayName)
-
-                val inputStream = when (uri.scheme) {
-                    "file" -> java.io.FileInputStream(uri.path!!)
-                    else -> context.contentResolver.openInputStream(uri)
-                }
-                inputStream?.use { input ->
+                val archiveFile = File(pkgDir, name)
+                inputStream.use { input ->
                     archiveFile.outputStream().use { output -> input.copyTo(output) }
-                } ?: run {
-                    pkgDir.deleteRecursively()
-                    return@withContext false
                 }
-
-                Log.i(TAG, "Imported $displayName -> $importId (not installed yet)")
-                true
+                FileLogger.i(TAG, "Imported $name -> $importId (not installed yet)")
+                ImportResult(true)
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to import schema file", e)
+                FileLogger.e(TAG, "Failed to import archive $name", e)
                 try { if (pkgDir.exists()) pkgDir.deleteRecursively() } catch (_: Exception) {}
-                false
+                ImportResult(false)
             }
+        } else {
+            // 非压缩包：直接放入 rime/ 目录，不经过 market
+            val rimeDir = getRimeDir(context)
+            try {
+                rimeDir.mkdirs()
+                val target = File(rimeDir, name)
+                inputStream.use { input ->
+                    target.outputStream().use { output -> input.copyTo(output) }
+                }
+                // 如果是 .schema.yaml 文件，自动启用
+                if (autoEnable && name.endsWith(".schema.yaml")) {
+                    val schemaId = name.removeSuffix(".schema.yaml")
+                    val enabled = getEnabledSchemas(context).toMutableList()
+                    if (schemaId !in enabled) {
+                        enabled.add(schemaId)
+                        setEnabledSchemas(context, enabled)
+                    }
+                }
+                FileLogger.i(TAG, "Imported $name -> rime/ (direct)")
+                ImportResult(true, installedDirect = true)
+            } catch (e: Exception) {
+                FileLogger.e(TAG, "Failed to import $name directly", e)
+                ImportResult(false)
+            }
+        }
+    }
+
+    suspend fun importSchemaFile(context: Context, uri: Uri): ImportResult {
+        return withContext(Dispatchers.IO) {
+            val displayName = getFileName(context, uri) ?: return@withContext ImportResult(false)
+
+            Log.d(TAG, "importSchemaFile: displayName=$displayName, isArchive=${isArchive(displayName)}")
+
+            val inputStream = when (uri.scheme) {
+                "file" -> java.io.FileInputStream(uri.path!!)
+                else -> context.contentResolver.openInputStream(uri)
+            } ?: return@withContext ImportResult(false)
+
+            saveImportedFile(context, displayName, inputStream)
         }
     }
 
@@ -943,7 +1173,7 @@ object SchemaManager {
                 else -> true // 非归档文件无法校验
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Archive validation failed for ${file.name}", e)
+            FileLogger.e(TAG, "Archive validation failed for ${file.name}", e)
             false
         }
     }
@@ -954,9 +1184,8 @@ object SchemaManager {
      *                       为空/空白时保持原有行为（不校验）。
      */
     /**
-     * 从 URL 下载压缩包到 market 目录（保留压缩包），然后解压到 rime 目录。
-     * @param archiveName 压缩包在 market 目录中保存的文件名，如 "my_scheme.zip"。
-     *                    为空时从 URL 末段自动推断。
+     * 从 URL 下载文件（不限格式），通过 [saveImportedFile] 统一存入 rime/ 或 market/。
+     * @param archiveName 文件名，为空时从 URL 末段自动推断。
      */
     suspend fun importFromUrl(
         context: Context,
@@ -966,65 +1195,55 @@ object SchemaManager {
         onProgress: (Long, Long) -> Unit = { _, _ -> },
     ): Boolean = withContext(Dispatchers.IO) {
         try {
-            val isZip = url.endsWith(".zip", ignoreCase = true)
-            val isTarGz = url.endsWith(".tar.gz", ignoreCase = true) || url.endsWith(".tgz", ignoreCase = true)
-            if (!isZip && !isTarGz) {
-                Log.e(TAG, "Unsupported format: $url")
-                return@withContext false
-            }
+            val fileName = archiveName ?: url.substringAfterLast("/").takeIf { it.isNotBlank() }
+                ?: "download"
+            val tmpFile = File.createTempFile("import_", ".tmp", context.cacheDir)
 
-            val ext = when {
-                isZip -> ".zip"
-                url.endsWith(".tgz", ignoreCase = true) -> ".tgz"
-                else -> ".tar.gz"
-            }
-            val importId = generateImportId()
-            val pkgDir = getMarketDir(context, importId)
-            pkgDir.mkdirs()
-            val archiveFile = File(pkgDir, archiveName ?: (url.substringAfterLast("/").takeIf { it.isNotBlank() } ?: "download$ext"))
-
-            val client = OkHttpClient.Builder()
-                .connectTimeout(30, TimeUnit.SECONDS)
-                .readTimeout(120, TimeUnit.SECONDS)
-                .followRedirects(true)
-                .build()
-            client.newCall(Request.Builder().url(url).build()).execute().use { response ->
-                if (!response.isSuccessful) {
-                    Log.e(TAG, "Download failed: ${response.code} $url")
-                    pkgDir.deleteRecursively()
-                    return@withContext false
-                }
-                val body = response.body ?: return@withContext false
-
-                val totalBytes = body.contentLength()
-                var downloadedBytes = 0L
-                val md = MessageDigest.getInstance("SHA-256")
-                body.byteStream().use { input ->
-                    FileOutputStream(archiveFile).use { output ->
-                        val buf = ByteArray(8192)
-                        var n = input.read(buf)
-                        while (n >= 0) {
-                            output.write(buf, 0, n)
-                            md.update(buf, 0, n)
-                            downloadedBytes += n
-                            if (totalBytes > 0) {
-                                onProgress(downloadedBytes, totalBytes)
-                            }
-                            n = input.read(buf)
-                        }
-                    }
-                }
-                if (!expectedSha256.isNullOrBlank()) {
-                    val actual = md.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
-                    if (!actual.equals(expectedSha256.trim(), ignoreCase = true)) {
-                        Log.e(TAG, "sha256 mismatch for $url: expected=${expectedSha256.trim()} actual=$actual")
-                        pkgDir.deleteRecursively()
+            try {
+                val client = OkHttpClient.Builder()
+                    .connectTimeout(30, TimeUnit.SECONDS)
+                    .readTimeout(120, TimeUnit.SECONDS)
+                    .followRedirects(true)
+                    .build()
+                val sha256Ok = client.newCall(Request.Builder().url(url).build()).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        Log.e(TAG, "Download failed: ${response.code} $url")
                         return@withContext false
                     }
+                    val body = response.body ?: return@withContext false
+                    val totalBytes = body.contentLength()
+                    var downloadedBytes = 0L
+                    val md = MessageDigest.getInstance("SHA-256")
+                    body.byteStream().use { input ->
+                        FileOutputStream(tmpFile).use { output ->
+                            val buf = ByteArray(8192)
+                            var n = input.read(buf)
+                            while (n >= 0) {
+                                output.write(buf, 0, n)
+                                md.update(buf, 0, n)
+                                downloadedBytes += n
+                                if (totalBytes > 0) onProgress(downloadedBytes, totalBytes)
+                                n = input.read(buf)
+                            }
+                        }
+                    }
+                    if (!expectedSha256.isNullOrBlank()) {
+                        val actual = md.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
+                        if (!actual.equals(expectedSha256.trim(), ignoreCase = true)) {
+                            Log.e(TAG, "sha256 mismatch for $url")
+                            return@withContext false
+                        }
+                    }
+                    true
                 }
+                if (!sha256Ok) return@withContext false
 
-                Log.i(TAG, "Downloaded $url -> $importId (not installed yet)")
-                true
+                // 通过统一函数保存
+                val result = saveImportedFile(context, fileName, tmpFile.inputStream())
+                Log.i(TAG, "Imported from url $url -> ${if (result.installedDirect) "rime/" else "market/"} ($fileName)")
+                result.success
+            } finally {
+                tmpFile.delete()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to import from URL: $url", e)
@@ -1074,21 +1293,21 @@ object SchemaManager {
                     val name = originalName.removePrefix(baseDir)
                     val file = if (isProtectedImportName(name)) null else safeChild(targetDir, name)
                     if (file == null) {
-                        Log.d(TAG, "Skip protected/unsafe entry: $name")
+                        FileLogger.d(TAG, "Skip protected/unsafe entry: $name")
                     } else {
                         file.parentFile?.mkdirs()
                         zip.getInputStream(entry).use { input ->
                             FileOutputStream(file).use { output -> input.copyTo(output) }
                         }
                         count++
-                        Log.d(TAG, "Extracted zip entry: $name")
+                        FileLogger.d(TAG, "Extracted zip entry: $name")
                     }
                 }
             }
-            Log.i(TAG, "Extracted $count files from zip stream")
+            FileLogger.i(TAG, "Extracted $count files from zip stream")
             count > 0
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to extract zip file", e)
+            FileLogger.e(TAG, "Failed to extract zip file", e)
             false
         }
     }

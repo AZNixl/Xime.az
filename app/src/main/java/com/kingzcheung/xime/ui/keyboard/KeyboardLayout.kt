@@ -69,7 +69,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -85,6 +84,7 @@ import com.kingzcheung.xime.viewmodel.KeyboardViewModel
 import com.kingzcheung.xime.viewmodel.ShiftMode
 import com.kingzcheung.xime.keyboard.OverlayRoute
 import com.kingzcheung.xime.ui.theme.KeyboardThemes
+import com.kingzcheung.xime.ui.theme.keyboardBackground
 
 import androidx.compose.material.icons.twotone.KeyboardControlKey
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -120,15 +120,20 @@ fun KeyboardLayout(
 
     val context = LocalContext.current
     val kbColors = KeysConfigHelper.getKeyboardColors()
-    val longToColor: (Long) -> Color = { Color(0xFF000000 or it) }
-    val keyboardBackgroundColor = if (uiState.isDarkTheme) longToColor(kbColors.keyboardBgColorDark) else longToColor(kbColors.keyboardBgColor)
+    val longToColor: (Long) -> Color = { if (it > 0xFFFFFF) Color(it) else Color(0xFF000000 or it) }
+    val keyboardBackgroundColor = KeyboardThemes.getKeyboardBackgroundColor(uiState.themeId, uiState.isDarkTheme)
+    val themeScheme = KeyboardThemes.getThemeById(uiState.themeId)
     val themeSpecialKeyColor = KeyboardThemes.getSpecialKeyColor(uiState.themeId, uiState.isDarkTheme)
-    val keyBackgroundColor = if (uiState.isDarkTheme) longToColor(kbColors.keyBgColorDark) else longToColor(kbColors.keyBgColor)
-    val keyTextColor = if (uiState.isDarkTheme) longToColor(kbColors.keyTextColorDark) else longToColor(kbColors.keyTextColor)
+    val keyBackgroundColor = KeyboardThemes.getKeyBgColorOverride(uiState.themeId, uiState.isDarkTheme)
+        ?: if (uiState.isDarkTheme) longToColor(kbColors.keyBgColorDark) else longToColor(kbColors.keyBgColor)
+    val keyTextColor = KeyboardThemes.getKeyTextColorOverride(uiState.themeId, uiState.isDarkTheme)
+        ?: if (uiState.isDarkTheme) longToColor(kbColors.keyTextColorDark) else longToColor(kbColors.keyTextColor)
     val specialKeyBackgroundColor = if (uiState.isDarkTheme) kbColors.specialKeyBgColorDark?.let { longToColor(it) }
         ?: themeSpecialKeyColor else kbColors.specialKeyBgColor?.let { longToColor(it) } ?: themeSpecialKeyColor
     val specialKeyTextColor = if (uiState.isDarkTheme) Color.White
         else KeyboardThemes.getSpecialKeyTextColor(uiState.themeId, false)
+    val bubbleBgColor = if (uiState.isDarkTheme) themeScheme.specialKeyDark
+        else themeScheme.specialKeyLight
     val kbShadow = KeysConfigHelper.getKeyboardShadow()
     val kbKey = KeysConfigHelper.getKeyboardKeyConfig()
     val shadowEnabled = kbShadow.enabled
@@ -139,6 +144,7 @@ fun KeyboardLayout(
     val isDarkTheme = uiState.isDarkTheme
     val isSttEnabled = uiState.isSttEnabled
     val isVoiceMode = uiState.isVoiceMode
+    val keyRows = KeysConfigHelper.getKeyRows(isAsciiMode)
     val onKeyPressDown = callbacks.onKeyPressDown
     val onKeyRelease = callbacks.onKeyRelease
     val onVoiceModeChange = callbacks.onVoiceModeChange
@@ -181,7 +187,7 @@ fun KeyboardLayout(
             )
         )
     }
-    val effectiveSwipeDownHintsEnabled = if (isAsciiMode) false else swipeDownHintsEnabled
+    val effectiveSwipeDownHintsEnabled = swipeDownHintsEnabled
 
     // 监听设置变化
     DisposableEffect(context) {
@@ -230,7 +236,7 @@ fun KeyboardLayout(
     val bubbleData = rememberSwipeBubbleDrawData(
         swipeState = swipeState,
         keyBounds = lastKeyBounds,
-        keyBackgroundColor = keyBackgroundColor,
+        keyBackgroundColor = bubbleBgColor,
         keyTextColor = keyTextColor,
         accentColor = specialKeyTextColor,
         keyWidth = if (swipeState.isSwiping || swipeState.isPressed) lastKeyBounds.width else 0f,
@@ -242,7 +248,6 @@ fun KeyboardLayout(
     CompositionLocalProvider(LocalKeyCornerRadius provides kbKey.cornerRadius.dp) {
     Box(
         modifier = modifier
-            .background(keyboardBackgroundColor)
             .onGloballyPositioned { coordinates ->
                 keyboardBounds = coordinates.boundsInRoot()
             }
@@ -250,7 +255,7 @@ fun KeyboardLayout(
                 drawContent()
                 bubbleData?.let { drawSwipeBubble(it) }
             }
-            .padding(bottom = if (uiState.isFloatingMode || isLandscape) {0.dp} else {10.dp})
+            .padding(bottom = if (uiState.isFloatingMode || isLandscape) {0.dp} else {0.dp})
     ) {
             if (isLandscape) {
             LandscapeKeyboardContent(
@@ -264,12 +269,11 @@ fun KeyboardLayout(
                 onSwipeStateChange = { state, bounds -> processSwipeState(state, bounds) },
             )
         } else {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .fillMaxHeight()
-                    .background(keyboardBackgroundColor)
-                    .padding(start = 4.dp, end = 4.dp, bottom = 8.dp),
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight()
+                        .padding(start = 4.dp, end = 4.dp, bottom = 8.dp),
             ) {
 
                 Column(
@@ -289,8 +293,9 @@ fun KeyboardLayout(
                         }
                     } else {
                         Box(modifier = Modifier.weight(1f)) {
+                            val row0 = keyRows.getOrElse(0) { listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p") }
                             KeyboardRowWithConfig(
-                                keys = listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p"),
+                                keys = row0,
                                 onKeyPress = onKeyPress,
                                 config = KeyboardRowConfig(
                                     keyBackgroundColor = keyBackgroundColor,
@@ -334,8 +339,10 @@ fun KeyboardLayout(
                         }
                     } else {
                         Box(modifier = Modifier.weight(1f)) {
+                            val row1 = keyRows.getOrElse(1) { listOf("a", "s", "d", "f", "g", "h", "j", "k", "l") }
+                            val row1Padding = if (row1.size > 9) Modifier else Modifier.padding(horizontal = 16.dp)
                             KeyboardRowWithConfig(
-                                keys = listOf("a", "s", "d", "f", "g", "h", "j", "k", "l"),
+                                keys = row1,
                                 onKeyPress = onKeyPress,
                                 config = KeyboardRowConfig(
                                     keyBackgroundColor = keyBackgroundColor,
@@ -347,7 +354,7 @@ fun KeyboardLayout(
                                 ),
                                 isShifted = visualIsShifted,
                                 isAsciiMode = isAsciiMode,
-                                modifier = Modifier.padding(horizontal = 16.dp),
+                                modifier = row1Padding,
                                 onSwipeStateChange = { state, bounds ->
                                     processSwipeState(
                                         state,
@@ -379,8 +386,7 @@ fun KeyboardLayout(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .weight(1f)
-                                .fillMaxHeight()
-                                .background(keyboardBackgroundColor),
+                                .fillMaxHeight(),
                         ) {
                             ShiftCapsKeyButton(
                                 shiftMode = visualShiftMode,
@@ -400,10 +406,9 @@ fun KeyboardLayout(
                                 Row(
                                     modifier = Modifier
                                         .weight(7f)
-                                        .fillMaxHeight()
-                                        .background(keyboardBackgroundColor),
+                                        .fillMaxHeight(),
                                 ) {
-                                val bottomKeys = listOf("z", "x", "c", "v", "b", "n", "m")
+                                val bottomKeys = keyRows.getOrElse(2) { listOf("z", "x", "c", "v", "b", "n", "m") }
                                 bottomKeys.forEach { key ->
                                     val rawSwipeUpLabel = KeysConfigHelper.getSwipeUpLabel(key, isAsciiMode)
                                     val swipeUpText =
@@ -420,7 +425,7 @@ fun KeyboardLayout(
                                     val swipeDownAction = swipeDownRaw?.action
                                     val swipeDownValue = swipeDownRaw?.value
                                     val swipeDownDisplay = swipeDownRaw?.display ?: DisplayMode.BOTH
-                                    val swipeDownBubbleText = if (!isAsciiMode && swipeDownDisplay != DisplayMode.KEY) swipeDownLabel else null
+                                    val swipeDownBubbleText = if (swipeDownDisplay != DisplayMode.KEY) swipeDownLabel else null
                                     val longPressConfig =
                                         KeysConfigHelper.getKeyGesture(key, isAsciiMode)?.longPress
                                     val longPressDisplay = longPressConfig?.display ?: "key"
@@ -433,7 +438,11 @@ fun KeyboardLayout(
                                     } else null
 
                                     val rawCommitValue = KeysConfigHelper.getKeyCommitValue(key, isAsciiMode)
-                                    val commitValue = if (visualIsShifted) rawCommitValue.uppercase() else rawCommitValue
+                                    val commitValue = if (visualIsShifted) {
+                                        rawCommitValue.uppercase()
+                                    } else {
+                                        rawCommitValue
+                                    }
                                     val displayText = if (isAsciiMode) {
                                         commitValue
                                     } else {
@@ -443,7 +452,7 @@ fun KeyboardLayout(
                                     val onClick = remember(key, commitValue, onKeyPress) { { onKeyPress(commitValue) } }
                                     val onPress: (() -> Unit)? = remember(key, onKeyPressDown) { { onKeyPressDown?.invoke(key); Unit } }
                                     val onRelease: (() -> Unit)? = remember(key, onKeyRelease) { { onKeyRelease?.invoke(key); Unit } }
-                                    val onSwipeDown = if (!isAsciiMode && swipeDownAction != null && swipeDownLabel != null) {
+                                    val onSwipeDown = if (swipeDownAction != null && swipeDownLabel != null) {
                                         remember(key, onKeyPress, onGestureAction, onCommitText, swipeDownAction, swipeDownValue, swipeDownLabel) {
                                             val label = swipeDownLabel
                                             { _: String ->
@@ -481,7 +490,7 @@ fun KeyboardLayout(
                                         swipeText = swipeUpText,
                                         swipeDownText = swipeDownBubbleText,
                                         swipeUpKeyLabel = swipeUpKeyLabel,
-                                        swipeDownKeyLabel = if (!isAsciiMode && (swipeDownDisplay == DisplayMode.KEY || swipeDownDisplay == DisplayMode.BOTH)) swipeDownLabel else null,
+                                        swipeDownKeyLabel = if ((swipeDownDisplay == DisplayMode.KEY || swipeDownDisplay == DisplayMode.BOTH)) swipeDownLabel else null,
                                         onSwipe = if (swipeUpCommitValue != null && swipeUpAction != GestureAction.NONE) { { onKeyPress(swipeUpCommitValue) } } else null,
                                         onSwipeDown = onSwipeDown,
                                         onSwipeStateChange = onSwipeStateChange,
@@ -532,8 +541,7 @@ fun KeyboardLayout(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .weight(1f)
-                            .background(keyboardBackgroundColor),
+                            .weight(1f),
                     ) {
                         if (isVoiceMode) {
                             DummyKeyButton(
@@ -586,7 +594,7 @@ fun KeyboardLayout(
                             val k2SwipeDownAction = k2SwipeDownRaw?.action
                             val k2SwipeDownValue = k2SwipeDownRaw?.value
                             val k2SwipeDownDisplay = k2SwipeDownRaw?.display ?: DisplayMode.BOTH
-                            val k2SwipeDownBubbleText = if (!isAsciiMode && k2SwipeDownDisplay != DisplayMode.KEY) k2SwipeDownLabel else null
+                            val k2SwipeDownBubbleText = if (k2SwipeDownDisplay != DisplayMode.KEY) k2SwipeDownLabel else null
                             val k2LongPressConfig = k2KeyGesture?.longPress
                             val k2LongPressDisplay = k2LongPressConfig?.display ?: "key"
                             val k2LongPressLabels = if (k2LongPressDisplay == "bubble") {
@@ -652,7 +660,7 @@ fun KeyboardLayout(
                                     modifier = Modifier.weight(0.8f),
                                     swipeText = k2SwipeUpLabel,
                                     swipeDownText = k2SwipeDownBubbleText,
-                                    swipeDownKeyLabel = if (!isAsciiMode && (k2SwipeDownDisplay == DisplayMode.KEY || k2SwipeDownDisplay == DisplayMode.BOTH)) k2SwipeDownLabel else null,
+                                    swipeDownKeyLabel = if ((k2SwipeDownDisplay == DisplayMode.KEY || k2SwipeDownDisplay == DisplayMode.BOTH)) k2SwipeDownLabel else null,
                                     onSwipe = if (k2SwipeUpCommitValue != null) { { onKeyPress(k2SwipeUpCommitValue) } } else null,
                                     onSwipeDown = k2OnSwipeDown,
                                     onSwipeStateChange = { state, bounds ->
@@ -721,7 +729,7 @@ fun KeyboardLayout(
                             val k4SwipeDownAction = k4SwipeDownRaw?.action
                             val k4SwipeDownValue = k4SwipeDownRaw?.value
                             val k4SwipeDownDisplay = k4SwipeDownRaw?.display ?: DisplayMode.BOTH
-                            val k4SwipeDownBubbleText = if (!isAsciiMode && k4SwipeDownDisplay != DisplayMode.KEY) k4SwipeDownLabel else null
+                            val k4SwipeDownBubbleText = if (k4SwipeDownDisplay != DisplayMode.KEY) k4SwipeDownLabel else null
                             val k4LongPressConfig = k4KeyGesture?.longPress
                             val k4LongPressDisplay = k4LongPressConfig?.display ?: "key"
                             val k4LongPressLabels = if (k4LongPressDisplay == "bubble") {
@@ -791,7 +799,7 @@ fun KeyboardLayout(
                                     icon = k4Icon,
                                     swipeText = k4SwipeUpLabel.takeIf { it.isNotEmpty() },
                                     swipeDownText = k4SwipeDownBubbleText,
-                                    swipeDownKeyLabel = if (!isAsciiMode && (k4SwipeDownDisplay == DisplayMode.KEY || k4SwipeDownDisplay == DisplayMode.BOTH)) k4SwipeDownLabel else null,
+                                    swipeDownKeyLabel = if ((k4SwipeDownDisplay == DisplayMode.KEY || k4SwipeDownDisplay == DisplayMode.BOTH)) k4SwipeDownLabel else null,
                                     onSwipe = k4OnSwipe,
                                     onSwipeDown = k4OnSwipeDown,
                                     onSwipeStateChange = { state, bounds ->
@@ -855,8 +863,7 @@ private fun DummyKeyboardRow(
 ) {
     Row(
         modifier = modifier
-            .fillMaxWidth()
-            .background(keyboardBackgroundColor),
+            .fillMaxWidth(),
     ) {
         repeat(keysCount) {
             DummyKeyButton(
@@ -875,8 +882,7 @@ private fun DummyBottomRow(
 ) {
     Row(
         modifier = Modifier
-            .fillMaxWidth()
-            .background(keyboardBackgroundColor),
+            .fillMaxWidth(),
     ) {
         DummyKeyButton(
             backgroundColor = specialKeyBackgroundColor,
@@ -933,8 +939,7 @@ fun KeyboardRowWithConfig(
 ) {
     Row(
         modifier = modifier
-            .fillMaxWidth()
-            .background(config.keyboardBackgroundColor),
+            .fillMaxWidth(),
     ) {
         keys.forEach { key ->
             val rawSwipeUpLabel = KeysConfigHelper.getSwipeUpLabel(key, isAsciiMode)
@@ -965,7 +970,11 @@ fun KeyboardRowWithConfig(
 
             // 键帽显示文本
             val rawCommitValue = KeysConfigHelper.getKeyCommitValue(key, isAsciiMode)
-            val commitValue = if (isShifted) rawCommitValue.uppercase() else rawCommitValue
+            val commitValue = if (isShifted) {
+                rawCommitValue.uppercase()
+            } else {
+                rawCommitValue
+            }
             val displayText = if (isAsciiMode) {
                 commitValue
             } else {
@@ -1173,15 +1182,20 @@ private fun LandscapeKeyboardContent(
     val landscapeSwipeFontSize = 7.sp
 
     val kbColors = KeysConfigHelper.getKeyboardColors()
-    val longToColor: (Long) -> Color = { Color(0xFF000000 or it) }
-    val keyboardBackgroundColor = if (uiState.isDarkTheme) longToColor(kbColors.keyboardBgColorDark) else longToColor(kbColors.keyboardBgColor)
+    val longToColor: (Long) -> Color = { if (it > 0xFFFFFF) Color(it) else Color(0xFF000000 or it) }
+    val keyboardBackgroundColor = KeyboardThemes.getKeyboardBackgroundColor(uiState.themeId, uiState.isDarkTheme)
+    val themeScheme = KeyboardThemes.getThemeById(uiState.themeId)
     val themeSpecialKeyColor = KeyboardThemes.getSpecialKeyColor(uiState.themeId, uiState.isDarkTheme)
-    val keyBackgroundColor = if (uiState.isDarkTheme) longToColor(kbColors.keyBgColorDark) else longToColor(kbColors.keyBgColor)
-    val keyTextColor = if (uiState.isDarkTheme) longToColor(kbColors.keyTextColorDark) else longToColor(kbColors.keyTextColor)
+    val keyBackgroundColor = KeyboardThemes.getKeyBgColorOverride(uiState.themeId, uiState.isDarkTheme)
+        ?: if (uiState.isDarkTheme) longToColor(kbColors.keyBgColorDark) else longToColor(kbColors.keyBgColor)
+    val keyTextColor = KeyboardThemes.getKeyTextColorOverride(uiState.themeId, uiState.isDarkTheme)
+        ?: if (uiState.isDarkTheme) longToColor(kbColors.keyTextColorDark) else longToColor(kbColors.keyTextColor)
     val specialKeyBackgroundColor = if (uiState.isDarkTheme) kbColors.specialKeyBgColorDark?.let { longToColor(it) }
         ?: themeSpecialKeyColor else kbColors.specialKeyBgColor?.let { longToColor(it) } ?: themeSpecialKeyColor
     val specialKeyTextColor = if (uiState.isDarkTheme) Color.White
         else KeyboardThemes.getSpecialKeyTextColor(uiState.themeId, false)
+    val bubbleBgColor = if (uiState.isDarkTheme) themeScheme.specialKeyDark
+        else themeScheme.specialKeyLight
     val kbShadow = KeysConfigHelper.getKeyboardShadow()
     val kbKey = KeysConfigHelper.getKeyboardKeyConfig()
     val shadowEnabled = kbShadow.enabled
@@ -1647,10 +1661,7 @@ fun SwipeableKeyButtonLandscape(
     val currentOnSwipeStateChange by rememberUpdatedState(onSwipeStateChange)
     val scope = rememberCoroutineScope()
     val view = LocalView.current
-    val context = LocalContext.current
-    val chaiPuaFontFamily = remember {
-        FontFamily(Font("ChaiPUA-0.2.7-snow.ttf", context.assets))
-    }
+    val chaiPuaFontFamily = AppFonts.chaiPuaFontFamily
 
     val density = LocalDensity.current
     val swipeUpThreshold = with(density) { (-15).dp.toPx() }
@@ -1920,9 +1931,9 @@ fun SwipeableKeyButtonLandscape(
                     .padding(top = 2.dp, end = 4.dp)
             )
         }
-        if (swipeDownText != null) {
+        if (swipeDownKeyLabel != null) {
             Text(
-                text = swipeDownText,
+                text = swipeDownKeyLabel,
                 color = textColor.copy(alpha = 0.5f),
                 fontSize = swipeFontSize,
                 fontWeight = FontWeight.Normal,
@@ -1960,8 +1971,7 @@ fun CompactKeyboardRowWithConfig(
 ) {
     Row(
         modifier = modifier
-            .fillMaxSize()
-            .background(config.keyboardBackgroundColor),
+            .fillMaxSize(),
     ) {
         keys.forEach { key ->
             val rawSwipeUpLabel = KeysConfigHelper.getSwipeUpLabel(key, isAsciiMode)
@@ -1978,6 +1988,8 @@ fun CompactKeyboardRowWithConfig(
             val swipeDownDisplay = swipeDownRaw?.display ?: DisplayMode.BOTH
             val swipeDownBubbleText =
                 if (swipeDownDisplay != DisplayMode.KEY && swipeDownHintsEnabled) swipeDownLabel else null
+            val swipeDownKeyLabel =
+                if ((swipeDownDisplay == DisplayMode.KEY || swipeDownDisplay == DisplayMode.BOTH) && swipeDownHintsEnabled) swipeDownLabel else null
 
             val longPressConfig = KeysConfigHelper.getKeyGesture(key, isAsciiMode)?.longPress
             val longPressDisplay = longPressConfig?.display ?: "key"
@@ -1990,7 +2002,11 @@ fun CompactKeyboardRowWithConfig(
             } else null
 
             val rawCommitValue = KeysConfigHelper.getKeyCommitValue(key, isAsciiMode)
-            val commitValue = if (isShifted) rawCommitValue.uppercase() else rawCommitValue
+            val commitValue = if (isShifted) {
+                rawCommitValue.uppercase()
+            } else {
+                rawCommitValue
+            }
             val compactDisplayText = if (isAsciiMode) commitValue else KeysConfigHelper.getKeyDisplayLabel(key, isAsciiMode)
             val compactOnClick = remember(key, commitValue, onKeyPress) { { onKeyPress(commitValue) } }
             val compactOnPress: (() -> Unit)? = remember(key, onKeyPressDown) { { onKeyPressDown?.invoke(key); Unit } }
@@ -2031,6 +2047,7 @@ fun CompactKeyboardRowWithConfig(
                 swipeText = swipeUpText,
                 swipeDownText = swipeDownBubbleText,
                 swipeUpKeyLabel = swipeUpKeyLabel,
+                swipeDownKeyLabel = swipeDownKeyLabel,
                 onSwipe = if (swipeUpCommitValue != null && swipeUpAction != GestureAction.NONE) { { onKeyPress(swipeUpCommitValue) } } else null,
                 onSwipeDown = compactOnSwipeDown,
                 onSwipeStateChange = onSwipeStateChange,

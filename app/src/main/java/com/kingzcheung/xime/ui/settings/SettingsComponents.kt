@@ -40,8 +40,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.tooling.preview.Preview
 import com.kingzcheung.xime.settings.SchemaInfo
+import com.kingzcheung.xime.settings.BackgroundConfig
+import com.kingzcheung.xime.ui.theme.XimeTheme
+import com.kingzcheung.xime.settings.KeysConfigHelper
+import com.kingzcheung.xime.settings.KeyboardColorsConfig
 import com.kingzcheung.xime.ui.theme.KeyboardColorScheme
+import com.kingzcheung.xime.ui.theme.KeyboardThemes
+import com.kingzcheung.xime.ui.theme.keyboardBackground
 
 @Composable
 fun SettingsSection(
@@ -58,7 +66,7 @@ fun SettingsSection(
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp),
-            color = MaterialTheme.colorScheme.surface,
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
             shadowElevation = 0.dp
         ) {
             Column(content = content)
@@ -86,7 +94,7 @@ fun SettingsItem(
             modifier = Modifier
                 .size(40.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)),
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
             contentAlignment = Alignment.Center
         ) {
             Icon(
@@ -143,7 +151,7 @@ fun SettingsToggleItem(
             modifier = Modifier
                 .size(40.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)),
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
             contentAlignment = Alignment.Center
         ) {
             Icon(
@@ -208,8 +216,8 @@ fun SchemaItem(
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Medium,
                 color = if (!isDownloaded) MaterialTheme.colorScheme.outline
-                    else if (isSelected) MaterialTheme.colorScheme.primary 
-                    else MaterialTheme.colorScheme.onSurface
+                else if (isSelected) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurface
             )
             if (schema.description.isNotEmpty()) {
                 Text(
@@ -245,7 +253,7 @@ fun SchemaItem(
                 }
             }
         }
-        
+
         if (!isDownloaded) {
             OutlinedButton(
                 onClick = onDownload,
@@ -356,21 +364,23 @@ fun ThemeCard(
     isDark: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    isSystem: Boolean = false
+    isSystem: Boolean = false,
+    accentColor: Color? = null,
+    keyBgColor: Color? = null,
 ) {
     val backgroundColor = if (isDark) Color(0xFF202124) else Color(0xFFE8EAED)
-    val keyColor = if (isDark) Color(0xFF35363A) else Color(0xFFFFFFFF)
-    val specialKeyColor = if (isDark) Color(0xFF4A4A4A) else Color(0xFFD3E3FD)
+    val keyColor = keyBgColor ?: if (isDark) Color(0xFF35363A) else Color(0xFFFFFFFF)
+    val specialKeyColor = accentColor ?: if (isDark) Color(0xFF4A4A4A) else Color(0xFFD3E3FD)
     val textColor = if (isDark) Color(0xFFE8EAED) else Color(0xFF202124)
     val candidateBarColor = if (isDark) Color(0xFF2D2D2D) else Color(0xFFF8F9FA)
-    
+
     Column(
         modifier = modifier
     ) {
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(1f)
+                .aspectRatio(1.3f)
                 .then(
                     if (isSelected) {
                         Modifier.border(
@@ -383,7 +393,7 @@ fun ThemeCard(
                     }
                 ),
             shape = RoundedCornerShape(12.dp),
-            color = MaterialTheme.colorScheme.surface,
+            color = MaterialTheme.colorScheme.surfaceContainer,
             shadowElevation = 0.dp,
             onClick = onClick
         ) {
@@ -425,7 +435,7 @@ fun ThemeCard(
                                                 .width(12.dp)
                                                 .height(4.dp)
                                                 .clip(RoundedCornerShape(1.dp))
-                                                .background(Color(0xFF1A73E8))
+                                                .background(accentColor ?: Color(0xFF1A73E8))
                                         )
                                     }
                                     Spacer(modifier = Modifier.height(2.dp))
@@ -504,12 +514,16 @@ fun ThemeCard(
                                         .width(16.dp)
                                         .height(6.dp)
                                         .clip(RoundedCornerShape(2.dp))
-                                        .background(if (isDark) Color(0xFF8AB4F8) else Color(0xFF1A73E8))
+                                        .background(
+                                            accentColor ?: if (isDark) Color(0xFF8AB4F8) else Color(
+                                                0xFF1A73E8
+                                            )
+                                        )
                                 )
                             }
-                            
+
                             Spacer(modifier = Modifier.height(4.dp))
-                            
+
                             repeat(3) { rowIndex ->
                                 Row(
                                     modifier = Modifier
@@ -518,15 +532,16 @@ fun ThemeCard(
                                         .padding(vertical = 1.dp),
                                     horizontalArrangement = Arrangement.spacedBy(2.dp)
                                 ) {
-                                    val keysInRow = if (rowIndex == 2) 4 else 10
+                                    val keysInRow = if (rowIndex == 2) 3 else 10
                                     repeat(keysInRow) { keyIndex ->
-                                        val isSpecialKey = (rowIndex == 0 && keyIndex == 0) ||
-                                                (rowIndex == 2 && (keyIndex == 0 || keyIndex == 3))
+                                        val isSpecialKey =
+                                            (rowIndex == 2 && (keyIndex == 0 || keyIndex == 2))
+                                        val isSpaceKey = (rowIndex == 2 && keyIndex == 1)
                                         Box(
                                             modifier = Modifier
-                                                .weight(if (isSpecialKey) 1.5f else 1f)
+                                                .weight(if (isSpaceKey) 4f else 1f)
                                                 .fillMaxHeight()
-                                                .clip(RoundedCornerShape(3.dp))
+                                                .clip(RoundedCornerShape(2.dp))
                                                 .background(if (isSpecialKey) specialKeyColor else keyColor)
                                         )
                                     }
@@ -535,52 +550,364 @@ fun ThemeCard(
                         }
                     }
                 }
-                
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                    )
-                }
             }
         }
     }
 }
 
 @Composable
-fun KeyboardThemeCard(
-    theme: KeyboardColorScheme,
+fun CodeDisplayCard(
+    title: String,
     isSelected: Boolean,
-    isDark: Boolean,
+    showCodeInInputBox: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val backgroundColor = if (isDark) Color(0xFF202124) else Color(0xFFE8EAED)
-    val keyColor = if (isDark) Color(0xFF35363A) else Color(0xFFFFFFFF)
-    val specialKeyColor = if (isDark) theme.specialKeyDark else theme.specialKeyLight
-    val accentColor = if (isDark) theme.accentDark else theme.accentLight
-    val candidateBarColor = if (isDark) Color(0xFF2D2D2D) else Color(0xFFF8F9FA)
-    
+    val primary = MaterialTheme.colorScheme.primary
+    val onSurface = MaterialTheme.colorScheme.onSurface
+    val selectedBg = primary.copy(alpha = 0.15f)
+
+    Column(modifier = modifier) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .then(
+                    if (isSelected) {
+                        Modifier.border(
+                            width = 2.dp,
+                            color = primary,
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                    } else {
+                        Modifier
+                    }
+                )
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surface,
+                shadowElevation = 0.dp,
+                onClick = onClick
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(8.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .padding(6.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(26.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(MaterialTheme.colorScheme.surface)
+                                .border(
+                                    0.5.dp,
+                                    MaterialTheme.colorScheme.outlineVariant,
+                                    RoundedCornerShape(4.dp)
+                                )
+                                .padding(horizontal = 8.dp),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            if (showCodeInInputBox) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "曦码 shu ru fa",
+                                        fontSize = 12.sp,
+                                        color = onSurface,
+                                        maxLines = 1
+                                    )
+                                    Spacer(modifier = Modifier.width(1.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .width(1.dp)
+                                            .height(13.dp)
+                                            .background(primary)
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(3.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(4.dp))
+                                .padding(horizontal = 6.dp, vertical = 4.dp)
+                        ) {
+                            Column(
+                                verticalArrangement = Arrangement.Center,
+                                modifier = Modifier.padding(vertical = 0.dp)
+                            ) {
+                                Row(modifier = Modifier.padding(vertical = 2.dp)) {
+                                    Text(
+                                        "shu ru fa",
+                                        fontSize = 10.sp,
+                                        lineHeight = 1.sp,
+                                        color = onSurface.copy(alpha = 0.6f)
+                                    )
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(selectedBg)
+                                            .padding(horizontal = 4.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = "输入法",
+                                            fontSize = 13.sp,
+                                            color = primary,
+                                            fontWeight = FontWeight.Medium,
+                                            maxLines = 1
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "力学",
+                                        fontSize = 13.sp,
+                                        color = onSurface,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                color = if (isSelected) primary else onSurface
+            )
+        }
+    }
+}
+
+// ========== Previews ==========
+
+@Preview(name = "CodeDisplayCard - 选中+显示码")
+@Composable
+fun CodeDisplayCardPreview_SelectedWithCode() {
+    XimeTheme {
+        CodeDisplayCard(
+            title = "曦码",
+            isSelected = true,
+            showCodeInInputBox = true,
+            onClick = {},
+            modifier = Modifier
+                .padding(16.dp)
+                .height(160.dp)
+        )
+    }
+}
+
+@Preview(name = "CodeDisplayCard - 不显示码")
+@Composable
+fun CodeDisplayCardPreview_NotSelectedNoCode() {
+    XimeTheme {
+        CodeDisplayCard(
+            title = "曦码",
+            isSelected = true,
+            showCodeInInputBox = false,
+            onClick = {},
+            modifier = Modifier
+                .padding(16.dp)
+                .height(160.dp)
+        )
+    }
+}
+
+@Composable
+fun CommentDisplayCard(
+    title: String,
+    isSelected: Boolean,
+    showComment: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val primary = MaterialTheme.colorScheme.primary
+    val onSurface = MaterialTheme.colorScheme.onSurface
+
+    Box(modifier = modifier) {
+        Column {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surface)
+                    .clickable { onClick() }
+                    .then(
+                        if (isSelected) {
+                            Modifier.border(
+                                width = 2.dp,
+                                color = primary,
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                        } else {
+                            Modifier
+                        }
+                    )
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(10.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .padding(horizontal = 8.dp, vertical = 8.dp),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(primary.copy(alpha = 0.15f))
+                                    .padding(horizontal = 6.dp, vertical = 3.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "输入法",
+                                        fontSize = 14.sp,
+                                        color = primary,
+                                        fontWeight = FontWeight.Medium,
+                                        maxLines = 1
+                                    )
+                                    if (showComment) {
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Text(
+                                            text = "ltif",
+                                            fontSize = 9.sp,
+                                            color = onSurface.copy(alpha = 0.5f),
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "力学",
+                                fontSize = 14.sp,
+                                color = onSurface,
+                                maxLines = 1
+                            )
+                            if (showComment) {
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(
+                                    text = "lixue",
+                                    fontSize = 9.sp,
+                                    color = onSurface.copy(alpha = 0.5f),
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                    color = if (isSelected) primary else onSurface,
+                    maxLines = 1
+                )
+            }
+        }
+    }
+}
+
+@Preview(name = "CommentDisplayCard - 显示注释", heightDp = 120)
+@Composable
+fun CommentDisplayCardPreview_Show() {
+    XimeTheme {
+        CommentDisplayCard(
+            title = "显示",
+            isSelected = true,
+            showComment = true,
+            onClick = {},
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(100.dp)
+                .padding(10.dp)
+        )
+    }
+}
+
+@Preview(name = "CommentDisplayCard - 隐藏注释", heightDp = 120)
+@Composable
+fun CommentDisplayCardPreview_Hide() {
+    XimeTheme {
+        CommentDisplayCard(
+            title = "隐藏",
+            isSelected = false,
+            showComment = false,
+            onClick = {},
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(100.dp)
+                .padding(10.dp)
+        )
+    }
+}
+
+
+@Composable
+fun KeyboardThemeCard(
+    theme: KeyboardColorScheme,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    title: String? = null,
+) {
+    val kbColors = KeysConfigHelper.getKeyboardColors()
+    val longToColor: (Long) -> Color = { if (it > 0xFFFFFF) Color(it) else Color(0xFF000000 or it) }
+    val globalKeyBgLight = KeyboardThemes.getKeyBgColorOverride(theme.id, false)
+        ?: longToColor(kbColors.keyBgColor)
+    val globalKeyBgDark = KeyboardThemes.getKeyBgColorOverride(theme.id, true)
+        ?: longToColor(kbColors.keyBgColorDark)
     Column(
         modifier = modifier
     ) {
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(1f)
+                .aspectRatio(1.3f)
                 .then(
                     if (isSelected) {
                         Modifier.border(
                             width = 2.dp,
-                            color = accentColor,
+                            color = theme.accentLight,
                             shape = RoundedCornerShape(12.dp)
                         )
                     } else {
@@ -588,103 +915,210 @@ fun KeyboardThemeCard(
                     }
                 ),
             shape = RoundedCornerShape(12.dp),
-            color = MaterialTheme.colorScheme.surface,
+            color = MaterialTheme.colorScheme.surfaceContainer,
             shadowElevation = 0.dp,
             onClick = onClick
         ) {
-            Column(
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(8.dp)
+                    .padding(6.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(backgroundColor)
-                        .padding(4.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(12.dp)
-                                .clip(RoundedCornerShape(3.dp))
-                                .background(candidateBarColor)
-                                .padding(horizontal = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .width(16.dp)
-                                    .height(6.dp)
-                                    .clip(RoundedCornerShape(2.dp))
-                                    .background(accentColor)
-                            )
-                        }
-                        
-                        Spacer(modifier = Modifier.height(4.dp))
-                        
-                        repeat(3) { rowIndex ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .weight(1f)
-                                    .padding(vertical = 1.dp),
-                                horizontalArrangement = Arrangement.spacedBy(2.dp)
-                            ) {
-                                val keysInRow = if (rowIndex == 2) 4 else 10
-                                repeat(keysInRow) { keyIndex ->
-                                    val isSpecialKey = (rowIndex == 0 && keyIndex == 0) ||
-                                            (rowIndex == 2 && (keyIndex == 0 || keyIndex == 3))
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(if (isSpecialKey) 1.5f else 1f)
-                                            .fillMaxHeight()
-                                            .clip(RoundedCornerShape(3.dp))
-                                            .background(if (isSpecialKey) specialKeyColor else keyColor)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-                
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
+                Row(modifier = Modifier.fillMaxSize()) {
+                    ThemeHalfPreview(
                         modifier = Modifier
-                            .size(14.dp)
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(specialKeyColor)
-                            .padding(end = 4.dp)
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        keyboardBackground = theme.keyboardBackground,
+                        isDark = false,
+                        fallbackBg = theme.keyboardBgLight,
+                        candidateBarColor = theme.candidateBarBgLight,
+                        accentColor = theme.accentLight,
+                        keyColor = globalKeyBgLight,
+                        specialKeyColor = theme.specialKeyLight,
+                        isLeft = true,
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = theme.name,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                        color = if (isSelected) accentColor else MaterialTheme.colorScheme.onSurface
+                    ThemeHalfPreview(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        keyboardBackground = theme.keyboardBackground,
+                        isDark = true,
+                        fallbackBg = theme.keyboardBgDark,
+                        candidateBarColor = theme.candidateBarBgDark,
+                        accentColor = theme.accentDark,
+                        keyColor = globalKeyBgDark,
+                        specialKeyColor = theme.specialKeyDark,
+                        isLeft = false,
                     )
-//                    if (isSelected) {
-//                        Spacer(modifier = Modifier.width(4.dp))
-//                        Icon(
-//                            imageVector = Icons.Default.Check,
-//                            contentDescription = null,
-//                            tint = accentColor,
-//                            modifier = Modifier.size(16.dp)
-//                        )
-//                    }
                 }
             }
         }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp, bottom = 4.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(10.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(theme.accentLight)
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = title ?: theme.name,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                color = if (isSelected) theme.accentLight else MaterialTheme.colorScheme.onSurface
+            )
+        }
+    }
+}
+
+@Composable
+private fun ThemeHalfPreview(
+    modifier: Modifier = Modifier,
+    keyboardBackground: BackgroundConfig?,
+    isDark: Boolean,
+    fallbackBg: Color,
+    candidateBarColor: Color,
+    accentColor: Color,
+    keyColor: Color,
+    specialKeyColor: Color,
+    isLeft: Boolean,
+    single: Boolean = false,
+) {
+    val shape = when {
+        single -> RoundedCornerShape(8.dp)
+        isLeft -> RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp)
+        else -> RoundedCornerShape(topEnd = 8.dp, bottomEnd = 8.dp)
+    }
+    Box(
+        modifier = modifier
+            .clip(shape)
+            .keyboardBackground(keyboardBackground, isDark, fallbackBg)
+            .padding(4.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(12.dp)
+                    .padding(horizontal = 3.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (isLeft) {
+                    Box(
+                        modifier = Modifier
+                            .width(16.dp)
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(accentColor)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(2.dp))
+            repeat(3) { rowIndex ->
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .padding(vertical = 1.dp),
+                    horizontalArrangement = Arrangement.spacedBy(1.5.dp)
+                ) {
+                    val keysInRow = if (rowIndex == 2) 2 else 5
+                    repeat(keysInRow) { keyIndex ->
+                        val isSpecial =
+                            (isLeft && rowIndex == 2 && (keyIndex == 0)) || (!isLeft && rowIndex == 2 && keyIndex == 1)
+                        val isSpace = (rowIndex == 2 && keyIndex == if (isLeft) 1 else 0)
+                        Box(
+                            modifier = Modifier
+                                .weight(if (isSpace) 3f else 1f)
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(1.5.dp))
+                                .background(if (isSpecial) specialKeyColor else keyColor)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun CandidateTextSizeCard(
+    candidateTextSize: Float,
+    modifier: Modifier = Modifier
+) {
+    val primary = MaterialTheme.colorScheme.primary
+    val onSurface = MaterialTheme.colorScheme.onSurface
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surface)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+            ) {
+                Row(modifier = Modifier.padding(vertical = 2.dp)) {
+                    Text(
+                        "shu ru fa",
+                        fontSize = 10.sp,
+                        lineHeight = 1.sp,
+                        color = onSurface.copy(alpha = 0.6f)
+                    )
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(primary.copy(alpha = 0.2f))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = "输入法",
+                            fontSize = candidateTextSize.sp,
+                            color = primary,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "力学",
+                        fontSize = candidateTextSize.sp,
+                        color = onSurface,
+                        maxLines = 1
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Preview(name = "CandidateTextSizeCard - default")
+@Composable
+fun CandidateTextSizeCardPreview() {
+    XimeTheme {
+        CandidateTextSizeCard(
+            candidateTextSize = 19f,
+            modifier = Modifier
+                .padding(16.dp)
+                .fillMaxWidth()
+        )
     }
 }

@@ -17,7 +17,6 @@ object SettingsPreferences {
     private const val KEY_VIBRATION_ENABLED = "vibration_enabled"
     private const val KEY_VIBRATION_INTENSITY = "vibration_intensity"
     private const val KEY_KEYBOARD_THEME = "keyboard_theme"
-    private const val KEY_GLASS_EFFECT = "glass_effect"
     
     private const val KEY_SMART_PREDICTION_ENABLED = "smart_prediction_enabled"
     private const val KEY_PREDICTION_MODEL_REPO = "prediction_model_repo"
@@ -34,6 +33,10 @@ object SettingsPreferences {
     /** 默认主题 ID，可从 xime.yaml 的 style.color_scheme 初始化。 */
     @JvmStatic
     var defaultKeyboardTheme: String = "lavender_purple"
+
+    /** 默认显示模式，可从 xime.yaml 的 style.dark_mode 初始化。 */
+    @JvmStatic
+    var defaultDarkMode: Int = 2
     
     const val KEY_SWIPE_UP_HINTS_ENABLED = "swipe_up_hints_enabled"
     const val KEY_SWIPE_DOWN_HINTS_ENABLED = "swipe_down_hints_enabled"
@@ -78,7 +81,11 @@ object SettingsPreferences {
     private const val KEY_INSTALLED_MARKET_IDS = "installed_market_ids"
     private const val KEY_COMPACT_MODE = "compact_mode"
     private const val KEY_SHOW_CANDIDATE_COMMENTS = "show_candidate_comments"
+    private const val KEY_INPUT_TEXT_LOCATION = "input_text_location"
     private const val KEY_PAGE_SIZE = "page_size"
+    private const val KEY_CANDIDATE_TEXT_SIZE = "candidate_text_size"
+    const val INPUT_TEXT_INPUT_BOX = "input_box"
+    const val INPUT_TEXT_CANDIDATE_BAR = "candidate_bar"
     const val DEFAULT_PAGE_SIZE = 0 // 0 表示使用 Rime schema 默认值
 
     fun isCompactModeEnabled(context: Context): Boolean {
@@ -95,6 +102,14 @@ object SettingsPreferences {
 
     fun setShowCandidateComments(context: Context, show: Boolean) {
         getPrefs(context).edit().putBoolean(KEY_SHOW_CANDIDATE_COMMENTS, show).apply()
+    }
+
+    fun getInputTextLocation(context: Context): String {
+        return getPrefs(context).getString(KEY_INPUT_TEXT_LOCATION, INPUT_TEXT_CANDIDATE_BAR) ?: INPUT_TEXT_CANDIDATE_BAR
+    }
+
+    fun setInputTextLocation(context: Context, location: String) {
+        getPrefs(context).edit().putString(KEY_INPUT_TEXT_LOCATION, location).apply()
     }
 
     private fun getPrefs(context: Context): SharedPreferences {
@@ -139,7 +154,7 @@ object SettingsPreferences {
 
     fun getDarkMode(context: Context): Int {
         // 0 = 浅色, 1 = 深色, 2 = 跟随系统（默认）
-        return getPrefs(context).getInt(KEY_DARK_MODE, 2)
+        return getPrefs(context).getInt(KEY_DARK_MODE, defaultDarkMode)
     }
     
     fun setDarkMode(context: Context, mode: Int) {
@@ -242,13 +257,6 @@ object SettingsPreferences {
         getPrefs(context).edit().putString(KEY_KEYBOARD_THEME, themeId).apply()
     }
 
-    fun isGlassEffectEnabled(context: Context): Boolean {
-        return getPrefs(context).getBoolean(KEY_GLASS_EFFECT, false)
-    }
-
-    fun setGlassEffectEnabled(context: Context, enabled: Boolean) {
-        getPrefs(context).edit().putBoolean(KEY_GLASS_EFFECT, enabled).apply()
-    }
     
     fun isPluginEnabled(context: Context, pluginId: String): Boolean {
         val prefs = getPrefs(context)
@@ -494,6 +502,16 @@ object SettingsPreferences {
 
     fun setPageSize(context: Context, pageSize: Int) {
         getPrefs(context).edit().putInt(KEY_PAGE_SIZE, pageSize).apply()
+    }
+
+    const val DEFAULT_CANDIDATE_TEXT_SIZE = 19
+
+    fun getCandidateTextSize(context: Context): Int {
+        return getPrefs(context).getInt(KEY_CANDIDATE_TEXT_SIZE, DEFAULT_CANDIDATE_TEXT_SIZE)
+    }
+
+    fun setCandidateTextSize(context: Context, size: Int) {
+        getPrefs(context).edit().putInt(KEY_CANDIDATE_TEXT_SIZE, size).apply()
     }
 
     // ── 方案市场「已安装」的持久记录 ──

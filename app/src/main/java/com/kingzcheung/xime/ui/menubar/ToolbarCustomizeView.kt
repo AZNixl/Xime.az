@@ -24,7 +24,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -48,6 +47,7 @@ fun ToolbarCustomizeView(
     keyTextColor: Color,
     backgroundColor: Color,
     accentColor: Color,
+    keyBgColor: Color,
     onUpdateToolbarButtons: ((List<String>) -> Unit)?,
     onDismiss: () -> Unit,
     bottomPaddingDp: Int = 0,
@@ -72,7 +72,12 @@ fun ToolbarCustomizeView(
 
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-    val isDarkTheme = keyTextColor == Color(0xFFE8EAED)
+    // 图标按钮容器色：按键背景与强调色的混合色调（带主题色但不过于强烈）
+    val iconButtonContainer = androidx.compose.ui.graphics.lerp(
+        keyBgColor,
+        accentColor,
+        0.25f
+    )
 
     val itemsPerPage = 8
     val pages = allButtons.chunked(itemsPerPage).map { page ->
@@ -97,7 +102,7 @@ fun ToolbarCustomizeView(
                 modifier = Modifier
                     .size(28.dp)
                     .clip(CircleShape)
-                    .background(if (isDarkTheme) Color(0xFF374151) else Color(0xFFF3F4F6))
+                    .background(iconButtonContainer)
                     .clickable { onDismiss() },
                 contentAlignment = Alignment.Center
             ) {
@@ -126,7 +131,7 @@ fun ToolbarCustomizeView(
                                 .padding(horizontal = 3.dp)
                                 .size(28.dp)
                                 .clip(CircleShape)
-                                .background(if (isDarkTheme) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.1f)),
+                                .background(iconButtonContainer),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
@@ -147,7 +152,7 @@ fun ToolbarCustomizeView(
                 .weight(1f)
                 .padding(horizontal = 16.dp)
                 .clip(RoundedCornerShape(16.dp))
-                .background(MaterialTheme.colorScheme.surface)
+                .background(keyBgColor)
                 .padding(16.dp,10.dp)
         ) {
             HorizontalPager(

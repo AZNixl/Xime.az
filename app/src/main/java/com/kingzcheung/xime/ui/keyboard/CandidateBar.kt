@@ -4,6 +4,8 @@ import com.kingzcheung.xime.service.PredictionManager
 import android.annotation.SuppressLint
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -20,7 +22,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
@@ -38,10 +39,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.rememberTextMeasurer
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -83,6 +85,7 @@ fun CandidateBar(
     toolbarActions: List<ToolbarAction> = emptyList(),
     visuals: CandidateBarVisuals,
     callbacks: CandidateBarCallbacks,
+    inlineSuggestions: List<*> = listOf<Any>(),
     @SuppressLint("ModifierParameter") modifier: Modifier = Modifier,
     isFloatingMode: Boolean = false,
 ) {
@@ -90,7 +93,19 @@ fun CandidateBar(
     val isLandscape = !isFloatingMode && configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
     val horizontalPadding = if (isLandscape) 50.dp else 8.dp
     val context = LocalContext.current
+
+    // M3 角色色：图标按钮背景用 surface 与 primary 的混合色调（带种子色但不过于强烈），
+    // 按压态用 onSurface 12% state layer
+    val iconButtonContainer = androidx.compose.ui.graphics.lerp(
+        MaterialTheme.colorScheme.surface,
+        MaterialTheme.colorScheme.primary,
+        0.15f
+    )
+    val iconButtonTint = MaterialTheme.colorScheme.onSurfaceVariant
     val showComments = SettingsPreferences.showCandidateComments(context)
+    val inputTextLocation = SettingsPreferences.getInputTextLocation(context)
+    val showInputBoxStyle = inputTextLocation == SettingsPreferences.INPUT_TEXT_INPUT_BOX
+    val candidateTextSize = SettingsPreferences.getCandidateTextSize(context)
 
     val density = LocalDensity.current
     val textMeasurer = rememberTextMeasurer()
@@ -134,7 +149,7 @@ fun CandidateBar(
                     val measureText = { text: String ->
                         textMeasurer.measure(
                             text = AnnotatedString(text),
-                            style = TextStyle(fontSize = 19.sp)
+                            style = TextStyle(fontSize = candidateTextSize.sp)
                         ).size.width.toFloat()
                     }
                     val leftSidePx = with(density) { rowPaddingPx + 32.dp.toPx() }
@@ -208,7 +223,7 @@ fun CandidateBar(
     ) {
         val displayText = (state as? CandidateBarState.ChineseCandidates)?.preeditText
             ?: (state as? CandidateBarState.ChineseCandidates)?.inputText ?: ""
-        val showInputText = showInputTextRow && displayText.isNotEmpty()
+        val showInputText = showInputTextRow && displayText.isNotEmpty() && !showInputBoxStyle
 
         if (showInputText) {
             val inputTextInteractionSource = remember { MutableInteractionSource() }
@@ -257,7 +272,7 @@ fun CandidateBar(
                                 modifier = Modifier
                                     .size(32.dp)
                                     .clip(RoundedCornerShape(16.dp))
-                                    .background(if (visuals.isDarkTheme) Color(0xFF374151) else Color(0xFFF3F4F6))
+                                    .background(iconButtonContainer)
                                     .clickable { callbacks.onBack() },
                                 contentAlignment = Alignment.Center
                             ) {
@@ -273,7 +288,7 @@ fun CandidateBar(
                                 modifier = Modifier
                                     .size(32.dp)
                                     .clip(RoundedCornerShape(16.dp))
-                                    .background(if (visuals.isDarkTheme) Color(0xFF374151) else Color(0xFFF3F4F6))
+                                    .background(iconButtonContainer)
                                     .clickable { callbacks.onLogoClick?.invoke() },
                                 contentAlignment = Alignment.Center
                             ) {
@@ -304,8 +319,29 @@ fun CandidateBar(
                 }
             }
 
+            if (inlineSuggestions.isNotEmpty()) {
+                inlineSuggestions.forEachIndexed { index, suggestion ->
+                    InlineSuggestionView(
+                        suggestion = suggestion,
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .width(180.dp),
+                    )
+                    if (index < inlineSuggestions.lastIndex) {
+                        InlineSuggestionDivider(color = visuals.dividerColor)
+                    }
+                }
+                Box(
+                    modifier = Modifier
+                        .width(1.dp)
+                        .fillMaxHeight()
+                        .padding(vertical = 6.dp)
+                        .background(visuals.dividerColor),
+                )
+            }
+
             LazyRow(
-                modifier = Modifier.weight(1f),
+                modifier = if (state is CandidateBarState.Idle) Modifier else Modifier.weight(1f),
                 state = candidateListState,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
@@ -323,7 +359,8 @@ fun CandidateBar(
                             }
                         } else "",
                         isSelected = index == 0,
-                        accentColor = visuals.accentColor
+                        accentColor = visuals.accentColor,
+                        fontSize = candidateTextSize.sp
                     )
                 }
 
@@ -347,7 +384,8 @@ fun CandidateBar(
                             textColor = visuals.textColor,
                             comment = displayComments.getOrElse(index) { "" },
                             isSelected = assocState?.highlightIndex == index,
-                            accentColor = visuals.accentColor
+                            accentColor = visuals.accentColor,
+                            fontSize = candidateTextSize.sp
                         )
                     }
                 }
@@ -357,34 +395,34 @@ fun CandidateBar(
 
             when {
                 state is CandidateBarState.Idle -> {
-                    if (toolbarActions.isNotEmpty()) {
-                        toolbarActions.forEach { action ->
-                            val interactionSource = remember { MutableInteractionSource() }
-                            val isPressed by interactionSource.collectIsPressedAsState()
-                            Box(
-                                modifier = Modifier
-                                    .padding(horizontal = 5.dp)
-                                    .size(32.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        if (isPressed) (if (visuals.isDarkTheme) Color.White.copy(
-                                            alpha = 0.15f
-                                        ) else Color.Black.copy(alpha = 0.1f))
-                                        else (if (visuals.isDarkTheme) Color(0xFF374151) else Color(0xFFF3F4F6))
+                    Row(
+                        modifier = Modifier
+                            .weight(1f, fill = true)
+                            .horizontalScroll(rememberScrollState()),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (toolbarActions.isNotEmpty()) {
+                            toolbarActions.forEach { action ->
+                                val interactionSource = remember { MutableInteractionSource() }
+                                val isPressed by interactionSource.collectIsPressedAsState()
+                                Box(
+                                    modifier = Modifier
+                                        .padding(horizontal = 5.dp)
+                                        .size(32.dp)
+                                        .clickable(
+                                            interactionSource = interactionSource,
+                                            indication = null,
+                                            onClick = action.onClick
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = action.button.icon,
+                                        contentDescription = action.button.label,
+                                        tint = if (isPressed) iconButtonTint.copy(alpha = 0.6f) else iconButtonTint,
+                                        modifier = Modifier.size(22.dp)
                                     )
-                                    .clickable(
-                                        interactionSource = interactionSource,
-                                        indication = null,
-                                        onClick = action.onClick
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = action.button.icon,
-                                    contentDescription = action.button.label,
-                                    tint = if (isPressed) visuals.textColor.copy(alpha = 0.6f) else if (visuals.isDarkTheme) visuals.textColor else visuals.textColor.copy(alpha = 0.65f),
-                                    modifier = Modifier.size(20.dp)
-                                )
+                                }
                             }
                         }
                     }
@@ -398,13 +436,6 @@ fun CandidateBar(
                         Box(
                             modifier = Modifier
                                 .size(32.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    if (isHideKeyboardPressed) (if (visuals.isDarkTheme) Color.White.copy(
-                                        alpha = 0.15f
-                                    ) else Color.Black.copy(alpha = 0.1f))
-                                    else (if (visuals.isDarkTheme) Color(0xFF374151) else Color(0xFFF3F4F6))
-                                )
                                 .clickable(
                                     interactionSource = hideKeyboardInteractionSource,
                                     indication = null,
@@ -415,8 +446,8 @@ fun CandidateBar(
                             Icon(
                                 imageVector = Icons.Default.KeyboardArrowDown,
                                 contentDescription = "收起键盘",
-                                tint = if (isHideKeyboardPressed) visuals.textColor.copy(alpha = 0.6f) else visuals.textColor,
-                                modifier = Modifier.size(20.dp)
+                                tint = if (isHideKeyboardPressed) iconButtonTint.copy(alpha = 0.6f) else iconButtonTint,
+                                modifier = Modifier.size(22.dp)
                             )
                         }
                     }
@@ -427,7 +458,7 @@ fun CandidateBar(
                             modifier = Modifier
                                 .size(28.dp)
                                 .clip(RoundedCornerShape(14.dp))
-                                .background(if (visuals.isDarkTheme) Color(0xFF374151) else Color(0xFFF3F4F6))
+                                .background(iconButtonContainer)
                                 .clickable { callbacks.onBack() },
                             contentAlignment = Alignment.Center
                         ) {
@@ -483,12 +514,6 @@ fun CandidateBar(
                     Spacer(modifier = Modifier.width(4.dp))
                     Box(
                         modifier = Modifier
-                            .width(1.dp)
-                            .height(28.dp)
-                            .background(visuals.dividerColor).padding(end = 1.dp)
-                    )
-                    Box(
-                        modifier = Modifier
                             .width(30.dp)
                             .height(24.dp)
                             .clip(RoundedCornerShape(6.dp))
@@ -526,7 +551,8 @@ fun CandidateItem(
     comment: String = "",
     isSelected: Boolean = false,
     accentColor: Color = Color(0xFF1A73E8),
-    @SuppressLint("ModifierParameter") modifier: Modifier = Modifier
+    @SuppressLint("ModifierParameter") modifier: Modifier = Modifier,
+    fontSize: androidx.compose.ui.unit.TextUnit = 19.sp
 ) {
     Row(
         modifier = modifier
@@ -542,7 +568,7 @@ fun CandidateItem(
         Text(
             text = text,
             color = if (isSelected) accentColor else textColor,
-            fontSize = 19.sp,
+            fontSize = fontSize,
             fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal,
             maxLines = 1
         )
@@ -551,7 +577,7 @@ fun CandidateItem(
             Text(
                 text = comment,
                 color = if (isSelected) accentColor.copy(alpha = 0.6f) else textColor.copy(alpha = 0.5f),
-                fontSize = 11.sp,
+                fontSize = (fontSize.value * 11f / 19f).sp,
                 fontWeight = FontWeight.Normal,
                 maxLines = 1
             )

@@ -7,8 +7,8 @@ import com.kingzcheung.xime.plugin.core.api.PluginIcon
 import com.kingzcheung.xime.plugin.core.model.PluginInfo
 import com.kingzcheung.xime.plugin.core.runtime.PluginManager
 import com.kingzcheung.xime.settings.SettingsPreferences
-import com.kingzcheung.xime.ui.keyboard.EmojiCategory
-import com.kingzcheung.xime.ui.keyboard.EmojiData
+import com.kingzcheung.xime.data.EmojiCategory
+import com.kingzcheung.xime.data.EmojiData
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job

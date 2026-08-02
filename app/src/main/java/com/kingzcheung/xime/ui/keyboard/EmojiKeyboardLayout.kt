@@ -23,10 +23,12 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -52,114 +54,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.kingzcheung.xime.clipboard.ClipboardManager
+import com.kingzcheung.xime.data.EmojiCategory
+import com.kingzcheung.xime.data.EmojiData
 import com.kingzcheung.xime.plugin.ExtensionManager
 import com.kingzcheung.xime.plugin.core.api.CategoryLayoutConfig
 import com.kingzcheung.xime.plugin.core.api.EmojiItem
 import com.kingzcheung.xime.plugin.core.api.PluginIcon
-
-data class EmojiCategory(
-    val name: String,
-    val icon: String,
-    val pluginIcon: PluginIcon? = null,
-    val emojis: List<String>,
-    val isPlugin: Boolean = false,
-    val pluginId: String? = null,
-    val emojiItems: List<EmojiItem>? = null,
-    val layoutConfig: CategoryLayoutConfig? = null
-)
-
-object EmojiData {
-    val categories = listOf(
-        EmojiCategory(
-            name = "笑脸",
-            icon = "😊",
-            emojis = listOf(
-                "😀", "😃", "😄", "😁", "😆", "😅", "🤣", "😂", "🙂", "🙃",
-                "😉", "😊", "😇", "🥰", "😍", "🤩", "😘", "😗", "😚", "😙",
-                "🥲", "😋", "😛", "😜", "🤪", "😝", "🤑", "🤗", "🤭", "🤫",
-                "🤔", "🤐", "🤨", "😐", "😑", "😶", "😏", "😒", "🙄", "😬",
-                "🤥", "😌", "😔", "😪", "🤤", "😴", "😷", "🤒", "🤕", "🤢",
-                "🤮", "🤧", "🥵", "🥶", "🥴", "😵", "🤯", "🤠", "🥳", "🥸",
-                "😎", "🤓", "🧐", "😕", "😟", "🙁", "☹️", "😮", "😯", "😲",
-                "😳", "🥺", "😦", "😧", "😨", "😰", "😥", "😢", "😭", "😱",
-                "😖", "😣", "😞", "😓", "😩", "😫", "🥱", "😤", "😡", "😠",
-                "🤬", "😈", "👿", "💀", "☠️", "💩", "🤡", "👹", "👺", "👻"
-            )
-        ),
-        EmojiCategory(
-            name = "手势",
-            icon = "👋",
-            emojis = listOf(
-                "👋", "🤚", "🖐️", "✋", "🖖", "👌", "🤌", "🤏", "✌️", "🤞",
-                "🤟", "🤘", "🤙", "👈", "👉", "👆", "🖕", "👇", "☝️", "👍",
-                "👎", "✊", "👊", "🤛", "🤜", "👏", "🙌", "👐", "🤲", "🤝",
-                "🙏", "✍️", "💅", "🤳", "💪", "🦾", "🦿", "🦵", "🦶", "👂",
-                "🦻", "👃", "🧠", "🫀", "🫁", "🦷", "🦴", "👀", "👁️", "👅",
-                "👄", "💪", "🦵", "🦶", "👂", "🦻", "👃", "🧠", "🫀", "🫁"
-            )
-        ),
-        EmojiCategory(
-            name = "动物",
-            icon = "🐶",
-            emojis = listOf(
-                "🐶", "🐱", "🐭", "🐰", "🦊", "🐻", "🐼", "🐨", "🐯",
-                "🦁", "🐮", "🐷", "🐸", "🐵", "🙈", "🙉", "🙊", "🐒", "🐔",
-                "🐧", "🐦", "🐤", "🐣", "🐥", "🦆", "🦅", "🦉", "🦇", "🐺",
-                "🐗", "🐴", "🦄", "🐝", "🐛", "🦋", "🐌", "🐞", "🐜", "🦟",
-                "🦗", "🕷️", "🦂", "🐢", "🐍", "🦎", "🦖", "🦕", "🐙", "🦑",
-                "🦐", "🦞", "🦀", "🐡", "🐠", "🐟", "🐬", "🐳", "🐋", "🦈"
-            )
-        ),
-        EmojiCategory(
-            name = "食物",
-            icon = "🍎",
-            emojis = listOf(
-                "🍎", "🍐", "🍊", "🍋", "🍌", "🍉", "🍇", "🍓", "🫐", "🍈",
-                "🍒", "🍑", "🥭", "🍍", "🥥", "🥝", "🍅", "🍆", "🥑", "🥦",
-                "🥬", "🥒", "🌶️", "🫑", "🌽", "🥕", "🧄", "🧅", "🥔", "🍠",
-                "🍞", "🍩", "🥖", "🥖", "🍪", "🧀", "🥚", "🍳", "🧈", "🥞",
-                "🧇", "🥓", "🥩", "🍗", "🍖", "🦴", "🌭", "🍔", "🍟", "🍕",
-                "🫓", "🥪", "🌯", "🥗", "🌮", "🍙", "🍚", "🍲", "🥘", "🧀"
-            )
-        ),
-        EmojiCategory(
-            name = "活动",
-            icon = "⚽",
-            emojis = listOf(
-                "⚽", "🏀", "🏈", "⚾", "🥎", "🎾", "🏐", "🏉", "🥏", "🎱",
-                "🪀", "🏓", "🏸", "🏒", "🏑", "🥍", "🏏", "🥏", "🪃", "🥅",
-                "⛳", "🪁", "🏹", "🎣", "🤿", "🥊", "🥋", "🏃", "🛹", "🛼",
-                "🪂", "⛸️", "🥌", "⛷️", "🏂", "⛸️", "🪂", "🏋️", "🤼", "🤸",
-                "🤺", "🤾", "🥏", "⛳", "🏇", "🧘", "🏄", "🏊", "🤽", "🚣",
-                "🧗", "🚵", "🚴", "🎖️", "🏆", "🥇", "🥈", "🥉", "🎖️", "🎪"
-            )
-        ),
-        EmojiCategory(
-            name = "物品",
-            icon = "💻",
-            emojis = listOf(
-                "⌚", "📱", "☎️", "💻", "⌨️", "🖥️", "🖨️", "🖱️", "🖲️", "🕹️",
-                "🗜️", "💿", "💾", "📀", "📀", "📼", "📷", "📸", "📹", "🎬",
-                "📽️", "🎞️", "☎️", "📞", "📟", "📠", "📺", "📻", "🎤", "🎛️",
-                "🎮", "🧭", "⏱️", "⏲️", "⏰", "🕰️", "⏳", "⌛", "📡", "🔋",
-                "🔌", "💡", "🔦", "🕯️", "🪔", "🧯", "🛢️", "💵", "💵", "💴",
-                "💶", "💷", "👛", "💳", "💎", "⚖️", "🧰", "🔧", "🔨", "⛏️"
-            )
-        ),
-        EmojiCategory(
-            name = "符号",
-            icon = "❤️",
-            emojis = listOf(
-                "❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "🤎", "💔",
-                "❗", "💕", "💕", "💓", "💗", "✨", "💘", "🎁", "♻️", "☮️",
-                "✝️", "☪️", "🕉️", "☸️", "✡️", "🔯", "✡️", "☯️", "☦️", "🙏",
-                "⛎", "♈", "♉", "♊", "♋", "♌", "♎", "♏", "♐", "♑",
-                "♒", "♓", "🪪", "⚛️", "✅", "☢️", "☣️", "📵", "📱",
-                "🈶", "🈚", "🈸", "🈺", "🌙", "⭐", "⚔️", "🏵️", "🏅", "㊙️"
-            )
-        )
-    )
-}
 
 @Composable
 fun EmojiKeyboardLayout(
@@ -175,7 +75,12 @@ fun EmojiKeyboardLayout(
     val context = LocalContext.current
     val clipboardManager = remember { ClipboardManager.getInstance(context) }
 
-    val isDarkTheme = textColor == Color(0xFFE8EAED)
+    // 图标按钮容器色：surface 与 primary 的混合色调（带种子色但不过于强烈）
+    val iconButtonContainer = androidx.compose.ui.graphics.lerp(
+        MaterialTheme.colorScheme.surface,
+        MaterialTheme.colorScheme.primary,
+        0.15f
+    )
 
     var selectedTopTabIndex by remember { mutableStateOf(0) }
     var selectedSubCategoryIndex by remember { mutableStateOf(0) }
@@ -249,7 +154,7 @@ fun EmojiKeyboardLayout(
                     modifier = Modifier
                         .size(28.dp)
                         .clip(CircleShape)
-                        .background(if (isDarkTheme) Color(0xFF374151) else Color(0xFFF3F4F6))
+                        .background(iconButtonContainer)
                         .clickable { onBack() },
                     contentAlignment = Alignment.Center
                 ) {
@@ -268,7 +173,7 @@ fun EmojiKeyboardLayout(
                     modifier = Modifier
                         .height(28.dp)
                         .clip(RoundedCornerShape(13.dp))
-                        .background(if (isDarkTheme) Color(0xFF374151) else Color(0xFFF3F4F6))
+                        .background(iconButtonContainer)
                         .padding(2.dp)
                 ) {
                     Row(
@@ -387,21 +292,19 @@ fun EmojiKeyboardLayout(
                 pluginCategories[pageIndex - builtinCategories.size]
             }
 
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                if (category.isPlugin && category.emojiItems != null) {
-                    val config = category.layoutConfig
-                    val defaultCols =
-                        if (category.emojiItems.any { it.imageUrl != null }) 6 else 8
-                    val columns = config?.columns ?: if (isLandscape) 15 else defaultCols
-                    val itemHeightDp = config?.itemHeightDp
-                        ?: (if (category.emojiItems.any { it.imageUrl != null }) 60 else 40)
+            val emojiColumns = if (isLandscape) 15 else 8
+            if (category.isPlugin && category.emojiItems != null) {
+                val config = category.layoutConfig
+                val defaultCols = if (category.emojiItems.any { it.imageUrl != null }) 6 else emojiColumns
+                val columns = config?.columns ?: defaultCols
+                val itemHeightDp = config?.itemHeightDp
+                    ?: (if (category.emojiItems.any { it.imageUrl != null }) 60 else 40)
 
-                    category.emojiItems.chunked(columns).forEach { rowItems ->
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    items(category.emojiItems.chunked(columns)) { rowItems ->
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -448,13 +351,14 @@ fun EmojiKeyboardLayout(
                                     .height((itemHeightDp).dp))
                             }
                         }
-                        Spacer(modifier = Modifier.height(2.dp))
                     }
-                } else {
-                    val emojis = category.emojis
-                    val columns = if (isLandscape) 15 else 8
-
-                    emojis.chunked(columns).forEach { rowEmojis ->
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    items(category.emojis.chunked(emojiColumns)) { rowEmojis ->
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(2.dp)
@@ -466,7 +370,7 @@ fun EmojiKeyboardLayout(
                                     modifier = Modifier.weight(1f)
                                 )
                             }
-                            repeat(columns - rowEmojis.size) {
+                            repeat(emojiColumns - rowEmojis.size) {
                                 Spacer(modifier = Modifier.weight(1f))
                             }
                         }

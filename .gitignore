@@ -55,3 +55,7 @@ app/src/main/assets/plugins/*.apk
 
 /.skills
 fix_encoding.py
+perf.data
+xime_heap.hprof
+app/src/main/jni/ncnn-build
+app/src/main/jni/ncnn

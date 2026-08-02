@@ -556,6 +556,7 @@ speller:
   alphabet: abcdefghijklmnopqrstuvwxyz
   max_code_length: 4
 """.trimIndent())
+        java.io.File(rimeDir, "wubi86.dict.yaml").writeText("name: wubi86\nversion: \"1.0\"\nsort: original\n...\n", Charsets.UTF_8)
         runBlocking { PersonalDictManager.ensureSchemaPack(context, "wubi86") }
         assertTrue("merged dict should be created", java.io.File(rimeDir, "wubi86_merged.dict.yaml").exists())
         val customFile = java.io.File(rimeDir, "wubi86.custom.yaml")
@@ -612,7 +613,7 @@ speller:
         runBlocking { PersonalDictManager.ensureSchemaPack(context, "pinyin_simp") }
         val text = java.io.File(rimeDir, "pinyin_simp.custom.yaml").readText(Charsets.UTF_8)
         // packs line should appear only once
-        assertEquals(1, text.split("user_simp_pinyin").size - 1)
+        assertEquals(1, text.split("user_pinyin_simp").size - 1)
         assertEquals(1, text.split("table_translator@custom_phrase").size - 1)
     }
 
@@ -624,7 +625,7 @@ speller:
         assertTrue(customFile.exists())
         val text = customFile.readText(Charsets.UTF_8)
         assertTrue(text.contains("translator/packs"))
-        assertTrue(text.contains("user_simp_pinyin"))
+        assertTrue(text.contains("user_pinyin_simp"))
     }
 
     @Test
@@ -634,19 +635,20 @@ speller:
         PersonalDictManager.applyPackConfig(rimeDir, "pinyin_simp")
         val customFile = File(rimeDir, "pinyin_simp.custom.yaml")
         val text = customFile.readText(Charsets.UTF_8)
-        assertEquals(1, text.split("user_simp_pinyin").size - 1)
+        assertEquals(1, text.split("user_pinyin_simp").size - 1)
     }
 
     @Test
     fun `applyMergedDictConfig creates merged dict and custom for schema WITHOUT algebra`() {
         val rimeDir = createTempDir()
+        java.io.File(rimeDir, "wubi86.dict.yaml").writeText("name: wubi86\nversion: \"1.0\"\nsort: original\n...\n", Charsets.UTF_8)
         PersonalDictManager.applyMergedDictConfig(rimeDir, "wubi86")
         val dictFile = File(rimeDir, "wubi86_merged.dict.yaml")
         assertTrue(dictFile.exists())
         val dictText = dictFile.readText(Charsets.UTF_8)
         assertTrue(dictText.contains("import_tables:"))
         assertTrue(dictText.contains("- wubi86"))
-        assertTrue(dictText.contains("- user_simp_wubi"))
+        assertTrue(dictText.contains("- user_wubi86"))
         val customFile = File(rimeDir, "wubi86.custom.yaml")
         assertTrue(customFile.exists())
         val customText = customFile.readText(Charsets.UTF_8)
@@ -657,6 +659,7 @@ speller:
     @Test
     fun `applyMergedDictConfig is idempotent`() {
         val rimeDir = createTempDir()
+        java.io.File(rimeDir, "wubi86.dict.yaml").writeText("name: wubi86\nversion: \"1.0\"\nsort: original\n...\n", Charsets.UTF_8)
         PersonalDictManager.applyMergedDictConfig(rimeDir, "wubi86")
         PersonalDictManager.applyMergedDictConfig(rimeDir, "wubi86")
         val text = File(rimeDir, "wubi86.custom.yaml").readText(Charsets.UTF_8)
@@ -692,7 +695,7 @@ patch:
         assertTrue("existing lua translator preserved", text.contains("lua_translator@my_script"))
         assertTrue("new pack config added", text.contains("translator/packs"))
         assertTrue("existing menu/page_size preserved", text.contains("menu/page_size: 6"))
-        assertTrue("pack name present", text.contains("user_simp_pinyin"))
+        assertTrue("pack name present", text.contains("user_pinyin_simp"))
     }
 
     @Test
@@ -760,6 +763,7 @@ patch:
     @Test
     fun `applyMergedDictConfig preserves existing content in custom yaml`() {
         val dir = createTempDir()
+        java.io.File(dir, "wubi86.dict.yaml").writeText("name: wubi86\nversion: \"1.0\"\nsort: original\n...\n", Charsets.UTF_8)
         val file = File(dir, "wubi86.custom.yaml")
         file.writeText("""patch:
   engine/filters/@before/0:
@@ -817,7 +821,7 @@ speller:
         assertTrue(text.contains("table_translator@custom_phrase"))
         // 确保幂等
         assertEquals("custom_phrase appears once", 1, text.split("table_translator@custom_phrase").size - 1)
-        assertEquals("packs appears once", 1, text.split("user_simp_pinyin").size - 1)
+        assertEquals("packs appears once", 1, text.split("user_flypy").size - 1)
     }
 
     @Test
@@ -851,6 +855,7 @@ speller:
   alphabet: abcdefghijklmnopqrstuvwxyz
   max_code_length: 4
 """.trimIndent())
+        java.io.File(rimeDir, "wubi86.dict.yaml").writeText("name: wubi86\nversion: \"1.0\"\nsort: original\n...\n", Charsets.UTF_8)
         java.io.File(rimeDir, "wubi86.custom.yaml").writeText("""patch:
   engine/filters/@before/0:
     - lua_filter@custom_filter

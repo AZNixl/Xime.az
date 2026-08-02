@@ -95,6 +95,7 @@ fun T9KeyboardLayout(
     keyBackgroundColor: Color,
     keyTextColor: Color,
     specialKeyBackgroundColor: Color,
+    bubbleBackgroundColor: Color = keyBackgroundColor,
     accentColor: Color = Color(0xFF1A73E8),
     keyboardBackgroundColor: Color = Color.Transparent,
     shadowEnabled: Boolean = true,
@@ -138,6 +139,7 @@ fun T9KeyboardLayout(
         controller = controller,
         keyBackgroundColor = keyBackgroundColor,
         specialKeyBackgroundColor = specialKeyBackgroundColor,
+        bubbleBackgroundColor = bubbleBackgroundColor,
         accentColor = accentColor,
         shadowEnabled = shadowEnabled,
         shadowElevation = shadowElevation,
@@ -165,6 +167,7 @@ private fun T9KeyboardSwipeOverlay(
     controller: T9InputController,
     keyBackgroundColor: Color,
     specialKeyBackgroundColor: Color,
+    bubbleBackgroundColor: Color = keyBackgroundColor,
     accentColor: Color,
     shadowEnabled: Boolean,
     shadowElevation: Dp,
@@ -197,7 +200,7 @@ private fun T9KeyboardSwipeOverlay(
     val bubbleData = rememberSwipeBubbleDrawData(
         swipeState = swipeState,
         keyBounds = lastKeyBounds,
-        keyBackgroundColor = keyBackgroundColor,
+        keyBackgroundColor = bubbleBackgroundColor,
         keyTextColor = keyTextColor,
         accentColor = specialKeyTextColor,
         keyWidth = if (swipeState.isSwiping || swipeState.isPressed) lastKeyBounds.width else 0f,
@@ -207,7 +210,6 @@ private fun T9KeyboardSwipeOverlay(
     CompositionLocalProvider(LocalKeyCornerRadius provides keyCornerRadius) {
     Box(
         modifier = modifier
-            .background(keyboardBackgroundColor)
             .onGloballyPositioned { coordinates ->
                 keyboardBounds = coordinates.boundsInRoot()
             }
@@ -215,7 +217,7 @@ private fun T9KeyboardSwipeOverlay(
                 drawContent()
                 bubbleData?.let { drawSwipeBubble(it) }
             }
-            .padding(bottom = if (isFloatingMode || isLandscape) 0.dp else 10.dp)) {
+            .padding(bottom = if (isFloatingMode || isLandscape) 0.dp else 0.dp)) {
         if (isLandscape) {
             Row(
                 modifier = Modifier
