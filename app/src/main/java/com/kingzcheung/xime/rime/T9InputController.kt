@@ -85,6 +85,7 @@ class T9InputController(
                 selectedOption = null
                 selectionCandidateDigits = null
             }
+            _selectionHistory = emptyList()
             return
         }
 
@@ -92,10 +93,17 @@ class T9InputController(
         _digitBuffer = digitsOnly
 
         // 从剩余数字用 T9PinyinMap 计算左栏候选（RIME 返回的 comment 首音节不准确）
-        firstOptions = if (digitsOnly.isNotEmpty()) {
+        val base = if (digitsOnly.isNotEmpty()) {
             T9PinyinMap.firstSyllableOptions(digitsOnly, maxResults = 20)
         } else {
             emptyList()
+        }
+        // 已确认的左侧选择拼音置顶显示，便于高亮当前选中项（对齐 main 左栏布局）
+        firstOptions = if (_selectionHistory.isNotEmpty()) {
+            val confirmed = _selectionHistory.filter { c -> base.none { it.pinyin == c.pinyin } }
+            (confirmed + base).take(20)
+        } else {
+            base
         }
 
         val hasSelections = rawInput.contains("'") || rawInput.any { it.isLetter() }
@@ -117,6 +125,11 @@ class T9InputController(
 
     fun onChoiceSelected(option: T9PinyinMap.SyllableOption) {
         rimeEngine.t9SelectPinyinDirect(option.pinyin, option.digitLength)
+        // 同步选中状态到控制器（对齐 main 的 enterSelection），供高亮与候选过滤使用
+        selectedOption = option
+        leftPanelState = LeftPanelState.SELECTION
+        selectionCandidateDigits = _digitBuffer.take(option.digitLength)
+        _selectionHistory = _selectionHistory + option
         onCompositionRefresh?.invoke()
         updateFromRime()
     }
@@ -133,14 +146,30 @@ class T9InputController(
         } else {
             false
         }
+        // C++ SelectCandidate 在 full/partial commit 时都会 Clear() 清空 buffer selections，
+        // 这里同步清理 Kotlin 的选择历史/选中态，避免两者失步导致候选过滤错误。
+        _selectionHistory = emptyList()
+        selectedOption = null
+        selectionCandidateDigits = null
         updateFromRime()
         return isFullCommit
     }
 
     fun onDeleted(): DeleteResult {
+        val hadSelection = leftPanelState == LeftPanelState.SELECTION && selectedOption != null
         val result = rimeEngine.processKey(0xff08, 0)
         onCompositionRefresh?.invoke()
         updateFromRime()
+        // 退格撤销了左侧选择：从选择历史移除并清除选中高亮
+        val selectionUndone = hadSelection && selectedOption != null &&
+            firstOptions.none { it.pinyin == selectedOption!!.pinyin } &&
+            leftPanelState != LeftPanelState.SELECTION
+        if (selectionUndone) {
+            _selectionHistory = _selectionHistory.filter { it.pinyin != selectedOption!!.pinyin }
+            selectedOption = null
+            selectionCandidateDigits = null
+            return DeleteResult.UNDO_CHOICE
+        }
         return if (result) DeleteResult.DELETED else DeleteResult.NOT_CONSUMED
     }
 
@@ -173,7 +202,11 @@ class T9InputController(
 
     fun onEnterCommit() { clearAll() }
 
-    fun isSelectedOptionInCurrentCandidates(): Boolean = false
+    fun isSelectedOptionInCurrentCandidates(): Boolean {
+        if (leftPanelState != LeftPanelState.SELECTION || selectedOption == null) return false
+        // 选中项仍显示在左栏候选里（确认拼音会被置顶显示）→ 应高亮
+        return firstOptions.any { it.pinyin == selectedOption!!.pinyin }
+    }
 
     private fun updateFromRime() { updateCandidates() }
 }

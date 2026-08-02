@@ -293,6 +293,7 @@ class InferenceService : Service() {
             sherpaLibsLoaded = true
             true
         } catch (e: UnsatisfiedLinkError) {
+            FileLogger.e(TAG, "sherpa-onnx-jni not available", e)
             Log.e(TAG, "sherpa-onnx-jni not available", e)
             false
         }

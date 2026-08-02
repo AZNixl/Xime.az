@@ -189,20 +189,22 @@ val downloadOnnx by tasks.registering {
 
 val buildSherpaOnnx by tasks.registering {
     val jniLibsDir = file("src/main/jniLibs")
-    val arm64Dir = file("$jniLibsDir/arm64-v8a")
-    val sherpaOnnxSoArm64 = file("$arm64Dir/libsherpa-onnx-jni.so")
+    val abis = listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
 
-    outputs.file(sherpaOnnxSoArm64)
+    // 每个 ABI 的 sherpa-onnx JNI 库（c-api/cxx-api 已被静态链接进 jni.so，无需单独打包）
+    val sherpaOnnxSos = abis.map { file("$jniLibsDir/$it/libsherpa-onnx-jni.so") }
+
+    outputs.files(sherpaOnnxSos)
 
     dependsOn(downloadOnnx)
 
     doLast {
-        if (sherpaOnnxSoArm64.exists()) {
-            println("sherpa-onnx JNI library already exists, skipping")
+        if (sherpaOnnxSos.all { it.exists() }) {
+            println("sherpa-onnx JNI libraries already exist for all ABIs, skipping")
             return@doLast
         }
 
-        arm64Dir.mkdirs()
+        abis.forEach { jniLibsDir.resolve(it).mkdirs() }
 
         val url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.0/sherpa-onnx-v1.13.0-android.tar.bz2"
         val tarball = File(temporaryDir, "sherpa-onnx-android.tar.bz2")
@@ -212,19 +214,21 @@ val buildSherpaOnnx by tasks.registering {
             return@doLast
         }
 
-        copy {
-            from(tarTree(tarball)) {
-                include("**/arm64-v8a/libsherpa-onnx-jni.so")
-                eachFile { relativePath = RelativePath(true, name) }
-                includeEmptyDirs = false
+        for (abi in abis) {
+            copy {
+                from(tarTree(tarball)) {
+                    include("**/$abi/libsherpa-onnx-jni.so")
+                    eachFile { relativePath = RelativePath(true, name) }
+                    includeEmptyDirs = false
+                }
+                into(file("$jniLibsDir/$abi"))
             }
-            into(arm64Dir)
         }
 
-        if (sherpaOnnxSoArm64.exists()) {
-            println("sherpa-onnx JNI downloaded: ${sherpaOnnxSoArm64.length()} bytes")
+        if (sherpaOnnxSos.all { it.exists() }) {
+            println("sherpa-onnx JNI deployed for all ABIs: ${abis.joinToString()}")
         } else {
-            println("WARNING: sherpa-onnx JNI download failed. ASR will use online mode only.")
+            println("WARNING: sherpa-onnx JNI download incomplete. ASR will use online mode only.")
         }
     }
 }

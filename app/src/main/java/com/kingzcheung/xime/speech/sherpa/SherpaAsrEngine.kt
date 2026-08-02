@@ -76,6 +76,7 @@ class SherpaAsrEngine(private val context: Context) {
             true
         } catch (e: UnsatisfiedLinkError) {
             Log.w(TAG, "sherpa-onnx-jni not loaded: ${e.message}")
+            FileLogger.e(TAG, "sherpa-onnx-jni load failed", e)
             false
         }
     }

@@ -51,6 +51,7 @@ import com.kingzcheung.xime.keyboard.PanelType
 import com.kingzcheung.xime.keyboard.ToolbarAction
 import com.kingzcheung.xime.keyboard.ToolbarButton
 import com.kingzcheung.xime.rime.T9InputController
+import com.kingzcheung.xime.rime.filterCandidatesBySelectionHistory
 import com.kingzcheung.xime.settings.KeysConfigHelper
 import com.kingzcheung.xime.settings.SettingsPreferences
 import com.kingzcheung.xime.ui.menubar.ClipboardView
@@ -120,7 +121,9 @@ fun KeyboardView(
             t9Controller.forceSendToRime()
         }
         callbacks.onFilterT9Candidates = { candidates, comments ->
-            Pair(candidates, comments)  // no-op: t9_processor handles filtering
+            // 按左侧选择历史过滤/重排候选词（FULL 在前、PREFIX 在后、NONE 排除），
+            // 对齐 main 分支的 filterCandidatesBySelectionHistory。
+            filterCandidatesBySelectionHistory(candidates, comments, t9Controller.selectionHistory)
         }
     }
 
