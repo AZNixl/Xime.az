@@ -63,13 +63,11 @@ class ClipboardManager private constructor(private val context: Context) {
                     else -> null
                 }
                 if (!text.isNullOrEmpty()) {
-                    if (retries < 3) Log.d(TAG, "Clipboard read succeeded after retry #${3 - retries}")
                     addItem(text)
                     return
                 }
             }
             if (retries > 0) {
-                Log.d(TAG, "Clipboard not ready, retrying in 100ms ($retries left)")
                 Handler(Looper.getMainLooper()).postDelayed({ readClipboard(retries - 1) }, 100L)
             } else {
                 Log.w(TAG, "Failed to read clipboard after all retries")
@@ -387,7 +385,6 @@ class ClipboardManager private constructor(private val context: Context) {
             val clip = ClipData.newUri(context.contentResolver, label, uri)
             androidClipboardManager.setPrimaryClip(clip)
 
-            Log.d(TAG, "Image copied to clipboard: $uri")
             true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to copy image to clipboard", e)

@@ -96,13 +96,7 @@ fun KeyboardView(
 
     val t9Controller = remember {
         T9InputController(
-            onReplaceFullPinyin = { pinyin ->
-                callbacks.onT9ReplaceFullPinyin?.invoke(pinyin)
-            },
-            onQueryRimeComposition = null,
-            onRightCommitUndone = { count ->
-                callbacks.onT9RightCommitUndone?.invoke(count)
-            }
+            onCompositionRefresh = { callbacks.onT9RefreshComposition?.invoke() }
         )
     }
 
@@ -121,21 +115,15 @@ fun KeyboardView(
 
     SideEffect {
         callbacks.onT9RightCandidateWillBeSelected = { pinyin, textLength ->
-            if (pinyin.isNullOrBlank()) {
-                // emoji/符号等无拼音注释的候选词：直接提交上屏，不走消耗算法
-                t9Controller.onRightCandidateSelectedByDirectCommit()
-            } else {
-                t9Controller.onRightCandidateSelected(pinyin, textLength)
-            }
-            t9Controller.inputBuffer.isEmpty
+            t9Controller.onRightCandidateSelected(pinyin, textLength)
         }
         callbacks.onT9ForceSendToRime = {
             t9Controller.forceSendToRime()
         }
         callbacks.onFilterT9Candidates = { candidates, comments ->
-            filterCandidatesBySelectionHistory(
-                candidates, comments, t9Controller.selectionHistory
-            )
+            // 按左侧选择历史过滤/重排候选词（FULL 在前、PREFIX 在后、NONE 排除），
+            // 对齐 main 分支的 filterCandidatesBySelectionHistory。
+            filterCandidatesBySelectionHistory(candidates, comments, t9Controller.selectionHistory)
         }
     }
 

@@ -33,18 +33,15 @@ object ExtensionManager {
     
     fun initialize(context: Context) {
         if (initialized) {
-            Log.d(TAG, "Already initialized")
             return
         }
         if (!managerJob.isActive) {
             managerJob = SupervisorJob()
         }
-        Log.d(TAG, "Initialized")
         initialized = true
         
         managerScope.launch {
-            PluginManager.pluginInstancesFlow.collect { instances ->
-                Log.d(TAG, "Plugin instances changed: ${instances.size} instances")
+            PluginManager.pluginInstancesFlow.collect { _ ->
                 loadEmojiDataFromPlugins(context)
             }
         }
@@ -58,49 +55,35 @@ object ExtensionManager {
             null
         }
         
-        Log.d(TAG, "extractPluginIcon: pluginId=$pluginId, pluginIcon=$pluginIcon, pluginInfo?.path=${pluginInfo?.path}")
-        
         if (pluginIcon == null) return null
         
         if (pluginIcon.text != null) {
-            Log.d(TAG, "Using text icon: ${pluginIcon.text}")
             return PluginIcon(text = pluginIcon.text)
         }
         
         val assetName = pluginIcon.assetName
         if (assetName == null) {
-            Log.d(TAG, "No assetName in pluginIcon")
             return null
         }
-        
-        Log.d(TAG, "Extracting icon asset: $assetName")
         
         val iconDir = File(context.filesDir, "plugin_icons")
         if (!iconDir.exists()) iconDir.mkdirs()
         
         val iconFile = File(iconDir, "${pluginId}_$assetName")
         
-        Log.d(TAG, "Icon file path: ${iconFile.absolutePath}, exists: ${iconFile.exists()}")
-        
         if (!iconFile.exists()) {
             val apkPath = pluginInfo?.path
-            Log.d(TAG, "apkPath: $apkPath")
             if (apkPath != null) {
                 try {
                     ZipFile(File(apkPath)).use { zip ->
-                        val entries = zip.entries().asSequence().filter { it.name.startsWith("assets/") }.map { it.name }.toList()
-                        Log.d(TAG, "Assets in APK: $entries")
-                        
                         val entry = zip.entries().asSequence()
                             .firstOrNull { it.name == "assets/$assetName" }
-                        Log.d(TAG, "Found entry: ${entry?.name}")
                         if (entry != null) {
                             zip.getInputStream(entry).use { input ->
                                 iconFile.outputStream().use { output ->
                                     input.copyTo(output)
                                 }
                             }
-                            Log.d(TAG, "Extracted icon for $pluginId to ${iconFile.absolutePath}")
                         }
                     }
                 } catch (e: Exception) {
@@ -110,22 +93,18 @@ object ExtensionManager {
         }
         
         val result = if (iconFile.exists()) {
-            Log.d(TAG, "Icon file exists, returning path: ${iconFile.absolutePath}")
             PluginIcon(assetName = iconFile.absolutePath)
         } else {
-            Log.d(TAG, "Icon file does not exist, returning null")
             null
         }
         return result
     }
     
     suspend fun loadEmojiDataFromPlugins(context: Context) {
-        Log.d(TAG, "Preloading emoji data from plugins")
         val pluginCategories = mutableListOf<EmojiCategory>()
         
         try {
             val emojiPlugins = getEnabledEmojiPlugins(context)
-            Log.d(TAG, "Found ${emojiPlugins.size} emoji plugins for preload")
             
             emojiPlugins.forEach { (pluginId, plugin) ->
                 val pluginInfo = getAllInstalledPlugins().firstOrNull { it.id == pluginId }
@@ -169,9 +148,6 @@ object ExtensionManager {
                                     layoutConfig = layoutConfig
                                 )
                             )
-                            Log.d(TAG, "Preloaded ${emojiItems.size} from ${pluginInfo?.name}/$subCatName")
-                        } else {
-                            Log.d(TAG, "No emoji items for ${pluginInfo?.name}/$subCatName")
                         }
                     }
                 } catch (e: Exception) {
@@ -179,20 +155,16 @@ object ExtensionManager {
                 }
             }
             _emojiCategoriesFlow.value = pluginCategories + EmojiData.categories
-            Log.d(TAG, "Emoji categories updated: ${_emojiCategoriesFlow.value.size} total")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to preload emoji data", e)
         }
     }
     
     fun reload(context: Context): Boolean {
-        Log.d(TAG, "reload called")
         return try {
             managerScope.launch {
-                val scanned = PluginManager.scanAndInstallSystemPlugins()
-                Log.d(TAG, "Scanned $scanned new plugins")
-                val loaded = PluginManager.loadEnabledPlugins()
-                Log.d(TAG, "Loaded $loaded plugins")
+                PluginManager.scanAndInstallSystemPlugins()
+                PluginManager.loadEnabledPlugins()
             }
             PluginManager.isInitialized
         } catch (e: Exception) {
@@ -203,12 +175,9 @@ object ExtensionManager {
     
     fun getEmojiPlugins(): List<EmojiPlugin> {
         val all = PluginManager.getAllPluginInstances()
-        Log.d(TAG, "All plugin instances: ${all.keys}")
         val emoji = all.values.mapNotNull { instance ->
-            Log.d(TAG, "Checking instance: ${instance::class.simpleName}, interfaces: ${instance::class.java.interfaces.map { it.simpleName }}")
             if (instance is EmojiPlugin) instance else null
         }
-        Log.d(TAG, "Emoji plugins found: ${emoji.size}")
         return emoji
     }
     

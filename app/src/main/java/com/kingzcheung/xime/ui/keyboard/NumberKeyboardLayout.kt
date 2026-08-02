@@ -28,7 +28,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
@@ -36,6 +39,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -247,31 +251,34 @@ private fun NumberRows(
         modifier = Modifier
             .fillMaxSize()
             .padding(start = if (compactMode) 0.dp else 4.dp, end = if (compactMode) 0.dp else 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(if (compactMode) 2.dp else 4.dp)
+        horizontalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(0.9f),
+                .fillMaxHeight()
+                .weight(0.8f),
             verticalArrangement = Arrangement.spacedBy(if (compactMode) 2.dp else 4.dp)
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .fillMaxHeight()
                     .weight(3f),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 Column(
                     modifier = Modifier
 //                        .padding(vertical = 2.dp)
                         .fillMaxHeight()
-                        .weight(1f),
+                        .weight(0.8f),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Column(
                         modifier = Modifier
                             .fillMaxHeight()
-                            .weight(3f),
+                            .weight(3f)
+                            .padding(LocalKeyVisualPadding.current),
                     ) {
                         symbols.forEach { symbol ->
                             NumberSymbolKey(
@@ -284,6 +291,9 @@ private fun NumberRows(
                                 isFirst = symbol == "+",
                                 isLast = symbol == "/",
                                 fontSize = symFontSize,
+                                shadowEnabled = shadowEnabled,
+                                shadowElevation = shadowElevation,
+                                shadowShapeRadius = shadowShapeRadius,
                             )
                         }
                     }
@@ -310,7 +320,7 @@ private fun NumberRows(
                 Column(
                     modifier = Modifier
                         .fillMaxHeight()
-                        .weight(3.2f),
+                        .weight(3.4f),
                 ) {
                     Row(
                         modifier = Modifier
@@ -431,7 +441,8 @@ private fun NumberRows(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(0.9f),
+                        .fillMaxHeight()
+                        .weight(0.8f),
                 ) {
                     SwipeableIconKeyButton(
                         icon = rememberVectorPainter(Icons.AutoMirrored.Filled.Backspace),
@@ -509,6 +520,9 @@ private fun NumberSymbolKey(
     isFirst: Boolean = false,
     isLast: Boolean = false,
     fontSize: androidx.compose.ui.unit.TextUnit = 18.sp,
+    shadowEnabled: Boolean = true,
+    shadowElevation: Dp = 1.dp,
+    shadowShapeRadius: Dp = 8.dp,
 ) {
     var isPressed by remember { mutableStateOf(false) }
     val currentOnClick by rememberUpdatedState(onClick)
@@ -520,9 +534,26 @@ private fun NumberSymbolKey(
         bottomStart = if (isLast) cornerRadius else 0.dp,
         bottomEnd = if (isLast) cornerRadius else 0.dp
     )
+    val density = LocalDensity.current
+    val shadowModifier = remember(shadowEnabled, shadowElevation, shadowShapeRadius, density, backgroundColor) {
+        if (shadowEnabled) {
+            val offsetPx = with(density) { shadowElevation.toPx() }
+            val cornerPx = with(density) { shadowShapeRadius.toPx() }
+            val color = crispShadowColor(backgroundColor)
+            Modifier.drawBehind {
+                drawRoundRect(
+                    color = color,
+                    topLeft = Offset(0f, offsetPx),
+                    size = size,
+                    cornerRadius = CornerRadius(cornerPx)
+                )
+            }
+        } else Modifier
+    }
     Box(
         modifier = modifier
             .fillMaxWidth()
+            .then(shadowModifier)
             .clip(shape)
             .background(if (isPressed) backgroundColor.copy(alpha = 0.7f) else backgroundColor)
             .pointerInput(Unit) {

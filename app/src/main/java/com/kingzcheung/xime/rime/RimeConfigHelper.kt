@@ -43,7 +43,6 @@ object RimeConfigHelper {
             RimeEngine.getInstance().deploy()
             storeDeploymentHash(context)
         }
-        listFilesRecursively(rimeDir, TAG)
         
         return Pair(rimeDir.absolutePath, rimeDir.absolutePath)
     }
@@ -62,7 +61,6 @@ object RimeConfigHelper {
         SchemaManager.applyEnabledSchemasToDefaultYaml(context)
         runBlocking { PersonalDictManager.ensureSchemaPacks(context) }
         invalidateBuildIfConfigChanged(context)
-        listFilesRecursively(rimeDir, TAG)
         
         return Pair(rimeDir.absolutePath, rimeDir.absolutePath)
     }
@@ -71,7 +69,6 @@ object RimeConfigHelper {
         val hash = computeDeploymentHash(context)
         if (hash.isNotEmpty()) {
             SettingsPreferences.setDeploymentHash(context, hash)
-            Log.d(TAG, "Deployment hash stored: $hash")
         }
     }
 
@@ -100,7 +97,6 @@ object RimeConfigHelper {
         }
 
         if (currentHash != storedHash) {
-            Log.d(TAG, "Schema files changed, re-deploy needed")
             return false
         }
 
@@ -169,7 +165,6 @@ object RimeConfigHelper {
         val files = context.assets.list(assetPath)
         
         if (files.isNullOrEmpty()) {
-            Log.d(TAG, "No files found in assets/$assetPath")
             return false
         }
         
@@ -185,7 +180,6 @@ object RimeConfigHelper {
                     if (!targetFile.exists()) {
                         targetFile.mkdirs()
                     }
-                    Log.d(TAG, "Processing subdirectory: $fullAssetPath")
                     if (copyAssetsRecursively(context, fullAssetPath, targetFile)) {
                         copiedAny = true
                     }
@@ -225,7 +219,6 @@ object RimeConfigHelper {
                     input.copyTo(output)
                 }
             }
-            Log.d(TAG, "Copied: $assetPath -> ${targetFile.absolutePath}")
         } catch (e: IOException) {
             Log.e(TAG, "Failed to copy: $assetPath", e)
         }
@@ -294,19 +287,4 @@ object RimeConfigHelper {
         }
     }
 
-    private fun listFilesRecursively(dir: File, tag: String, prefix: String = "") {
-        val files = dir.listFiles()
-        if (files == null) {
-            Log.e(tag, "$prefix${dir.name} is empty or not a directory!")
-            return
-        }
-        Log.d(tag, "$prefix${dir.name}/ (${files.size} items)")
-        for (file in files) {
-            if (file.isDirectory) {
-                listFilesRecursively(file, tag, "$prefix  ")
-            } else {
-                Log.d(tag, "$prefix  ${file.name} (${file.length()} bytes)")
-            }
-        }
-    }
 }

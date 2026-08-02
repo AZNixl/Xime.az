@@ -66,7 +66,6 @@ fun FloatingKeyboardContainer(
                 .onGloballyPositioned { coords ->
                     val pos = coords.positionInWindow()
                     val size = coords.size
-                    android.util.Log.d("FloatingCard", "pos=(${pos.x.toInt()},${pos.y.toInt()}) size=(${size.width},${size.height}) maxH=$cardTotalHeight offsetY=$safeOffsetY")
                     onCardPositioned(
                         pos.x.roundToInt(),
                         pos.y.roundToInt(),

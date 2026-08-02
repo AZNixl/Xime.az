@@ -53,14 +53,12 @@ class FunAsrWebSocketManager(
         }
         
         FileLogger.i(TAG, "Starting WebSocket connection, API key length: ${apiKey.length}")
-        Log.d(TAG, "Starting connection, API key: '${apiKey.take(10)}...' (length: ${apiKey.length})")
         
         try {
             state = State.CONNECTING
             onStateChanged(state)
             
             taskId = UUID.randomUUID().toString().replace("-", "").take(32)
-            Log.d(TAG, "Generated taskId: $taskId")
             
             client = OkHttpClient.Builder()
                 .pingInterval(Duration.ofSeconds(30))
@@ -72,12 +70,8 @@ class FunAsrWebSocketManager(
                 .header("user-agent", "Xime-FunAsr/1.0")
                 .build()
             
-            Log.d(TAG, "Request headers: Authorization=bearer ${apiKey.take(10)}...")
-            Log.d(TAG, "Connecting to: $WS_URL")
-            
             webSocket = client?.newWebSocket(request, WebSocketListenerImpl())
             
-            Log.d(TAG, "WebSocket connection initiated, waiting for onOpen...")
             return true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to connect", e)
@@ -113,7 +107,6 @@ class FunAsrWebSocketManager(
             })
         }
         
-        Log.d(TAG, "Sending run-task: $runTaskMessage")
         webSocket?.send(runTaskMessage.toString())
         return true
     }
@@ -125,7 +118,6 @@ class FunAsrWebSocketManager(
         }
         
         webSocket?.send(data.toByteString())
-        Log.d(TAG, "Sent audio chunk: ${data.size} bytes")
     }
     
     fun sendFinishTask() {
@@ -142,7 +134,6 @@ class FunAsrWebSocketManager(
             })
         }
         
-        Log.d(TAG, "Sending finish-task")
         webSocket?.send(finishTaskMessage.toString())
     }
     
@@ -154,9 +145,8 @@ class FunAsrWebSocketManager(
         coroutineScope.cancel()
         state = State.IDLE
         onStateChanged(state)
-        Log.d(TAG, "WebSocket disconnected")
     }
-    
+
     fun cancel() {
         disconnect()
     }
@@ -164,36 +154,26 @@ class FunAsrWebSocketManager(
     private inner class WebSocketListenerImpl : WebSocketListener() {
         override fun onOpen(webSocket: WebSocket, response: Response) {
             FileLogger.i(TAG, "WebSocket opened successfully")
-            Log.d(TAG, "WebSocket opened, response code: ${response.code}")
-            Log.d(TAG, "Response headers: ${response.headers}")
             state = State.CONNECTED
             onStateChanged(state)
-            Log.d(TAG, "Sending run-task...")
             sendRunTask()
         }
         
         override fun onMessage(webSocket: WebSocket, text: String) {
-            Log.d(TAG, "Received message: $text")
-            
             try {
                 val message = JSONObject(text)
                 val header = message.getJSONObject("header")
                 val event = header.getString("event")
                 val taskId = header.optString("task_id", "")
                 
-                Log.d(TAG, "Event: $event, taskId: $taskId")
-                
                 when (event) {
                     "task-started" -> {
                         FileLogger.i(TAG, "ASR task started, ready for audio input")
-                        Log.d(TAG, "Task started! Ready to send audio")
                         state = State.LISTENING
                         onStateChanged(state)
                     }
                     
                     "result-generated" -> {
-                        Log.d(TAG, "Full result message: $text")
-                        
                         val payload = message.getJSONObject("payload")
                         val output = payload.optJSONObject("output")
                         if (output != null) {
@@ -201,28 +181,19 @@ class FunAsrWebSocketManager(
                             if (sentence != null) {
                                 val heartbeat = sentence.optBoolean("heartbeat", false)
                                 if (heartbeat) {
-                                    Log.d(TAG, "Skipping heartbeat message")
                                     return
                                 }
                                 
                                 val resultText = sentence.optString("text", "")
                                 val isFinal = sentence.optBoolean("sentence_end", false)
-                                val beginTime = sentence.optInt("begin_time", 0)
-                                val endTime = sentence.optInt("end_time", 0)
-                                
-                                Log.d(TAG, "Recognition result: '$resultText', isFinal: $isFinal, begin: $beginTime, end: $endTime")
-                                Log.d(TAG, "lastResultText: '$lastResultText', resultText.startsWith(lastResultText): ${resultText.startsWith(lastResultText)}")
                                 
                                 state = State.PROCESSING
                                 onStateChanged(state)
                                 
                                 if (resultText.isNotEmpty()) {
                                     val incrementalText = if (lastResultText.isNotEmpty() && resultText.startsWith(lastResultText)) {
-                                        val delta = resultText.substring(lastResultText.length)
-                                        Log.d(TAG, "Incremental text: '$delta'")
-                                        delta
+                                        resultText.substring(lastResultText.length)
                                     } else {
-                                        Log.d(TAG, "Result changed, returning full text")
                                         resultText
                                     }
                                     
@@ -231,7 +202,6 @@ class FunAsrWebSocketManager(
                                     }
                                     
                                     if (isFinal) {
-                                        Log.d(TAG, "Sentence finalized, resetting lastResultText")
                                         lastResultText = ""
                                     } else {
                                         lastResultText = resultText
@@ -240,18 +210,12 @@ class FunAsrWebSocketManager(
                             } else {
                                 Log.w(TAG, "No sentence in output")
                             }
-                            
-                            val usage = payload.optJSONObject("usage")
-                            if (usage != null) {
-                                Log.d(TAG, "Usage: duration=${usage.optInt("duration", 0)}s")
-                            }
                         } else {
                             Log.w(TAG, "No output in payload")
                         }
                     }
                     
                     "task-finished" -> {
-                        Log.d(TAG, "Task finished successfully")
                         state = State.IDLE
                         onStateChanged(state)
                         disconnect()
@@ -302,7 +266,6 @@ class FunAsrWebSocketManager(
         }
         
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-            Log.d(TAG, "WebSocket closed: code=$code, reason=$reason")
             state = State.IDLE
             onStateChanged(state)
         }

@@ -1,7 +1,6 @@
 package com.kingzcheung.xime.ui.keyboard
 
 import android.os.Build
-import android.util.Log
 import android.util.Size
 import android.view.inputmethod.InlineSuggestion
 import android.widget.inline.InlineContentView
@@ -45,14 +44,12 @@ fun InlineSuggestionView(
         var inflatedView by remember { mutableStateOf<InlineContentView?>(null) }
 
         androidx.compose.runtime.LaunchedEffect(suggestion, targetWidthPx, targetHeightPx) {
-            Log.d(TAG, "inflating suggestion at ${targetWidthPx}x${targetHeightPx}px")
             val executor = Executors.newSingleThreadExecutor()
             realSuggestion.inflate(
                 context,
                 Size(targetWidthPx, targetHeightPx),
                 executor,
                 Consumer { contentView ->
-                    Log.d(TAG, "inflate callback fired: $contentView")
                     inflatedView = contentView
                 },
             )

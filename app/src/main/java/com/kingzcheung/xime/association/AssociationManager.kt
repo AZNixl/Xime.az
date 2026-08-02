@@ -67,7 +67,6 @@ object AssociationManager {
     
     suspend fun predict(contextText: String, topK: Int = 20): List<AssociationCandidate> = withContext(Dispatchers.Default) {
         if (!isInitialized) {
-            Log.d(TAG, "Not initialized, attempting to initialize...")
             val ctx = context
             if (ctx != null) {
                 val initSuccess = withContext(Dispatchers.IO) {
@@ -86,15 +85,11 @@ object AssociationManager {
         try {
             val modelCandidates = OnnxAssociationEngine.predict(contextText, topK * 2)
             
-            Log.d(TAG, "Model candidates: ${modelCandidates.size}, ${modelCandidates.map { it.text }}")
-            
             if (modelCandidates.isEmpty()) {
                 return@withContext emptyList()
             }
             
             val fusedCandidates = fusionEngine.fuseCandidates(modelCandidates, contextText)
-            
-            Log.d(TAG, "Fused candidates: ${fusedCandidates.size}, ${fusedCandidates.map { it.text }}")
             
             fusedCandidates.take(topK)
             
@@ -125,7 +120,6 @@ object AssociationManager {
             ModelRuntime.unload("predictive_text")
             isInitialized = false
             context = null
-            Log.d(TAG, "AssociationManager released")
         }
     }
 }

@@ -300,17 +300,6 @@ fun SettingsMainContent(
                         onCheckedChange = { enabled ->
                             sttEnabled = enabled
                             SettingsPreferences.setSttEnabled(context, enabled)
-                            if (enabled && SettingsPreferences.isSttUseLocal(context)) {
-                                MainScope().launch {
-                                    try {
-                                        val engine = com.kingzcheung.xime.speech.sherpa.SherpaAsrEngine(context)
-                                        withContext(Dispatchers.IO) {
-                                            engine.initialize()
-                                        }
-                                        engine.release()
-                                    } catch (_: Exception) { }
-                                }
-                            }
                         }
                     )
                     HorizontalDivider(

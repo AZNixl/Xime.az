@@ -77,11 +77,9 @@ class MainActivity : ComponentActivity() {
         if (RimeEngine.isInitialized()) return
         prewarmScope.launch {
             try {
-                Log.d(TAG, "Pre-warming Rime engine...")
                 KeysConfigHelper.loadConfig(this@MainActivity)
                 val (userDataDir, sharedDataDir) = RimeConfigHelper.initializeRimeDataAsync(this@MainActivity)
                 RimeEngine.getInstance().initialize(userDataDir, sharedDataDir)
-                Log.d(TAG, "Rime engine pre-warmed successfully")
             } catch (e: Exception) {
                 Log.w(TAG, "Rime engine pre-warm failed, will init on demand", e)
             }

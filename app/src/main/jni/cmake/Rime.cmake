@@ -38,21 +38,20 @@ if(EXISTS "${LUA_LIOLIB_SRC}")
 endif()
 
 # 已集成的插件
-set(RIME_PLUGINS librime-octagram librime-predict)
+set(RIME_PLUGINS librime-octagram librime-predict librime-t9)
 
-# 将插件复制到 plugins/ 目录
+# 将插件复制到 plugins/ 目录。
+# 顶层插件目录（librime-t9 等）是唯一权威源码，这里在每次 configure 时
+# 都全量同步，确保插件编译副本与顶层一致（file(COPY) 保留源文件时间戳，
+# 内容未变的文件不会触发重编译）。
 foreach(plugin ${RIME_PLUGINS})
-  if(NOT EXISTS "${CMAKE_SOURCE_DIR}/librime/plugins/${plugin}")
-    file(COPY "${CMAKE_SOURCE_DIR}/${plugin}/"
-         DESTINATION "${CMAKE_SOURCE_DIR}/librime/plugins/${plugin}")
-  endif()
+  file(COPY "${CMAKE_SOURCE_DIR}/${plugin}/"
+       DESTINATION "${CMAKE_SOURCE_DIR}/librime/plugins/${plugin}")
 endforeach()
 
 # librime-lua 需要特殊命名 lua
-if(NOT EXISTS "${CMAKE_SOURCE_DIR}/librime/plugins/lua")
-  file(COPY "${CMAKE_SOURCE_DIR}/librime-lua/"
-       DESTINATION "${CMAKE_SOURCE_DIR}/librime/plugins/lua")
-endif()
+file(COPY "${CMAKE_SOURCE_DIR}/librime-lua/"
+     DESTINATION "${CMAKE_SOURCE_DIR}/librime/plugins/lua")
 
 # librime-lua thirdparty 依赖（Lua 5.4 源码）
 if(NOT EXISTS "${CMAKE_SOURCE_DIR}/librime/plugins/lua/thirdparty")

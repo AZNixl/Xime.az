@@ -61,28 +61,16 @@ class XimeApplication : Application(), ImageLoaderFactory {
         }
 
         val isDebug = BuildConfig.DEBUG
-        Log.d(TAG, "Initializing PluginManager...")
         PluginManager.initialize(this, HOST_PROVIDER_AUTHORITY) {
-            Log.d(TAG, "PluginManager onSetup callback executing...")
-            
-            Log.d(TAG, "Scanning system installed plugins...")
-            val systemInstalled = PluginManager.scanAndInstallSystemPlugins()
-            Log.d(TAG, "Installed $systemInstalled plugins from system")
+            PluginManager.scanAndInstallSystemPlugins()
             
             if (isDebug) {
-                val assetInstalled = PluginManager.installPluginsFromAssetsForDebug("plugins")
-                Log.d(TAG, "Installed $assetInstalled plugins from assets")
+                PluginManager.installPluginsFromAssetsForDebug("plugins")
             }
             
-            Log.d(TAG, "Loading enabled plugins...")
-            val loaded = PluginManager.loadEnabledPlugins()
-            Log.d(TAG, "Loaded $loaded plugins")
-            
-            Log.d(TAG, "All installed plugins: ${PluginManager.getAllInstallPlugins().map { it.id }}")
-            Log.d(TAG, "All plugin instances: ${PluginManager.getAllPluginInstances().keys}")
+            PluginManager.loadEnabledPlugins()
         }
         
-        Log.d(TAG, "Initializing ExtensionManager...")
         ExtensionManager.initialize(this)
 
         // 从 xime.yaml 加载配色方案
@@ -91,24 +79,18 @@ class XimeApplication : Application(), ImageLoaderFactory {
         // 从 xime.yaml 的 style 读取默认主题和显示模式
         SettingsPreferences.defaultKeyboardTheme = KeysConfigHelper.loadDefaultThemeId(this)
         SettingsPreferences.defaultDarkMode = KeysConfigHelper.loadDefaultDarkMode(this)
-        Log.d(TAG, "Default keyboard theme: ${SettingsPreferences.defaultKeyboardTheme}, dark mode: ${SettingsPreferences.defaultDarkMode}")
 
         // 初始化模型运行时（内存管理 + 生命周期）
         ModelRuntime.attach(this)
-        Log.d(TAG, "ModelRuntime initialized")
 
         preInitializeRimeEngine()
-        
-        Log.d(TAG, "Initialization complete")
     }
     
     private fun preInitializeRimeEngine() {
         if (RimeEngine.isInitialized()) {
-            Log.d(TAG, "Rime engine already initialized")
             return
         }
         
-        Log.d(TAG, "Pre-initializing Rime engine...")
         applicationScope.launch {
             try {
                 val (userDataDir, sharedDataDir) = RimeConfigHelper.initializeRimeDataAsync(this@XimeApplication)
@@ -117,14 +99,10 @@ class XimeApplication : Application(), ImageLoaderFactory {
 
                 // 首次启动时静默编译词库，避免用户在设置中手动点「部署」
                 if (!SettingsPreferences.isDeploymentDone(this@XimeApplication)) {
-                    Log.d(TAG, "First launch: silently deploying schemas...")
                     engine.deploy()
                     SettingsPreferences.setDeploymentDone(this@XimeApplication, true)
                     RimeConfigHelper.storeDeploymentHash(this@XimeApplication)
-                    Log.d(TAG, "Silent deploy completed")
                 }
-
-                Log.d(TAG, "Rime engine pre-initialization completed")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to pre-initialize Rime engine", e)
             }

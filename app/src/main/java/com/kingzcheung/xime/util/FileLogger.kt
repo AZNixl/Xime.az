@@ -152,7 +152,6 @@ object FileLogger {
                 if (logFiles.size > MAX_LOG_FILES) {
                     logFiles.drop(MAX_LOG_FILES).forEach { oldFile ->
                         oldFile.delete()
-                        Log.d(TAG, "Deleted old log file: ${oldFile.name}")
                     }
                 }
             }
@@ -194,7 +193,6 @@ object FileLogger {
                     ?.forEach { file ->
                         if (file.length() > MAX_LOG_SIZE) {
                             file.delete()
-                            Log.d(TAG, "Deleted orphaned log: ${file.name}")
                         }
                     }
             }
@@ -213,13 +211,11 @@ object FileLogger {
                 ?.drop(MAX_LOG_FILES)
                 ?.forEach { file ->
                     file.delete()
-                    Log.d(TAG, "Deleted rime log: ${file.name}")
                 }
             rimeLogDir.listFiles()
                 ?.filter { it.isFile && it.name.endsWith(".log") && it.length() > MAX_LOG_SIZE }
                 ?.forEach { file ->
                     file.delete()
-                    Log.d(TAG, "Deleted oversized rime log: ${file.name}")
                 }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to clean rime logs", e)

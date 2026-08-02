@@ -82,6 +82,19 @@ data class RimeProcessResult(
     }
 }
 
+/** 将一次按键得到的完整结果转为 RimeComposition，供 T9 控制器复用，避免重复 JNI。 */
+fun RimeProcessResult.toComposition(): RimeComposition {
+    return RimeComposition(
+        input = inputText,
+        preedit = preeditText,
+        committedText = committedText,
+        candidates = candidates,
+        hasNextPage = hasNextPage,
+        hasPrevPage = hasPrevPage,
+        isAsciiMode = isAsciiMode,
+    )
+}
+
 class RimeEngine {
 
     companion object {
@@ -94,7 +107,6 @@ class RimeEngine {
 
         init {
             System.loadLibrary("rime_jni")
-            Log.d(TAG, "Native library loaded")
         }
 
         fun getInstance(): RimeEngine {
@@ -131,8 +143,6 @@ class RimeEngine {
             synchronized(initLock) {
                 if (!isInitialized) {
                     try {
-                        Log.d(TAG, "Initializing Rime: userDataDir=$userDataDir, sharedDataDir=$sharedDataDir")
-
                         notifyDeploymentStatus(true, "正在加载输入法引擎...")
                         nativeInitialize(userDataDir, sharedDataDir)
                         isInitialized = true
@@ -142,7 +152,6 @@ class RimeEngine {
                         // 部署在后台异步运行，不阻塞
 
                         notifyDeploymentStatus(false, "")
-                        Log.d(TAG, "Rime engine initialized (session deferred)")
                     } catch (e: Exception) {
                         Log.e(TAG, "Error during Rime initialization", e)
                         notifyDeploymentStatus(false, "初始化失败")
@@ -167,7 +176,6 @@ class RimeEngine {
                 return false
             }
             waited += 1000
-            Log.d(TAG, "ensureSession: waiting for maintenance... (${waited / 1000}s)")
         }
 
         synchronized(rimeLock) {
@@ -177,7 +185,6 @@ class RimeEngine {
                     nativeCreateSession()
                 }
                 if (getAvailableSchemas().isNotEmpty()) {
-                    Log.d(TAG, "ensureSession: schemas ready after ${waited}ms")
                     return true
                 }
                 try {
@@ -186,7 +193,6 @@ class RimeEngine {
                     return false
                 }
                 waited += 1000
-                Log.d(TAG, "ensureSession: waiting for schemas... (${waited / 1000}s)")
             }
             Log.w(TAG, "ensureSession: schemas not available after ${timeoutMs}ms, deployment may still be running")
             return false
@@ -257,15 +263,9 @@ class RimeEngine {
      * 是 T9 路径 updateUI 的首选查询接口，可替代多次独立 JNI 调用。
      */
     fun getComposition(): RimeComposition {
-        val t0 = System.nanoTime()
-        val result: RimeComposition = synchronized(rimeLock) {
-            nativeGetComposition()
+        synchronized(rimeLock) {
+            return nativeGetComposition()
         }
-        val elapsed = (System.nanoTime() - t0) / 1_000_000L
-        if (elapsed > 1) {
-            Log.d(TAG, "getComposition() took ${elapsed}ms (input='${result.input}')")
-        }
-        return result
     }
 
     fun selectCandidate(index: Int): Boolean {
@@ -327,18 +327,11 @@ class RimeEngine {
      * @return 是否设置成功
      */
     fun setInput(input: String): Boolean {
-        val t0 = System.nanoTime()
         if (!isInitialized) return false
-        var result = false
         synchronized(rimeLock) {
-            if (!nativeHasSession() && !nativeCreateSession()) return@synchronized
-            result = nativeSetInput(input)
+            if (!nativeHasSession() && !nativeCreateSession()) return false
+            return nativeSetInput(input)
         }
-        val elapsed = (System.nanoTime() - t0) / 1_000_000L
-        if (elapsed > 5) {
-            Log.d(TAG, "setInput('$input') took ${elapsed}ms")
-        }
-        return result
     }
 
     fun toggleAsciiMode(): Boolean {
@@ -406,10 +399,49 @@ class RimeEngine {
     fun destroy() {
         if (isInitialized) {
             synchronized(rimeLock) {
-                Log.d(TAG, "Destroying Rime engine")
                 nativeDestroy()
                 isInitialized = false
             }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // T9 Processor 公共 API
+    // ═══════════════════════════════════════════════════════════
+
+    /**
+     * 左选拼音：选择第 candidateIndex 个候选词的第一音节。
+     * t9_processor 会将对应数字替换为拼音并重新触发引擎处理。
+     */
+    fun t9SelectSyllable(candidateIndex: Int): Boolean {
+        if (!isInitialized) return false
+        synchronized(rimeLock) {
+            if (!nativeHasSession() && !nativeCreateSession()) return false
+            return nativeT9SelectSyllable(candidateIndex)
+        }
+    }
+
+    /**
+     * 右选候选：选择第 candidateIndex 个候选词。
+     * t9_processor 内部判断 full/partial commit 并做相应处理。
+     */
+    fun t9SelectCandidate(candidateIndex: Int): Boolean {
+        if (!isInitialized) return false
+        synchronized(rimeLock) {
+            if (!nativeHasSession() && !nativeCreateSession()) return false
+            return nativeT9SelectCandidate(candidateIndex)
+        }
+    }
+
+    /**
+     * 获取左侧候选区拼音列表。
+     * 从当前 RIME 候选的 comment 中提取唯一首音节。
+     */
+    fun t9GetSyllableCandidates(): Array<String> {
+        if (!isInitialized) return emptyArray()
+        synchronized(rimeLock) {
+            if (!nativeHasSession()) return emptyArray()
+            return nativeT9GetSyllableCandidates() ?: emptyArray()
         }
     }
 
@@ -448,10 +480,48 @@ class RimeEngine {
     private external fun nativeUpdateLastBuildTime()
     private external fun nativeSetPageSize(schemaId: String, pageSize: Int)
     private external fun nativeDestroy()
+    private external fun nativeT9SelectSyllable(candidateIndex: Int): Boolean
+    private external fun nativeT9SelectCandidate(candidateIndex: Int): Boolean
+    private external fun nativeT9SelectPinyinDirect(pinyin: String, digitLength: Int): Boolean
+    private external fun nativeT9GetSyllableCandidates(): Array<String>?
+    private external fun nativeT9GetRemainingDigits(): String?
+    private external fun nativeT9IsDisplayOriginalPreedit(): Boolean
+
+    /**
+     * 直接选择拼音：传入拼音和对应数字长度，t9_processor 替换 buffer。
+     */
+    fun t9SelectPinyinDirect(pinyin: String, digitLength: Int): Boolean {
+        if (!isInitialized) return false
+        synchronized(rimeLock) {
+            if (!nativeHasSession() && !nativeCreateSession()) return false
+            return nativeT9SelectPinyinDirect(pinyin, digitLength)
+        }
+    }
+
+    /**
+     * 获取 partial commit 后 t9_processor 中剩余的数字串。
+     */
+    fun t9GetRemainingDigits(): String {
+        if (!isInitialized) return ""
+        synchronized(rimeLock) {
+            return nativeT9GetRemainingDigits() ?: ""
+        }
+    }
+
+    /**
+     * 获取 t9/isDisplayOriginalPreedit 配置。
+     * true  → preedit 显示 rime 原始数字串；
+     * false → 前端根据候选 comment 将 preedit 重建为拼音。
+     */
+    fun t9IsDisplayOriginalPreedit(): Boolean {
+        if (!isInitialized) return false
+        synchronized(rimeLock) {
+            return nativeT9IsDisplayOriginalPreedit()
+        }
+    }
 
     fun deploySchema(schemaId: String): Boolean {
         if (!isInitialized) return false
-        Log.d(TAG, "Deploying single schema: $schemaId")
         return nativeDeploySchema(schemaId)
     }
 

@@ -4,6 +4,7 @@
 #include <rime_api.h>
 #include <rime/setup.h>
 #include <rime/dict/reverse_lookup_dictionary.h>
+#include "t9_processor.h"
 #include <jni.h>
 #include <android/log.h>
 #include <memory>
@@ -22,11 +23,13 @@
 extern void rime_require_module_lua();
 extern void rime_require_module_octagram();
 extern void rime_require_module_predict();
+extern void rime_require_module_t9();
 
 static void declare_librime_module_dependencies() {
   rime_require_module_lua();
   rime_require_module_octagram();
   rime_require_module_predict();
+  rime_require_module_t9();
 }
 
 struct ProcessResult {
@@ -1285,6 +1288,107 @@ Java_com_kingzcheung_xime_rime_RimeEngine_nativeIsModuleRegistered(
     LOGI("Module check: '%s' -> %s", name, found ? "FOUND" : "NOT FOUND");
     env->ReleaseStringUTFChars(module_name, name);
     return found ? JNI_TRUE : JNI_FALSE;
+  }
+
+// ═══════════════════════════════════════════════════════════
+// T9 Processor JNI 接口
+// ═══════════════════════════════════════════════════════════
+
+// 左选拼音：选择第 candidateIndex 个候选词的第一个音节
+JNIEXPORT jboolean JNICALL
+Java_com_kingzcheung_xime_rime_RimeEngine_nativeT9SelectSyllable(
+    JNIEnv* env,
+    jobject thiz,
+    jint candidate_index
+) {
+    rime::T9Processor* proc = rime::T9ProcessorRequire();
+    if (!proc) {
+        LOGE("nativeT9SelectSyllable: no active T9Processor");
+        return JNI_FALSE;
+    }
+    proc->SelectSyllable(candidate_index);
+    return JNI_TRUE;
+}
+
+// 右选候选：选择第 candidateIndex 个候选词（处理 full/partial commit）
+JNIEXPORT jboolean JNICALL
+Java_com_kingzcheung_xime_rime_RimeEngine_nativeT9SelectCandidate(
+    JNIEnv* env,
+    jobject thiz,
+    jint candidate_index
+) {
+    rime::T9Processor* proc = rime::T9ProcessorRequire();
+    if (!proc) {
+        LOGE("nativeT9SelectCandidate: no active T9Processor");
+        return JNI_TRUE;
+    }
+    return proc->SelectCandidate(candidate_index) ? JNI_TRUE : JNI_FALSE;
+}
+
+// 直接选择拼音（替代 SelectSyllable 的候选索引方式）
+JNIEXPORT jboolean JNICALL
+Java_com_kingzcheung_xime_rime_RimeEngine_nativeT9SelectPinyinDirect(
+    JNIEnv* env,
+    jobject thiz,
+    jstring pinyin,
+    jint digit_length
+) {
+    rime::T9Processor* proc = rime::T9ProcessorRequire();
+    if (!proc) return JNI_FALSE;
+    const char* p = env->GetStringUTFChars(pinyin, nullptr);
+    if (!p) return JNI_FALSE;
+    proc->SelectPinyinDirect(std::string(p), digit_length);
+    env->ReleaseStringUTFChars(pinyin, p);
+    return JNI_TRUE;
+}
+
+// 获取左侧候选区拼音列表（从候选评论中提取唯一首音节）
+JNIEXPORT jobjectArray JNICALL
+Java_com_kingzcheung_xime_rime_RimeEngine_nativeT9GetSyllableCandidates(
+    JNIEnv* env,
+    jobject thiz
+) {
+    rime::T9Processor* proc = rime::T9ProcessorRequire();
+    if (!proc) {
+        return env->NewObjectArray(0, env->FindClass("java/lang/String"), nullptr);
+    }
+
+    std::vector<std::string> syllables;
+    proc->GetSyllableCandidates(syllables);
+
+    jclass stringClass = env->FindClass("java/lang/String");
+    jobjectArray result = env->NewObjectArray(syllables.size(), stringClass, nullptr);
+
+    for (size_t i = 0; i < syllables.size(); ++i) {
+        jstring str = env->NewStringUTF(syllables[i].c_str());
+        env->SetObjectArrayElement(result, i, str);
+        env->DeleteLocalRef(str);
+    }
+
+    return result;
+}
+
+// 获取 t9_processor 中的剩余数字（partial commit 后重新发送到 RIME）
+JNIEXPORT jstring JNICALL
+Java_com_kingzcheung_xime_rime_RimeEngine_nativeT9GetRemainingDigits(
+    JNIEnv* env,
+    jobject thiz
+) {
+    rime::T9Processor* proc = rime::T9ProcessorRequire();
+    if (!proc) return env->NewStringUTF("");
+    std::string digits = proc->GetRemainingDigits();
+    return env->NewStringUTF(digits.c_str());
+}
+
+// 获取 t9/isDisplayOriginalPreedit 配置，供前端决定 preedit 显示方式。
+JNIEXPORT jboolean JNICALL
+Java_com_kingzcheung_xime_rime_RimeEngine_nativeT9IsDisplayOriginalPreedit(
+    JNIEnv* env,
+    jobject thiz
+) {
+    rime::T9Processor* proc = rime::T9ProcessorRequire();
+    if (!proc) return JNI_FALSE;
+    return proc->IsDisplayOriginalPreedit() ? JNI_TRUE : JNI_FALSE;
 }
 
 } // extern "C"
