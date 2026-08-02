@@ -86,7 +86,6 @@ import com.kingzcheung.xime.rime.RimeEngine
 import com.kingzcheung.xime.rime.T9InputController
 import com.kingzcheung.xime.rime.convertT9PreeditToPinyin
 import com.kingzcheung.xime.rime.buildT9DisplayState
-import com.kingzcheung.xime.rime.resolveRimeCandidateIndex
 
 import com.kingzcheung.xime.settings.SchemaConfigHelper
 import com.kingzcheung.xime.settings.SchemaManager
@@ -100,6 +99,7 @@ import kotlin.math.roundToInt
 import com.kingzcheung.xime.settings.KeysConfigHelper
 import com.kingzcheung.xime.ui.theme.XimeTheme
 import com.kingzcheung.xime.util.FileLogger
+import com.kingzcheung.xime.util.PreeditMergeHelper
 import com.kingzcheung.xime.keyboard.ActionExecutor
 import com.kingzcheung.xime.keyboard.HANDWRITING_SCHEMA_ID
 import com.kingzcheung.xime.keyboard.OverlayRoute
@@ -195,6 +195,9 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     private var lastClearedText: String = ""
     /** 累积的 partial commit 文本列表（多段选词场景下逐段追加） */
     private val t9PartialCommitTexts = mutableListOf<String>()
+    /** t9/isDisplayOriginalPreedit 缓存。schema 切换时刷新。
+     *  true  → preedit 显示原始数字；false → preedit 转拼音。 */
+    private var t9DisplayOriginalPreedit = false
     /** 键盘回调引用，用于在 RIME selectCandidate 前同步通知 T9 控制器 */
     private var keyboardCallbacks: KeyboardCallbacks? = null
     private var isChineseMode = true
@@ -1833,7 +1836,10 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         val isComposing: Boolean
         if (isT9Schema) {
             val rawPreedit = if (preeditText.isNotEmpty()) preeditText else inputText
-            val convertedPreedit = convertT9PreeditToPinyin(rawPreedit, candidatesWithComments.firstOrNull()?.comment ?: "")
+            val firstComment = candidatesWithComments.firstOrNull()?.comment ?: ""
+            Log.d(TAG, "T9DIAG applyComposition: rawPreedit='$rawPreedit' firstComment='$firstComment' t9DisplayOriginal=$t9DisplayOriginalPreedit candidates=${candidatesWithComments.size}")
+            val convertedPreedit = if (t9DisplayOriginalPreedit) rawPreedit
+                else convertT9PreeditToPinyin(rawPreedit, firstComment)
             val display = buildT9DisplayState(
                 t9PartialCommitTexts, convertedPreedit, inputText, t9FilteredTexts, t9FilteredComments
             )
@@ -1931,7 +1937,10 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         val isComposing: Boolean
         if (isT9Schema) {
             val rawPreedit = if (result.preeditText.isNotEmpty()) result.preeditText else result.inputText
-            val convertedPreedit = convertT9PreeditToPinyin(rawPreedit, candidatesWithComments.firstOrNull()?.comment ?: "")
+            val firstComment = candidatesWithComments.firstOrNull()?.comment ?: ""
+            Log.d(TAG, "T9DIAG updateUIWithResult: rawPreedit='$rawPreedit' firstComment='$firstComment' t9DisplayOriginal=$t9DisplayOriginalPreedit input='${result.inputText}'")
+            val convertedPreedit = if (t9DisplayOriginalPreedit) rawPreedit
+                else convertT9PreeditToPinyin(rawPreedit, firstComment)
             val display = buildT9DisplayState(
                 t9PartialCommitTexts, convertedPreedit, result.inputText, t9FilteredTexts, t9FilteredComments
             )
@@ -2549,9 +2558,8 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                 Log.d(TAG, "Shift+symbol: multi-char '$char' committed directly")
                             }
                         } else {
-                            val processed = rimeEngine.processKey(keyCode, mask)
-                            if (processed) {
-                                val result = rimeEngine.getProcessResult(processed)
+                            val result = rimeEngine.processKeyAndGetResult(keyCode, mask)
+                            if (result.processed) {
                                 if (isShiftedChinese && result.committedText != char) {
                                     rimeEngine.clearComposition()
                                     committedText = char
@@ -2705,100 +2713,67 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             false
         }
 
-        // T9 模式：UI 候选词列表经过 filterCandidatesBySelectionHistory 过滤/重排序
-        // （FULL 在前、PREFIX 在后、NONE 排除），其 index 可能与 RIME 原始候选词
-        // index 不对应。通过候选词文本查找 RIME 原始候选词的真实 index，确保
-        // selectCandidate 选对词（场景19 后续修复：上屏错词问题）。
-        val rimeIndex = if (isT9 && selectedCandidate != null) {
-            resolveRimeCandidateIndex(index, selectedCandidate, rimeEngine.getCandidates().toList())
-        } else {
-            index
-        }
-
-        // T9：跳过 rimeEngine.selectCandidate，消费已由 T9 处理器
-        // （T9RightCommitHandler）独立完成。selectCandidate 会遗留
-        // [confirmed, phony] 残留 composition 状态，导致后续 forceSendToRime
-        // 的 setInput 无法正常重建候选项。
-        val selectSucceeded = isT9 || rimeEngine.selectCandidate(rimeIndex)
-        if (!selectSucceeded) return
-        val committedText = if (isT9) "" else rimeEngine.commit()
-        // T9 模式下 fullyConsumed 是判断 full/partial commit 的唯一权威：
-        // 当控制器明确 partial commit 时，即使 RIME commit() 返回非空文本
-        // （RIME 内部做了 partial commit），也不应走 full commit 路径。
-        val isFullCommit = if (isT9) {
-            fullyConsumed && selectedCandidate != null
-        } else {
-            committedText.isNotEmpty()
-        }
-        if (isFullCommit) {
-            if (SettingsPreferences.isSmartPredictionEnabled(this) && selectedCandidate != null && AssociationManager.isInitialized()) {
-                if (predictionManager.lastCommittedText.isNotEmpty()) {
-                    val lastChar = predictionManager.lastCommittedText.last().toString()
-                    predictionManager.recordInputPair(lastChar, selectedCandidate)
-                    Log.d(TAG, "Learned: '$lastChar' + '$selectedCandidate'")
-                }
-            }
-            // T9 full commit：优先使用用户明确选中的候选词文本作为上屏文本。
-            // UI 候选词列表经 filterCandidatesBySelectionHistory 过滤/重排序后 index
-            // 可能与 RIME 原始候选词 index 不对应。即使已通过 resolveRimeCandidateIndex
-            // 修正了 selectCandidate 的 index，仍以用户选中的 selectedCandidate 为权威
-            // 上屏文本（双保险），避免 RIME commit() 因任何原因返回错误文本。
-            // 非 T9 模式仍保持 RIME committedText 优先（可能含简繁转换等处理）。
-            val textToMerge = if (isT9 && fullyConsumed && selectedCandidate != null) {
-                selectedCandidate
-            } else if (committedText.isNotEmpty()) {
-                committedText
+        if (rimeEngine.selectCandidate(index)) {
+            val committedText = rimeEngine.commit()
+            // T9 模式下 fullyConsumed 是判断 full/partial commit 的唯一权威：
+            // 当控制器明确 partial commit 时，即使 RIME commit() 返回非空文本
+            // （RIME 内部做了 partial commit），也不应走 full commit 路径。
+            val isFullCommit = if (isT9) {
+                fullyConsumed && selectedCandidate != null
             } else {
-                selectedCandidate!!
+                committedText.isNotEmpty()
             }
-            val fullCommitText = if (isT9) {
-                if (t9PartialCommitTexts.isNotEmpty()) {
-                    t9PartialCommitTexts.joinToString("") + textToMerge
+            if (isFullCommit) {
+                if (SettingsPreferences.isSmartPredictionEnabled(this) && selectedCandidate != null && AssociationManager.isInitialized()) {
+                    if (predictionManager.lastCommittedText.isNotEmpty()) {
+                        val lastChar = predictionManager.lastCommittedText.last().toString()
+                        predictionManager.recordInputPair(lastChar, selectedCandidate)
+                        Log.d(TAG, "Learned: '$lastChar' + '$selectedCandidate'")
+                    }
+                }
+                // T9 模式：将 partial commit 累积文本与 RIME committedText 合并后上屏，
+                // 避免之前 partial commit 的文本丢失
+                val textToMerge = if (committedText.isNotEmpty()) committedText else selectedCandidate!!
+                val fullCommitText = if (isT9) {
+                    PreeditMergeHelper.mergePartialCommitText(t9PartialCommitTexts, textToMerge)
                 } else {
                     textToMerge
                 }
-            } else {
-                textToMerge
-            }
-            withContext(Dispatchers.Main) {
-                commitText(fullCommitText)
-                t9PartialCommitTexts.clear()
-                candidateState.value = candidateState.value.copy(
-                    inputText = "",
-                    candidates = emptyList(),
-                    candidateComments = emptyList(),
-                    isComposing = false,
-                    hasNextPage = false,
-                    hasPrevPage = false,
-                    isShowingRecentClipboard = false
-                )
-                uiState.value = uiState.value.copy(
-                    t9ResetSignal = uiState.value.t9ResetSignal + 1,
-                    t9RightCandidateSelectedCount = 0,
-                    t9SelectedCandidatePinyin = ""
-                )
-            }
-            // T9 full commit 后清除 RIME composition，防止残留状态导致
-            // 后续按键（如左侧候选区标点符号）重新拉取旧 preedit 和候选词。
-            // 放在 keyProcessingDispatcher 上执行，避免阻塞 Main 线程。
-            rimeEngine.clearComposition()
-        } else {
-            withContext(Dispatchers.Main) {
-                if (isT9) {
-                    // partial commit：把本次选中的候选文本追加到累积列表，供后续合并显示
-                    if (selectedCandidate != null) {
-                        t9PartialCommitTexts.add(selectedCandidate)
-                    }
-                    // 保留状态字段，供 UI 层感知右侧选词事件
-                    uiState.value = uiState.value.copy(
-                        t9RightCandidateSelectedCount = uiState.value.t9RightCandidateSelectedCount + 1,
-                        t9SelectedCandidatePinyin = candidatePinyin ?: ""
+                withContext(Dispatchers.Main) {
+                    commitText(fullCommitText)
+                    t9PartialCommitTexts.clear()
+                    candidateState.value = candidateState.value.copy(
+                        inputText = "",
+                        candidates = emptyList(),
+                        candidateComments = emptyList(),
+                        isComposing = false,
+                        hasNextPage = false,
+                        hasPrevPage = false,
+                        isShowingRecentClipboard = false
                     )
-                    // RIME composition 未被 selectCandidate 修改（已跳过），
-                    // 直接发送剩余数字到 RIME 重建 composition。
-                    keyboardCallbacks?.onT9ForceSendToRime?.invoke()
+                    uiState.value = uiState.value.copy(
+                        t9ResetSignal = uiState.value.t9ResetSignal + 1,
+                        t9RightCandidateSelectedCount = 0,
+                        t9SelectedCandidatePinyin = ""
+                    )
                 }
-                updateUI()
+            } else {
+                withContext(Dispatchers.Main) {
+                    if (isT9) {
+                        // partial commit：把本次选中的候选文本追加到累积列表，供后续合并显示
+                        if (selectedCandidate != null) {
+                            t9PartialCommitTexts.add(selectedCandidate)
+                        }
+                        // 保留状态字段，供 UI 层感知右侧选词事件
+                        uiState.value = uiState.value.copy(
+                            t9RightCandidateSelectedCount = uiState.value.t9RightCandidateSelectedCount + 1,
+                            t9SelectedCandidatePinyin = candidatePinyin ?: ""
+                        )
+                        // RIME commit() 已清除 composition，需要控制器重新发送剩余数字到 RIME
+                        keyboardCallbacks?.onT9ForceSendToRime?.invoke()
+                    }
+                    updateUI()
+                }
             }
         }
     }
@@ -3150,6 +3125,11 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             rimeEngine.switchSchema(schemaId)
             if (!rimeEngine.isAsciiMode()) {
                 rimeEngine.setOption("ascii_punct", false)
+            }
+            t9DisplayOriginalPreedit = if (isT9Schema(schemaId)) {
+                rimeEngine.t9IsDisplayOriginalPreedit()
+            } else {
+                false
             }
             updateSchemaName()
             updateUI()

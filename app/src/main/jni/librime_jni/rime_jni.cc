@@ -1380,4 +1380,15 @@ Java_com_kingzcheung_xime_rime_RimeEngine_nativeT9GetRemainingDigits(
     return env->NewStringUTF(digits.c_str());
 }
 
+// 获取 t9/isDisplayOriginalPreedit 配置，供前端决定 preedit 显示方式。
+JNIEXPORT jboolean JNICALL
+Java_com_kingzcheung_xime_rime_RimeEngine_nativeT9IsDisplayOriginalPreedit(
+    JNIEnv* env,
+    jobject thiz
+) {
+    rime::T9Processor* proc = rime::T9ProcessorRequire();
+    if (!proc) return JNI_FALSE;
+    return proc->IsDisplayOriginalPreedit() ? JNI_TRUE : JNI_FALSE;
+}
+
 } // extern "C"

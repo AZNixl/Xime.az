@@ -25,6 +25,15 @@ T9Processor* T9ProcessorRequire() {
 T9Processor::T9Processor(const Ticket& ticket) : Processor(ticket) {
     g_active_t9_processor = this;
     T9LOG("T9Processor created");
+    Schema* schema = engine_ ? engine_->schema() : nullptr;
+    if (schema && schema->config()) {
+        Config* config = schema->config();
+        bool display_original = false;
+        if (config->GetBool("t9/isDisplayOriginalPreedit", &display_original)) {
+            display_original_preedit_ = display_original;
+            T9LOG("T9Processor: t9/isDisplayOriginalPreedit = %d", display_original_preedit_);
+        }
+    }
 }
 
 T9Processor::~T9Processor() {

@@ -82,6 +82,19 @@ data class RimeProcessResult(
     }
 }
 
+/** 将一次按键得到的完整结果转为 RimeComposition，供 T9 控制器复用，避免重复 JNI。 */
+fun RimeProcessResult.toComposition(): RimeComposition {
+    return RimeComposition(
+        input = inputText,
+        preedit = preeditText,
+        committedText = committedText,
+        candidates = candidates,
+        hasNextPage = hasNextPage,
+        hasPrevPage = hasPrevPage,
+        isAsciiMode = isAsciiMode,
+    )
+}
+
 class RimeEngine {
 
     companion object {
@@ -493,6 +506,7 @@ class RimeEngine {
     private external fun nativeT9SelectPinyinDirect(pinyin: String, digitLength: Int): Boolean
     private external fun nativeT9GetSyllableCandidates(): Array<String>?
     private external fun nativeT9GetRemainingDigits(): String?
+    private external fun nativeT9IsDisplayOriginalPreedit(): Boolean
 
     /**
      * 直接选择拼音：传入拼音和对应数字长度，t9_processor 替换 buffer。
@@ -512,6 +526,18 @@ class RimeEngine {
         if (!isInitialized) return ""
         synchronized(rimeLock) {
             return nativeT9GetRemainingDigits() ?: ""
+        }
+    }
+
+    /**
+     * 获取 t9/isDisplayOriginalPreedit 配置。
+     * true  → preedit 显示 rime 原始数字串；
+     * false → 前端根据候选 comment 将 preedit 重建为拼音。
+     */
+    fun t9IsDisplayOriginalPreedit(): Boolean {
+        if (!isInitialized) return false
+        synchronized(rimeLock) {
+            return nativeT9IsDisplayOriginalPreedit()
         }
     }
 

@@ -63,6 +63,11 @@ data class KeyboardCallbacks(
      * @return 过滤后的 (候选词列表, 注释列表)
      */
     var onFilterT9Candidates: ((List<String>, List<String>) -> Pair<List<String>, List<String>>)? = null,
+    /**
+     * T9 键盘状态变更后通知服务层刷新 UI（候选区、preedit 等）。
+     * 服务层读取 rimeEngine.getComposition() 并应用。
+     */
+    var onT9RefreshComposition: (() -> Unit)? = null,
     val onShowQuickSendForm: (() -> Unit)? = null,
     val onHideQuickSendForm: (() -> Unit)? = null,
     val onQuickSendEditItem: ((Long, String) -> Unit)? = null,

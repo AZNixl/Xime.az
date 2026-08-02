@@ -8,7 +8,12 @@ package com.kingzcheung.xime.rime
  * "5" + comment "le" → "l"
  */
 fun convertT9PreeditToPinyin(preedit: String, firstCandidateComment: String): String {
-    if (preedit.isEmpty() || firstCandidateComment.isEmpty()) return preedit
+    if (preedit.isEmpty()) return preedit
+    if (firstCandidateComment.isEmpty()) {
+        // RIME 未提供拼音注释时，用 T9PinyinMap 从数字推断最可能的拼音，
+        // 避免 preedit 直接显示数字（如 88 → tu）。
+        return inferPinyinFromDigits(preedit)
+    }
 
     val pinyinParts = firstCandidateComment.split(Regex("\\s+")).filter { it.isNotEmpty() }
     if (pinyinParts.isEmpty()) return preedit
@@ -76,4 +81,68 @@ fun convertT9PreeditToPinyin(preedit: String, firstCandidateComment: String): St
         }
     }
     return inputParts.joinToString("")
+}
+
+/**
+ * RIME 未提供候选拼音注释时，用 T9PinyinMap 从数字序列推断拼音显示。
+ *
+ * 逐段处理：中文段原样保留，纯数字段用 [T9PinyinMap.firstSyllableOptions]
+ * 取最可能的拼音；已确认的字母段（含 '）原样保留。
+ * 例如 "88" → "tu"，"ji'482" → "ji'hua"。
+ */
+fun inferPinyinFromDigits(preedit: String): String {
+    if (preedit.isEmpty()) return preedit
+    val hasDigit = preedit.any { it in '0'..'9' }
+    if (!hasDigit) return preedit
+
+    // 按字符类型分段：分隔符、中文、数字、字母各自成段
+    val parts = mutableListOf<String>()
+    val buf = StringBuilder()
+    var bufKind: Char? = null
+
+    fun flush() {
+        if (buf.isNotEmpty()) {
+            parts.add(buf.toString())
+            buf.clear()
+        }
+        bufKind = null
+    }
+
+    for (char in preedit) {
+        val kind = when {
+            char == ' ' || char == '\'' -> 's'
+            char >= '\u4E00' && char <= '\u9FFF' -> 'c'
+            char in '0'..'9' -> 'd'
+            else -> 'l'
+        }
+        if (bufKind != null && bufKind != kind) flush()
+        buf.append(char)
+        bufKind = kind
+    }
+    flush()
+
+    val result = StringBuilder()
+    for (part in parts) {
+        when {
+            part == " " || part == "'" -> result.append(part)
+            part.all { it in '0'..'9' } -> {
+                // 数字段：贪心切分为多个拼音，取最长匹配
+                var rest = part
+                var i = 0
+                while (i < rest.length) {
+                    val options = T9PinyinMap.firstSyllableOptions(rest.substring(i), maxResults = 1)
+                    if (options.isEmpty()) {
+                        // 无匹配，保留剩余数字
+                        result.append(rest.substring(i))
+                        break
+                    }
+                    val opt = options.first()
+                    result.append(opt.pinyin)
+                    i += opt.digitLength
+                }
+            }
+            else -> result.append(part)
+        }
+    }
+    return result.toString()
 }

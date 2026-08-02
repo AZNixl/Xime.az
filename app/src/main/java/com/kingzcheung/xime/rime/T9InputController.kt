@@ -50,6 +50,14 @@ class T9InputController(
     private var _committedText: String? = null
     private var _digitBuffer: String = ""
 
+    /**
+     * t9/isDisplayOriginalPreedit 缓存。schema 切换（reset）时刷新。
+     * true  → preedit 显示 rime 原始数字串；
+     * false → 前端根据候选 comment 将 preedit 重建为拼音。
+     */
+    var isDisplayOriginalPreedit: Boolean = false
+        private set
+
     fun reset() {
         rimeEngine.clearComposition()
         _digitBuffer = ""
@@ -59,14 +67,15 @@ class T9InputController(
         selectedOption = null
         selectionCandidateDigits = null
         _committedText = null
+        isDisplayOriginalPreedit = rimeEngine.t9IsDisplayOriginalPreedit()
     }
 
-    fun updateCandidates(force: Boolean = false) {
-        val composition = rimeEngine.getComposition()
-        val rawInput = composition.input
+    fun updateCandidates(force: Boolean = false, composition: RimeComposition? = null) {
+        val comp = composition ?: rimeEngine.getComposition()
+        val rawInput = comp.input
 
-        if (rawInput.isEmpty() && _committedText != composition.committedText) {
-            _committedText = composition.committedText
+        if (rawInput.isEmpty() && _committedText != comp.committedText) {
+            _committedText = comp.committedText
         }
 
         if (rawInput.isEmpty()) {
@@ -101,9 +110,9 @@ class T9InputController(
 
     fun onDigitPressed(digit: String) {
         val code = digit[0].code
-        rimeEngine.processKey(code, 0)
+        val result = rimeEngine.processKeyAndGetResult(code, 0)
         onCompositionRefresh?.invoke()
-        updateFromRime()
+        updateCandidates(composition = result.toComposition())
     }
 
     fun onChoiceSelected(option: T9PinyinMap.SyllableOption) {
@@ -141,17 +150,6 @@ class T9InputController(
             // Directly set RIME input to remaining digits (bypass processKey/AppendDigit)
             rimeEngine.setInput(remaining)
         }
-    }
-
-    /**
-     * 右侧候选直接提交上屏：不经过消耗算法，清空缓冲区并进入空闲状态。
-     * 用于 emoji/符号等无拼音注释的候选词，RIME 引擎已匹配输入序列到候选词，
-     * T9 控制器无需做音节级消费计算。
-     */
-    fun onRightCandidateSelectedByDirectCommit(): Boolean {
-        if (inputBuffer.isEmpty) return true
-        resetState(clearCache = true, clearRime = false)
-        return true
     }
 
     fun clearRimeAndResend() {
