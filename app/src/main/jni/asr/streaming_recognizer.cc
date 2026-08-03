@@ -41,7 +41,8 @@ std::vector<std::string> LoadSymbolTable(const std::string &path) {
 
 StreamingRecognizer::StreamingRecognizer(const AsrModelPaths &paths,
                                          const std::string &tokens_path,
-                                         int32_t num_threads) {
+                                         int32_t num_threads)
+    : decoder_out_(nullptr) {
   try {
     model_ = std::make_unique<Zipformer2Model>(paths, num_threads);
     id2sym_ = LoadSymbolTable(tokens_path);

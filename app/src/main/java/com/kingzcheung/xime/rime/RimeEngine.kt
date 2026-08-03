@@ -396,6 +396,64 @@ class RimeEngine {
         return nativeGetAvailableSchemas() ?: emptyArray()
     }
 
+    /** 读取方案配置字符串项（librime 解析，含 custom.yaml patch 合并后的最终值）。 */
+    fun getSchemaString(schemaId: String, key: String): String? {
+        if (!isInitialized) return null
+        return nativeGetSchemaString(schemaId, key)
+    }
+
+    /** 读取方案配置列表项（librime 解析，含 custom.yaml patch 合并后的最终值）。 */
+    fun getSchemaList(schemaId: String, key: String): List<String> {
+        if (!isInitialized) return emptyList()
+        return nativeGetSchemaList(schemaId, key)?.toList() ?: emptyList()
+    }
+
+    /** 读取方案自带 translator.packs 中声明的个人词库名。 */
+    fun getSchemaPacks(schemaId: String): List<String> =
+        getSchemaList(schemaId, "translator.packs")
+
+    /** 读取方案 translator.dictionary 主词典名。 */
+    fun getSchemaDictionary(schemaId: String): String? =
+        getSchemaString(schemaId, "translator.dictionary")
+
+    /** 读取方案 engine/translators 翻译器列表。 */
+    fun getSchemaTranslators(schemaId: String): List<String> =
+        getSchemaList(schemaId, "engine/translators")
+
+    /** 方案是否有 speller.algebra（固定音节表/自动造词规则）。 */
+    fun hasSpellerAlgebra(schemaId: String): Boolean =
+        getSchemaList(schemaId, "speller.algebra").isNotEmpty()
+
+    /** 读取方案 custom_phrase.user_dict（自定义短语词典名）。 */
+    fun getCustomPhraseDictName(schemaId: String): String? =
+        getSchemaString(schemaId, "custom_phrase/user_dict")
+
+    // ── user.yaml 用户状态 ──
+
+    /** 读取 user.yaml 用户状态字符串（如 var/previously_selected_schema）。 */
+    fun getUserConfigString(key: String): String? {
+        if (!isInitialized) return null
+        return nativeGetUserConfigString(key)
+    }
+
+    /** 读取 user.yaml 用户状态布尔值（如 var/option/ascii_mode）。 */
+    fun getUserConfigBool(key: String): Boolean {
+        if (!isInitialized) return false
+        return nativeGetUserConfigBool(key)
+    }
+
+    /** 写 user.yaml 用户状态字符串（auto_save，自动落盘）。 */
+    fun setUserConfigString(key: String, value: String) {
+        if (!isInitialized) return
+        nativeSetUserConfigString(key, value)
+    }
+
+    /** 写 user.yaml 用户状态布尔值（auto_save，自动落盘）。 */
+    fun setUserConfigBool(key: String, value: Boolean) {
+        if (!isInitialized) return
+        nativeSetUserConfigBool(key, value)
+    }
+
     fun destroy() {
         if (isInitialized) {
             synchronized(rimeLock) {
@@ -476,6 +534,12 @@ class RimeEngine {
     private external fun nativeDeploySchema(schemaId: String): Boolean
     private external fun nativeLookupText(text: String): String
     private external fun nativeGetAvailableSchemas(): Array<String>?
+    private external fun nativeGetSchemaList(schemaId: String, key: String): Array<String>?
+    private external fun nativeGetSchemaString(schemaId: String, key: String): String?
+    private external fun nativeGetUserConfigString(key: String): String?
+    private external fun nativeGetUserConfigBool(key: String): Boolean
+    private external fun nativeSetUserConfigString(key: String, value: String): Boolean
+    private external fun nativeSetUserConfigBool(key: String, value: Boolean): Boolean
     private external fun nativeIsModuleRegistered(moduleName: String): Boolean
     private external fun nativeUpdateLastBuildTime()
     private external fun nativeSetPageSize(schemaId: String, pageSize: Int)

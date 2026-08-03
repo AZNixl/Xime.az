@@ -121,11 +121,40 @@ object SettingsPreferences {
     }
     
     fun getCurrentSchema(context: Context): String {
-        return getPrefs(context).getString(KEY_CURRENT_SCHEMA, "wubi86") ?: "wubi86"
+        // 方案状态以 librime user.yaml 的 var/previously_selected_schema 为准
+        val fromRime = try {
+            if (com.kingzcheung.xime.rime.RimeEngine.isInitialized()) {
+                com.kingzcheung.xime.rime.RimeEngine.getInstance()
+                    .getUserConfigString("var/previously_selected_schema")
+            } else null
+        } catch (_: Throwable) {
+            null
+        }
+        if (!fromRime.isNullOrBlank()) return fromRime
+        // 旧版本 SharedPreferences 数据仅作一次性迁移，迁移后不再写入
+        val legacy = getPrefs(context).getString(KEY_CURRENT_SCHEMA, null)
+        if (!legacy.isNullOrBlank()) {
+            try {
+                if (com.kingzcheung.xime.rime.RimeEngine.isInitialized()) {
+                    com.kingzcheung.xime.rime.RimeEngine.getInstance()
+                        .setUserConfigString("var/previously_selected_schema", legacy)
+                }
+            } catch (_: Throwable) {
+            }
+            return legacy
+        }
+        return "wubi86"
     }
-    
+
     fun setCurrentSchema(context: Context, schemaId: String) {
-        getPrefs(context).edit().putString(KEY_CURRENT_SCHEMA, schemaId).apply()
+        // 方案状态只写 librime user.yaml，不写 SharedPreferences
+        try {
+            if (com.kingzcheung.xime.rime.RimeEngine.isInitialized()) {
+                com.kingzcheung.xime.rime.RimeEngine.getInstance()
+                    .setUserConfigString("var/previously_selected_schema", schemaId)
+            }
+        } catch (_: Throwable) {
+        }
     }
     
     fun isDeploymentDone(context: Context): Boolean {

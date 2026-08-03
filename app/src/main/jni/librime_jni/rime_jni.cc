@@ -33,14 +33,14 @@ static void declare_librime_module_dependencies() {
 }
 
 struct ProcessResult {
-    bool processed;
+    bool processed = false;
     std::string committedText;
     std::string inputText;
     std::string preeditText;
     std::vector<std::pair<std::string, std::string>> candidates;
-    bool isAsciiMode;
-    bool hasNextPage;
-    bool hasPrevPage;
+    bool isAsciiMode = false;
+    bool hasNextPage = false;
+    bool hasPrevPage = false;
 };
 
 struct CompositionResult {
@@ -48,9 +48,9 @@ struct CompositionResult {
     std::string preedit;
     std::string committedText;
     std::vector<std::pair<std::string, std::string>> candidates;
-    bool isAsciiMode;
-    bool hasNextPage;
-    bool hasPrevPage;
+    bool isAsciiMode = false;
+    bool hasNextPage = false;
+    bool hasPrevPage = false;
 };
 
 // Rime 单例类
@@ -96,6 +96,7 @@ public:
         
         rime->initialize(&traits);
         LOGI("Rime initialize completed");
+        initialized_ = true;
         
         // NOTE: start_maintenance 不再在 startup 中调用。
         // 从 Kotlin 侧根据词库文件是否已存在，按需调用 startMaintenance()。
@@ -706,6 +707,104 @@ public:
             }
             rime->finalize();
         }
+        initialized_ = false;
+    }
+
+    // 读取方案配置中的字符串项（schema + custom.yaml patch 合并后的最终值）
+    std::string getSchemaString(const char* schema_id, const char* key) {
+        if (!rime || !initialized_) {
+            LOGE("getSchemaString: rime not initialized");
+            return "";
+        }
+        RimeConfig config;
+        if (!rime->schema_open(schema_id, &config)) {
+            return "";
+        }
+        std::string value;
+        const char* str = rime->config_get_cstring(&config, key);
+        if (str) {
+            value = str;
+        }
+        rime->config_close(&config);
+        return value;
+    }
+
+    // 读取方案配置中的列表项（schema + custom.yaml patch 合并后的最终值）
+    std::vector<std::string> getSchemaList(const char* schema_id, const char* key) {
+        std::vector<std::string> items;
+        if (!rime || !initialized_) {
+            LOGE("getSchemaList: rime not initialized");
+            return items;
+        }
+        RimeConfig config;
+        if (!rime->schema_open(schema_id, &config)) {
+            return items;
+        }
+        RimeConfigIterator iter;
+        if (rime->config_begin_list(&iter, &config, key)) {
+            while (rime->config_next(&iter)) {
+                const char* value = rime->config_get_cstring(&config, iter.path);
+                if (value) {
+                    items.emplace_back(value);
+                }
+            }
+            rime->config_end(&iter);
+        }
+        rime->config_close(&config);
+        return items;
+    }
+
+    // 读取 user.yaml 用户状态字符串（user_config 组件 auto_save=true）
+    std::string getUserConfigString(const char* key) {
+        if (!rime || !initialized_) {
+            LOGE("getUserConfigString: rime not initialized");
+            return "";
+        }
+        RimeConfig config;
+        if (!rime->user_config_open("user", &config)) {
+            return "";
+        }
+        std::string value;
+        const char* str = rime->config_get_cstring(&config, key);
+        if (str) {
+            value = str;
+        }
+        rime->config_close(&config);
+        return value;
+    }
+
+    // 读取 user.yaml 用户状态布尔值
+    bool getUserConfigBool(const char* key) {
+        if (!rime || !initialized_) return false;
+        RimeConfig config;
+        if (!rime->user_config_open("user", &config)) return false;
+        Bool value = False;
+        rime->config_get_bool(&config, key, &value);
+        rime->config_close(&config);
+        return value == True;
+    }
+
+    // 写 user.yaml 用户状态字符串（user_config 组件 auto_save=true）
+    bool setUserConfigString(const char* key, const char* value) {
+        if (!rime || !initialized_) {
+            LOGE("setUserConfigString: rime not initialized");
+            return false;
+        }
+        RimeConfig config;
+        if (!rime->user_config_open("user", &config)) return false;
+        bool result = rime->config_set_string(&config, key, value);
+        rime->config_close(&config);
+        return result;
+    }
+
+    // 写 user.yaml 用户状态布尔值
+    bool setUserConfigBool(const char* key, bool value) {
+        if (!rime || !initialized_) return false;
+        RimeConfig config;
+        if (!rime->user_config_open("user", &config)) return false;
+        bool result = rime->config_set_bool(&config, key, value ? True : False);
+        rime->config_close(&config);
+        return result;
     }
 
 private:
@@ -713,6 +812,7 @@ private:
     RimeSessionId session_id_ = 0;
     std::string user_data_dir_;
     std::string shared_data_dir_;
+    bool initialized_ = false;
 };
 
 extern "C" {
@@ -1144,6 +1244,124 @@ Java_com_kingzcheung_xime_rime_RimeEngine_nativeGetAvailableSchemas(
     }
     
     return result;
+}
+
+// 读取方案配置列表项（schema + custom.yaml patch 合并后的最终值）
+JNIEXPORT jobjectArray JNICALL
+Java_com_kingzcheung_xime_rime_RimeEngine_nativeGetSchemaList(
+    JNIEnv* env,
+    jobject thiz,
+    jstring schema_id,
+    jstring key
+) {
+    const char* schema = env->GetStringUTFChars(schema_id, nullptr);
+    if (!schema) return nullptr;
+    const char* key_ptr = env->GetStringUTFChars(key, nullptr);
+    if (!key_ptr) {
+        env->ReleaseStringUTFChars(schema_id, schema);
+        return nullptr;
+    }
+    std::vector<std::string> items = Rime::Instance().getSchemaList(schema, key_ptr);
+    env->ReleaseStringUTFChars(schema_id, schema);
+    env->ReleaseStringUTFChars(key, key_ptr);
+
+    jclass stringClass = env->FindClass("java/lang/String");
+    if (!stringClass) return nullptr;
+
+    jobjectArray result = env->NewObjectArray(items.size(), stringClass, nullptr);
+    if (!result) return nullptr;
+
+    for (size_t i = 0; i < items.size(); ++i) {
+        jstring str = env->NewStringUTF(items[i].c_str());
+        env->SetObjectArrayElement(result, i, str);
+        env->DeleteLocalRef(str);
+    }
+    return result;
+}
+
+// 读取方案配置字符串项（schema + custom.yaml patch 合并后的最终值）
+JNIEXPORT jstring JNICALL
+Java_com_kingzcheung_xime_rime_RimeEngine_nativeGetSchemaString(
+    JNIEnv* env,
+    jobject thiz,
+    jstring schema_id,
+    jstring key
+) {
+    const char* schema = env->GetStringUTFChars(schema_id, nullptr);
+    if (!schema) return nullptr;
+    const char* key_ptr = env->GetStringUTFChars(key, nullptr);
+    if (!key_ptr) {
+        env->ReleaseStringUTFChars(schema_id, schema);
+        return nullptr;
+    }
+    std::string value = Rime::Instance().getSchemaString(schema, key_ptr);
+    env->ReleaseStringUTFChars(schema_id, schema);
+    env->ReleaseStringUTFChars(key, key_ptr);
+    return value.empty() ? nullptr : env->NewStringUTF(value.c_str());
+}
+
+// 读取 user.yaml 用户状态字符串
+JNIEXPORT jstring JNICALL
+Java_com_kingzcheung_xime_rime_RimeEngine_nativeGetUserConfigString(
+    JNIEnv* env,
+    jobject thiz,
+    jstring key
+) {
+    const char* key_ptr = env->GetStringUTFChars(key, nullptr);
+    if (!key_ptr) return nullptr;
+    std::string value = Rime::Instance().getUserConfigString(key_ptr);
+    env->ReleaseStringUTFChars(key, key_ptr);
+    return value.empty() ? nullptr : env->NewStringUTF(value.c_str());
+}
+
+// 读取 user.yaml 用户状态布尔值
+JNIEXPORT jboolean JNICALL
+Java_com_kingzcheung_xime_rime_RimeEngine_nativeGetUserConfigBool(
+    JNIEnv* env,
+    jobject thiz,
+    jstring key
+) {
+    const char* key_ptr = env->GetStringUTFChars(key, nullptr);
+    if (!key_ptr) return JNI_FALSE;
+    bool value = Rime::Instance().getUserConfigBool(key_ptr);
+    env->ReleaseStringUTFChars(key, key_ptr);
+    return value ? JNI_TRUE : JNI_FALSE;
+}
+
+// 写 user.yaml 用户状态字符串
+JNIEXPORT jboolean JNICALL
+Java_com_kingzcheung_xime_rime_RimeEngine_nativeSetUserConfigString(
+    JNIEnv* env,
+    jobject thiz,
+    jstring key,
+    jstring value
+) {
+    const char* key_ptr = env->GetStringUTFChars(key, nullptr);
+    if (!key_ptr) return JNI_FALSE;
+    const char* value_ptr = env->GetStringUTFChars(value, nullptr);
+    if (!value_ptr) {
+        env->ReleaseStringUTFChars(key, key_ptr);
+        return JNI_FALSE;
+    }
+    bool result = Rime::Instance().setUserConfigString(key_ptr, value_ptr);
+    env->ReleaseStringUTFChars(key, key_ptr);
+    env->ReleaseStringUTFChars(value, value_ptr);
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
+// 写 user.yaml 用户状态布尔值
+JNIEXPORT jboolean JNICALL
+Java_com_kingzcheung_xime_rime_RimeEngine_nativeSetUserConfigBool(
+    JNIEnv* env,
+    jobject thiz,
+    jstring key,
+    jboolean value
+) {
+    const char* key_ptr = env->GetStringUTFChars(key, nullptr);
+    if (!key_ptr) return JNI_FALSE;
+    bool result = Rime::Instance().setUserConfigBool(key_ptr, value == JNI_TRUE);
+    env->ReleaseStringUTFChars(key, key_ptr);
+    return result ? JNI_TRUE : JNI_FALSE;
 }
 
 // 设置 Rime 选项

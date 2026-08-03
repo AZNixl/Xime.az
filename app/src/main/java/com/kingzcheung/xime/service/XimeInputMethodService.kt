@@ -1416,9 +1416,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             val availableSchemas = rimeEngine.getAvailableSchemas()
             Log.d(TAG, "onStartInput: saved=$savedSchema, current=$currentSchema, available=${availableSchemas.joinToString()}")
             
-            // switchSchema 会重置 ASCII 模式为 schema 默认值，先保存以便后续恢复
-            val asciiModeBeforeSchemaSwitch = rimeEngine.isAsciiMode()
-            
             val actualSchema: String
             when {
                 savedSchema == HANDWRITING_SCHEMA_ID -> {
@@ -1478,10 +1475,9 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             }
             updateSchemaName()
             
-            // switchSchema 可能会重置 ASCII 模式，恢复之以保持引擎与 UI 状态同步
-            if (rimeEngine.isAsciiMode() != asciiModeBeforeSchemaSwitch) {
-                rimeEngine.toggleAsciiMode()
-            }
+            // 从 user.yaml 恢复方案选项（中/西、简/繁等，含 ascii_mode）
+            restorePersistedSchemaOptions()
+            updateUI()
         }
 
         uiState.value = uiState.value.copy(
@@ -2004,14 +2000,44 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             if (sw.name == "ascii_mode") {
                 switchInputMethod()
             } else if (sw.name.isNotEmpty()) {
-                rimeEngine.setOption(sw.name, !rimeEngine.getOption(sw.name))
+                val newValue = !rimeEngine.getOption(sw.name)
+                rimeEngine.setOption(sw.name, newValue)
+                persistSchemaOption(sw.name, newValue)
                 updateUI()
             } else if (sw.options.isNotEmpty()) {
                 val nextIndex = (sw.currentIndex + 1) % sw.options.size
-                sw.options.forEachIndexed { i, opt -> rimeEngine.setOption(opt, i == nextIndex) }
+                sw.options.forEachIndexed { i, opt ->
+                    rimeEngine.setOption(opt, i == nextIndex)
+                    persistSchemaOption(opt, i == nextIndex)
+                }
                 updateUI()
             }
             refreshSchemaSwitches()
+        }
+    }
+
+    /** 将方案选项状态写入 librime user.yaml（var/option/<name>）。 */
+    private fun persistSchemaOption(name: String, value: Boolean) {
+        if (RimeEngine.isInitialized()) {
+            rimeEngine.setUserConfigBool("var/option/$name", value)
+        }
+    }
+
+    /** 从 librime user.yaml 恢复方案选项（中/西、简/繁等），在切换方案后调用。 */
+    private fun restorePersistedSchemaOptions() {
+        if (!RimeEngine.isInitialized()) return
+        val schemaId = rimeEngine.getCurrentSchema()
+        if (schemaId.isEmpty()) return
+        val defs = SchemaManager.getSchemaSwitches(this, schemaId)
+        for (def in defs) {
+            if (def.name.isNotEmpty()) {
+                rimeEngine.setOption(def.name, rimeEngine.getUserConfigBool("var/option/${def.name}"))
+            } else if (def.options.isNotEmpty()) {
+                val activeIndex = def.options.indexOfFirst { rimeEngine.getUserConfigBool("var/option/$it") }
+                if (activeIndex >= 0) {
+                    def.options.forEachIndexed { i, opt -> rimeEngine.setOption(opt, i == activeIndex) }
+                }
+            }
         }
     }
 
@@ -2864,6 +2890,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             }
         }
         rimeEngine.toggleAsciiMode()
+        persistSchemaOption("ascii_mode", rimeEngine.isAsciiMode())
         updateUI()
     }
     

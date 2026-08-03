@@ -2,6 +2,10 @@ package com.kingzcheung.xime.settings
 
 import android.content.Context
 import android.util.Log
+import com.charleskorn.kaml.YamlList
+import com.charleskorn.kaml.YamlMap
+import com.charleskorn.kaml.YamlScalar
+import com.kingzcheung.xime.rime.RimeEngine
 import java.io.File
 
 object PersonalDictManager {
@@ -18,8 +22,58 @@ use_preset_vocabulary: false
 """
 
     private fun packName(rimeDir: File, schemaId: String): String {
+        // 方案自带 translator.packs 声明（如 pinyin_simp 自带 [user_simp]）时，
+        // 个人词库沿用方案声明的名字，否则 librime 编译时找不到对应的 pack 源文件。
+        val own = readSchemaPacks(rimeDir, schemaId)
+        if (own.isNotEmpty()) return own.first()
         val dictName = schemaDictionaryName(rimeDir, schemaId)
         return "user_$dictName"
+    }
+
+    /** 从 schema 文件读取 translator.packs 中声明的 user_* 个人词库名，没有则返回空。 */
+    internal fun readSchemaPacks(rimeDir: java.io.File, schemaId: String): List<String> {
+        // 优先通过 librime 官方解析（schema + custom.yaml patch 合并后的最终配置）。
+        // 引擎未初始化（或单测环境无 native 库）时降级到 kaml/正则。
+        val viaRime = try {
+            if (RimeEngine.isInitialized()) RimeEngine.getInstance().getSchemaPacks(schemaId) else emptyList()
+        } catch (_: Throwable) {
+            emptyList()
+        }
+        val own = viaRime.filter { it.startsWith("user_") }
+        if (own.isNotEmpty()) return own
+        val schemaFile = java.io.File(rimeDir, "${schemaId}.schema.yaml")
+        if (!schemaFile.exists()) return emptyList()
+        val text = try { schemaFile.readText(Charsets.UTF_8).trimStart('\uFEFF') } catch (_: Exception) { return emptyList() }
+        // kaml 解析（schema.yaml 是 YAML，避免脆弱的正则）；
+        // 第三方方案的 .schema.yaml 可能含锚点/别名等非严格语法导致解析失败，此时回退正则。
+        val viaKaml = readSchemaPacksKaml(text)
+        if (viaKaml != null) return viaKaml
+        return readSchemaPacksRegex(text)
+    }
+
+    private fun readSchemaPacksKaml(text: String): List<String>? {
+        return try {
+            val root = SchemaManager.yaml.parseToYamlNode(text) as? YamlMap ?: return emptyList()
+            val packs = (root["translator"] as? YamlMap)?.get("packs") as? YamlList ?: return emptyList()
+            packs.items.mapNotNull { (it as? YamlScalar)?.content }
+                .map { it.trim().removeSurrounding("\"") }
+                .filter { it.startsWith("user_") }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun readSchemaPacksRegex(text: String): List<String> {
+        return try {
+            val block = Regex("""^translator:[\s\S]*?^  packs:\s*\n([\s\S]*?)(?=^\S|\Z)""", RegexOption.MULTILINE)
+                .find(text)?.groupValues?.get(1) ?: return emptyList()
+            Regex("""^\s*-\s*"?(\w+)"?""", RegexOption.MULTILINE).findAll(block)
+                .map { it.groupValues[1] }
+                .filter { it.startsWith("user_") }
+                .toList()
+        } catch (_: Exception) {
+            emptyList()
+        }
     }
 
     private fun packHeader(rimeDir: File, schemaId: String) = DEFAULT_HEADER.format(packName(rimeDir, schemaId))
@@ -42,6 +96,14 @@ use_preset_vocabulary: false
      * 若无声明则返回默认的 `custom_phrase`。
      */
     internal fun getCustomPhraseDictName(rimeDir: File, schemaId: String): String {
+        // 优先用 librime 官方解析（schema + custom.yaml patch 合并后的最终值）；
+        // 引擎未初始化（或单测环境无 native 库）时回退文本解析。
+        val viaRime = try {
+            if (RimeEngine.isInitialized()) RimeEngine.getInstance().getCustomPhraseDictName(schemaId) else null
+        } catch (_: Throwable) {
+            null
+        }
+        if (!viaRime.isNullOrBlank()) return viaRime
         val customFile = File(rimeDir, "${schemaId}.custom.yaml")
         if (!customFile.exists()) return CUSTOM_PHRASE_FILE.removeSuffix(".txt")
         val text = customFile.readText(Charsets.UTF_8)
@@ -125,9 +187,9 @@ use_preset_vocabulary: false
                 packFile.writeText(packHeader(rimeDir, schemaId), Charsets.UTF_8)
             }
         }
-        if (hasReverseLookupTranslator(schemaFile) && !hasTableTranslator(schemaFile)) {
+        if (hasReverseLookupTranslator(rimeDir, schemaId) && !hasTableTranslator(rimeDir, schemaId)) {
             // 纯反查方案（如反查拼音），无主翻译器，不需要个人词库
-        } else if (hasSpellerAlgebra(schemaFile)) {
+        } else if (hasSpellerAlgebra(rimeDir, schemaId)) {
             applyPackConfig(rimeDir, schemaId)
         } else {
             applyMergedDictConfig(rimeDir, schemaId)
@@ -149,13 +211,31 @@ use_preset_vocabulary: false
         }
     }
 
-    internal fun hasReverseLookupTranslator(schemaFile: java.io.File): Boolean {
-        val text = schemaFile.readText(Charsets.UTF_8)
+    internal fun hasReverseLookupTranslator(rimeDir: java.io.File, schemaId: String): Boolean {
+        val viaRime = try {
+            if (RimeEngine.isInitialized()) {
+                val translators = RimeEngine.getInstance().getSchemaTranslators(schemaId)
+                translators.contains("reverse_lookup_translator")
+            } else null
+        } catch (_: Throwable) {
+            null
+        }
+        if (viaRime != null) return viaRime
+        val text = java.io.File(rimeDir, "${schemaId}.schema.yaml").readText(Charsets.UTF_8)
         return text.contains("reverse_lookup_translator")
     }
 
-    internal fun hasTableTranslator(schemaFile: java.io.File): Boolean {
-        val text = schemaFile.readText(Charsets.UTF_8)
+    internal fun hasTableTranslator(rimeDir: java.io.File, schemaId: String): Boolean {
+        val viaRime = try {
+            if (RimeEngine.isInitialized()) {
+                val translators = RimeEngine.getInstance().getSchemaTranslators(schemaId)
+                translators.contains("table_translator")
+            } else null
+        } catch (_: Throwable) {
+            null
+        }
+        if (viaRime != null) return viaRime
+        val text = java.io.File(rimeDir, "${schemaId}.schema.yaml").readText(Charsets.UTF_8)
         return text.contains("table_translator")
     }
 
@@ -178,7 +258,17 @@ use_preset_vocabulary: false
 """)
     }
 
-    internal fun hasSpellerAlgebra(schemaFile: java.io.File): Boolean {
+    internal fun hasSpellerAlgebra(rimeDir: java.io.File, schemaId: String): Boolean {
+        val viaRime = try {
+            if (RimeEngine.isInitialized()) RimeEngine.getInstance().hasSpellerAlgebra(schemaId) else null
+        } catch (_: Throwable) {
+            null
+        }
+        if (viaRime != null) return viaRime
+        return hasSpellerAlgebraFromFile(java.io.File(rimeDir, "${schemaId}.schema.yaml"))
+    }
+
+    private fun hasSpellerAlgebraFromFile(schemaFile: java.io.File): Boolean {
         val text = schemaFile.readText(Charsets.UTF_8).replace("\r\n", "\n")
         val idx = text.indexOf("\n  algebra:\n")
         if (idx < 0) return false
@@ -207,6 +297,16 @@ use_preset_vocabulary: false
     internal fun applyPackConfig(rimeDir: java.io.File, schemaId: String) {
         val pkName = packName(rimeDir, schemaId)
         val customFile = java.io.File(rimeDir, "${schemaId}.custom.yaml")
+        // 方案自带 translator.packs 声明（如 pinyin_simp 自带 [user_simp]）时，
+        // 个人词库文件已按该声明命名（packName 优先采用它），无需再写 patch；
+        // 仅清理本代码旧版本写入的 translator/packs patch，避免覆盖方案自带声明。
+        if (readSchemaPacks(rimeDir, schemaId).isNotEmpty()) {
+            if (customFile.exists() && extractOwnPatchKey(customFile.readText(Charsets.UTF_8), "translator/packs") != null) {
+                val cleaned = removePatchKey(customFile.readText(Charsets.UTF_8), "translator/packs")
+                customFile.writeText(cleaned, Charsets.UTF_8)
+            }
+            return
+        }
         val entry = "  \"translator/packs\": [\"$pkName\"]\n"
         if (customFile.exists()) {
             val text = customFile.readText(Charsets.UTF_8)
@@ -226,6 +326,14 @@ use_preset_vocabulary: false
 
     /** 从 schema 文件中读取 translator.dictionary 名称，没有则用 schemaId 兜底。 */
     private fun schemaDictionaryName(rimeDir: File, schemaId: String): String {
+        // 优先用 librime 官方解析（含 custom.yaml patch 合并，且对多 translator 块方案更准确）；
+        // 引擎未初始化（或单测环境无 native 库）时回退正则。
+        val viaRime = try {
+            if (RimeEngine.isInitialized()) RimeEngine.getInstance().getSchemaDictionary(schemaId) else null
+        } catch (_: Throwable) {
+            null
+        }
+        if (!viaRime.isNullOrBlank()) return viaRime
         val schemaFile = File(rimeDir, "${schemaId}.schema.yaml")
         if (!schemaFile.exists()) return schemaId
         val regex = Regex("""translator:.*?dictionary:\s*(\S+)""", setOf(RegexOption.DOT_MATCHES_ALL))
@@ -238,17 +346,22 @@ use_preset_vocabulary: false
         val pkName = packName(rimeDir, schemaId)
         val mergedId = "${schemaId}_merged"
         val dictFile = java.io.File(rimeDir, "${mergedId}.dict.yaml")
-        // 验证源词典存在，否则 Rime 编译 xqzm_merged 时会失败
+        // 验证源词典存在，否则 Rime 编译 ${schemaId}_merged 时会失败
         val srcDictFile = java.io.File(rimeDir, "$dictName.dict.yaml")
         if (!srcDictFile.exists()) {
             if (dictFile.exists()) dictFile.delete()
             return
         }
-        // 源词典若是转发器（自身仅 import_tables，无内联词条），需展开其叶子表，
-        // 否则 librime 只解析 merged dict 一层的 import_tables、不递归，导致收集到 0 词条编译失败。
+        // 源词典可能同时含内联词条与 import_tables（如 wubi86.dict.yaml 有 8w+ 行内联词条，
+        // 又 import wubi86_user/wubi86_extra）。librime 不递归展开 import_tables，
+        // 所以合并表必须显式列出：主词典自身（有编码时）+ 其叶子表 + 个人词库。
+        // 若源词典本身是纯合并表/转发器（无内联词条即无编码），则只需展开其叶子表，
+        // 不能引用其自身——否则方案自带合并表时会产生循环引用。
+        val srcText = srcDictFile.readText(Charsets.UTF_8)
         val leafTables = readImportTables(srcDictFile)
-        val importTables = (if (leafTables.isNotEmpty()) leafTables else listOf(dictName)) + pkName
-        dictFile.writeText(buildMergedDictText(mergedId, importTables), Charsets.UTF_8)
+        val base = if (dictTextHasInlineEntries(srcText)) listOf(dictName) + leafTables else leafTables
+        val importTables = (base + pkName).distinct().filter { it != mergedId }
+        writeMergedDictFile(dictFile, mergedId, importTables)
         val customFile = java.io.File(rimeDir, "${schemaId}.custom.yaml")
         val entry = "  \"translator/dictionary\": $mergedId\n"
         if (customFile.exists()) {
@@ -307,11 +420,41 @@ $tables
 """
     }
 
+    /** 写合并表文件；文件已存在时保留其 front-matter，仅更新 import_tables 块。 */
+    private fun writeMergedDictFile(file: java.io.File, mergedId: String, importTables: List<String>) {
+        val tablesBlock = importTables.joinToString("\n") { "  - $it" }
+        if (!file.exists()) {
+            file.parentFile?.mkdirs()
+            file.writeText(buildMergedDictText(mergedId, importTables), Charsets.UTF_8)
+            return
+        }
+        val text = file.readText(Charsets.UTF_8).replace("\r\n", "\n")
+        val updated = if (text.contains("import_tables:")) {
+            text.replaceFirst(Regex("""(?m)^import_tables:.*(?:\n[ \t]+-.*)*"""), "import_tables:\n$tablesBlock")
+        } else {
+            val at = text.indexOf("\n...\n").let { if (it >= 0) it + 1 else text.length }
+            text.substring(0, at) + "\nimport_tables:\n$tablesBlock\n" + text.substring(at)
+        }
+        file.writeText(updated, Charsets.UTF_8)
+    }
+
+    /** dict 文本是否含内联词条（即「有编码」）：存在 tab 分隔的词条行。 */
+    internal fun dictTextHasInlineEntries(text: String): Boolean {
+        for (raw in text.lineSequence()) {
+            val line = raw.trim()
+            if (line.isEmpty() || line.startsWith('#') || line.startsWith("- ")) continue
+            if (line.contains('\t')) return true
+        }
+        return false
+    }
+
     /** 提取 patch 块中本代码之前写入的 key 的值（user_* 或旧版 user_simp_*），没有则返回 null。 */
     private fun extractOwnPatchKey(text: String, key: String): String? {
         val regex = Regex("""^[ \t]+"?$key"?\s*:\s*(.+)$""", RegexOption.MULTILINE)
         return regex.find(text)?.let { m ->
-            val value = m.groupValues[1].trim().removeSurrounding("\"").removeSurrounding("[").removeSurrounding("]").trim()
+            val value = m.groupValues[1].trim().let {
+                if (it.startsWith("[")) it.removePrefix("[").removeSuffix("]") else it
+            }.trim().removeSurrounding("\"")
             value.takeIf { it.startsWith("user_simp_") || it.startsWith("user_") }
         }
     }
@@ -326,9 +469,13 @@ $tables
 
     /**
      * 解析方案实际引用的个人词库文件名。
-     * 优先级：custom.yaml 中的 translator/packs → translator/dictionary（一路追溯到 user_*） → 默认 packName。
+     * 优先级：方案自带 translator.packs → custom.yaml 中的 translator/packs → translator/dictionary（一路追溯到 user_*） → 默认 packName。
      */
     fun resolvePersonalDictFile(rimeDir: File, schemaId: String): File {
+        // 方案自带 translator.packs 声明（开源方案仓库常见，如 pinyin_simp 的 [user_simp]）：
+        // 个人词库以方案声明为准，不适用我们自造的 user_${dictionary} 命名。
+        val own = readSchemaPacks(rimeDir, schemaId)
+        if (own.isNotEmpty()) return File(rimeDir, "${own.first()}.dict.yaml")
         val customFile = File(rimeDir, "${schemaId}.custom.yaml")
         if (customFile.exists()) {
             val text = customFile.readText(Charsets.UTF_8)
