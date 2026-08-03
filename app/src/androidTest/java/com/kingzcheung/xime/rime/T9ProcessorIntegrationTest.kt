@@ -573,4 +573,23 @@ class T9ProcessorIntegrationTest {
             android.util.Log.w(TAG, "test52 skipped: no 'de' candidate available")
         }
     }
+
+    // ═══════════════════════════════════════════════════════════
+    // 回归：仅左选第一音节后右选多音节候选，多余音节的数字必须一并消费。
+    // 场景："给的吧"：仅左选 gei，右选两字候选"给的"(gei de) 应消费 gei+de，
+    // 尾部 22(吧) 保留；否则"的"会被重复输入为"给的的吧"。
+    // 用 "哥哥"(ge ge) 等价复现：434322 左选 ge，右选 ge ge，尾部 22 保留。
+    // ═══════════════════════════════════════════════════════════
+    @Test fun test53_multisyllableSelectionConsumesExtraSyllable() {
+        digits("434322")  // ge ge + 22
+        leftSelect("ge", 2)
+        val idx = candidates().indexOfFirst { it.second == "ge ge" }
+        if (idx >= 0) {
+            val isFull = engine.t9SelectCandidate(idx)
+            assertFalse("选两音节候选(ge ge)后尾部 '22' 仍在，必须是 PARTIAL commit", isFull)
+            assertEquals("多余音节与尾部 '22' 必须正确处理", "22", engine.t9GetRemainingDigits())
+        } else {
+            android.util.Log.w(TAG, "test53 skipped: no 'ge ge' candidate available")
+        }
+    }
 }
