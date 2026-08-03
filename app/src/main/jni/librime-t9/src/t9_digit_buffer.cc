@@ -39,6 +39,24 @@ bool T9DigitBuffer::UndoLastSelection() {
     return true;
 }
 
+void T9DigitBuffer::PushCommit(const std::string& consumed) {
+    commits_.push_back(consumed);
+}
+
+bool T9DigitBuffer::UndoLastCommit() {
+    if (commits_.empty()) return false;
+    const std::string prefix = commits_.back();
+    commits_.pop_back();
+    raw_digits_ = prefix + raw_digits_;
+    return true;
+}
+
+void T9DigitBuffer::ResetForPartial(const std::string& remaining) {
+    raw_digits_ = remaining;
+    selections_.clear();
+    separator_pending_ = false;
+}
+
 bool T9DigitBuffer::IsFullyConsumed() const {
     return ConsumedCount() >= static_cast<int>(raw_digits_.size());
 }
@@ -82,5 +100,6 @@ std::string T9DigitBuffer::GetRemainingDigits() const {
 void T9DigitBuffer::Clear() {
     raw_digits_.clear();
     selections_.clear();
+    commits_.clear();
     separator_pending_ = false;
 }

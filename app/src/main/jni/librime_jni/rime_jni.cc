@@ -1642,4 +1642,15 @@ Java_com_kingzcheung_xime_rime_RimeEngine_nativeT9IsDisplayOriginalPreedit(
     return proc->IsDisplayOriginalPreedit() ? JNI_TRUE : JNI_FALSE;
 }
 
+// 查询并清除"最近一次退格撤销了 partial commit"标记。
+JNIEXPORT jboolean JNICALL
+Java_com_kingzcheung_xime_rime_RimeEngine_nativeT9WasCommitUndone(
+    JNIEnv* env,
+    jobject thiz
+) {
+    rime::T9Processor* proc = rime::T9ProcessorRequire();
+    if (!proc) return JNI_FALSE;
+    return proc->WasCommitUndone() ? JNI_TRUE : JNI_FALSE;
+}
+
 } // extern "C"

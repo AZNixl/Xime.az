@@ -57,6 +57,7 @@ ProcessResult T9Processor::ProcessKeyEvent(const KeyEvent& key_event) {
         T9LOG("State sync: clearing stale digit buffer ('%s')", digit_buffer_.ToInput().c_str());
         digit_buffer_.Clear();
     }
+    commit_undone_ = false;
 
     // Digit keys: push to input through normal RIME pipeline
     if (ch >= '2' && ch <= '9') {
@@ -87,11 +88,31 @@ ProcessResult T9Processor::ProcessKeyEvent(const KeyEvent& key_event) {
         return kNoop;
     }
 
-    // BackSpace: remove last digit
+    // BackSpace: remove last digit; if a partial commit is pending, first undo it
+    // (restore its consumed digits back to pre-edit), then delete the last pinyin.
     if (ch == 0xff08 || ch == 0x08) {
-        if (digit_buffer_.IsEmpty()) {
-            T9LOG("BackSpace: digit buffer empty, passing through");
+        commit_undone_ = false;
+        if (digit_buffer_.IsEmpty() && !digit_buffer_.HasCommits()) {
+            T9LOG("BackSpace: buffer empty, passing through");
             return kNoop;
+        }
+        if (digit_buffer_.HasCommits()) {
+            // 先回退半提交：把最近一次 partial commit 消费的数字段恢复到预编辑。
+            digit_buffer_.UndoLastCommit();
+            // 再删除输入序列末尾的拼音。
+            if (!digit_buffer_.IsEmpty()) {
+                digit_buffer_.PopLastDigit();
+            }
+            std::string new_input = digit_buffer_.ToInput();
+            if (new_input.empty()) {
+                ctx->Clear();
+                T9LOG("BackSpace: undo commit, buffer empty, cleared");
+            } else {
+                ctx->set_input(new_input);
+                T9LOG("BackSpace: undo commit -> set_input('%s')", new_input.c_str());
+            }
+            commit_undone_ = true;
+            return kAccepted;
         }
         if (digit_buffer_.PopLastDigit()) {
             string before = ctx->input();
@@ -277,17 +298,18 @@ bool T9Processor::SelectCandidate(int candidate_index) {
         string remaining = digit_buffer_.raw_digits().substr(consumed);
         T9LOG("SelectCandidate: releasing excess, covered=%zu consumed=%d remaining='%s'",
               covered, consumed, remaining.c_str());
-        digit_buffer_.Clear();
-        for (char d : remaining) {
-            digit_buffer_.AppendDigit(d);
-        }
+        digit_buffer_.PushCommit(digit_buffer_.raw_digits().substr(0, consumed));
+        digit_buffer_.ResetForPartial(remaining);
         return false;
     }
 
-    // Jianpin alignment: selection initials match comment syllable initials
-    // Full commit only when comment syllables cover ALL remaining digits
+    // Jianpin alignment: selection initials match comment syllable initials.
+    // Full commit only when the comment's full pinyin covers ALL input digits
+    // (raw_digits), so trailing unconsumed digits (the next syllable's pinyin)
+    // are NOT swallowed. Comparing against remaining_digits here is wrong: that
+    // counts the digits AFTER the selections, which the comment does not cover.
     if (comment_syllables.size() >= digit_buffer_.selections().size() &&
-        comment_digit_count >= remaining_digits) {
+        comment_digit_count >= static_cast<int>(digit_buffer_.raw_digits().size())) {
         bool jianpin_aligned = true;
         for (size_t i = 0; i < digit_buffer_.selections().size(); ++i) {
             char sel_initial = digit_buffer_.selections()[i].pinyin[0];
@@ -318,6 +340,8 @@ bool T9Processor::SelectCandidate(int candidate_index) {
             remaining = unconsumed.substr(consumed_by_comment);
             T9LOG("SelectCandidate: partial commit, consuming=%d resetting buffer to remaining='%s'",
                   consumed_by_comment, remaining.c_str());
+            digit_buffer_.PushCommit(unconsumed.substr(0, consumed_by_comment));
+            digit_buffer_.ResetForPartial(remaining);
         } else {
             // The candidate comment covers all digits → full commit.
             T9LOG("SelectCandidate: partial commit consumed all digits, full commit");
@@ -350,10 +374,8 @@ bool T9Processor::SelectCandidate(int candidate_index) {
         remaining = digit_buffer_.raw_digits().substr(consumed);
         T9LOG("SelectCandidate: partial commit (selections), covered=%zu consumed=%d remaining='%s'",
               covered, consumed, remaining.c_str());
-    }
-    digit_buffer_.Clear();
-    for (char d : remaining) {
-        digit_buffer_.AppendDigit(d);
+        digit_buffer_.PushCommit(digit_buffer_.raw_digits().substr(0, consumed));
+        digit_buffer_.ResetForPartial(remaining);
     }
     return false;
 }

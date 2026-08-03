@@ -114,7 +114,9 @@ fun T9KeyboardLayout(
     fun handleDelete() {
         when (val result = controller.onDeleted()) {
             T9InputController.DeleteResult.UNDO_COMMIT -> {
-                controller.clearRimeAndResend()
+                // 半提交回退：清除累积的半提交文本（及输入框中已上屏的文字），
+                // 控制器已在 onDeleted() 中重新同步 RIME 预编辑（恢复为拼音并删除末尾拼音）。
+                callbacks.onT9RightCommitUndone?.invoke()
             }
 
             T9InputController.DeleteResult.NOT_CONSUMED -> {

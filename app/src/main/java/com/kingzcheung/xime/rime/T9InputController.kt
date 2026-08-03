@@ -158,6 +158,13 @@ class T9InputController(
     fun onDeleted(): DeleteResult {
         val hadSelection = leftPanelState == LeftPanelState.SELECTION && selectedOption != null
         val result = rimeEngine.processKey(0xff08, 0)
+        // 退格可能先回退了半提交（上屏文字回到预编辑）再删除末尾拼音，
+        // 需优先返回 UNDO_COMMIT，让键盘层清除累积的半提交文本并刷新候选。
+        if (rimeEngine.t9WasCommitUndone()) {
+            onCompositionRefresh?.invoke()
+            updateFromRime()
+            return DeleteResult.UNDO_COMMIT
+        }
         onCompositionRefresh?.invoke()
         updateFromRime()
         // 退格撤销了左侧选择：从选择历史移除并清除选中高亮
