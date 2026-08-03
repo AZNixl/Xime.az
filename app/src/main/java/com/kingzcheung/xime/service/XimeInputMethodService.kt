@@ -101,6 +101,7 @@ import com.kingzcheung.xime.settings.KeysConfigHelper
 import com.kingzcheung.xime.ui.theme.XimeTheme
 import com.kingzcheung.xime.util.FileLogger
 import com.kingzcheung.xime.util.PreeditMergeHelper
+import com.kingzcheung.xime.BuildConfig
 import com.kingzcheung.xime.keyboard.ActionExecutor
 import com.kingzcheung.xime.keyboard.HANDWRITING_SCHEMA_ID
 import com.kingzcheung.xime.keyboard.OverlayRoute
@@ -138,6 +139,13 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         private const val HARDWARE_CANDIDATE_BAR_HEIGHT = 72
         private const val SAFE_TEXT_LIMIT = 262144
 
+    }
+
+    /** release 构建不输出调试日志，减少 logcat 写入开销。 */
+    private fun debugLog(msg: String) {
+        if (BuildConfig.DEBUG) {
+            Log.d(TAG, msg)
+        }
     }
 
     private val lifecycleRegistry = LifecycleRegistry(this)
@@ -408,10 +416,35 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                 }
                 "stt_enabled" -> {
                     uiState.value = uiState.value.copy(isSttEnabled = SettingsPreferences.isSttEnabled(this@XimeInputMethodService))
+                    onSttModelSettingChanged()
                 }
+                SettingsPreferences.KEY_STT_USE_LOCAL -> onSttModelSettingChanged()
+                SettingsPreferences.KEY_SMART_PREDICTION_ENABLED -> onPredictionSettingChanged()
             }
         }
         prefs.registerOnSharedPreferenceChangeListener(sharedPrefsListener)
+    }
+
+    /** 设置驱动：STT 本地功能开启时加载 ASR 模型到 :inference 进程，关闭时卸载。 */
+    private fun onSttModelSettingChanged() {
+        val enabled = SettingsPreferences.isSttEnabled(this) && SettingsPreferences.isSttUseLocal(this)
+        if (enabled) {
+            voiceRecognitionHandler.ensureAsrLoaded()
+        } else {
+            voiceRecognitionHandler.releaseAsr()
+        }
+    }
+
+    /** 设置驱动：智能联想开启时加载联想模型，关闭时卸载。 */
+    private fun onPredictionSettingChanged() {
+        val enabled = SettingsPreferences.isSmartPredictionEnabled(this)
+        if (enabled) {
+            serviceScope.launch(Dispatchers.IO) {
+                com.kingzcheung.xime.association.AssociationManager.initialize(this@XimeInputMethodService)
+            }
+        } else {
+            com.kingzcheung.xime.association.AssociationManager.release()
+        }
     }
     
     private fun saveDarkModePreference(mode: Int) {
@@ -484,6 +517,8 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     
     private fun initSpeechRecognition() {
         voiceRecognitionHandler.initialize()
+        // 启动时若 STT 本地功能已开启，按设置驱动预加载 ASR 模型到 :inference 进程
+        onSttModelSettingChanged()
     }
     
     private fun initAssociationEngine() {
@@ -1408,18 +1443,23 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         loadDarkModePreference()
 
         predictionManager.clearCommittedText()
-        Log.d(TAG, "onStartInput: cleared lastCommittedText")
+        debugLog("onStartInput: cleared lastCommittedText")
+
+        // 跨进程同步文件日志开关（开关在主进程设置页切换）
+        FileLogger.setVerboseLoggingEnabled(
+            SettingsPreferences.isVerboseLoggingEnabled(this)
+        )
         
         if (RimeEngine.isInitialized()) {
             val savedSchema = SettingsPreferences.getCurrentSchema(this)
             val currentSchema = rimeEngine.getCurrentSchema()
             val availableSchemas = rimeEngine.getAvailableSchemas()
-            Log.d(TAG, "onStartInput: saved=$savedSchema, current=$currentSchema, available=${availableSchemas.joinToString()}")
+            debugLog("onStartInput: saved=$savedSchema, current=$currentSchema, available=${availableSchemas.joinToString()}")
             
             val actualSchema: String
             when {
                 savedSchema == HANDWRITING_SCHEMA_ID -> {
-                    Log.d(TAG, "onStartInput: saved schema is handwriting, checking model files")
+                    debugLog("onStartInput: saved schema is handwriting, checking model files")
                     val hwDir = com.kingzcheung.xime.model.ModelStorage.getModelDir(this, "ochwpro")
                     com.kingzcheung.xime.model.ModelStorage.migrateLegacyForModel(this, "ochwpro")
                     val modelFile = java.io.File(hwDir, "ochwpro.onnx")
@@ -1439,33 +1479,33 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                         SettingsPreferences.setCurrentSchema(this, fallbackSchema)
                         actualSchema = fallbackSchema
                     } else {
-                        Log.d(TAG, "onStartInput: saved schema is handwriting, keeping handwriting mode")
+                        debugLog("onStartInput: saved schema is handwriting, keeping handwriting mode")
                         keyboardViewModel.switchMain(com.kingzcheung.xime.keyboard.MainType.HANDWRITING)
                         actualSchema = savedSchema
                     }
                 }
                 savedSchema in availableSchemas -> {
                     if (savedSchema != currentSchema) {
-                        Log.d(TAG, "onStartInput: Switching to saved schema: $savedSchema")
+                        debugLog("onStartInput: Switching to saved schema: $savedSchema")
                         applyPageSizeSetting(savedSchema)
                         rimeEngine.switchSchema(savedSchema)
                     } else {
                         // 即使 schema 相同也重新 switch 一下，确保 processor 完全初始化
-                        Log.d(TAG, "onStartInput: Schema already matches, re-switching to init processors")
+                        debugLog("onStartInput: Schema already matches, re-switching to init processors")
                         applyPageSizeSetting(savedSchema)
                         rimeEngine.switchSchema(savedSchema)
                     }
                     actualSchema = savedSchema
                 }
                 SchemaManager.isSchemaCompiled(this@XimeInputMethodService, savedSchema) -> {
-                    Log.d(TAG, "onStartInput: Schema compiled but not in get_schema_list, switching anyway")
+                    debugLog("onStartInput: Schema compiled but not in get_schema_list, switching anyway")
                     applyPageSizeSetting(savedSchema)
                     rimeEngine.switchSchema(savedSchema)
                     actualSchema = savedSchema
                 }
                 availableSchemas.isNotEmpty() -> {
                     val fallbackSchema = availableSchemas.first()
-                    Log.d(TAG, "onStartInput: savedSchema '$savedSchema' not available, falling back to '$fallbackSchema'")
+                    debugLog("onStartInput: savedSchema '$savedSchema' not available, falling back to '$fallbackSchema'")
                     applyPageSizeSetting(fallbackSchema)
                     rimeEngine.switchSchema(fallbackSchema)
                     SettingsPreferences.setCurrentSchema(this, fallbackSchema)
@@ -3091,9 +3131,18 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             previousSchemaId = rimeEngine.getCurrentSchema()
             SettingsPreferences.setCurrentSchema(this, schemaId)
             keyboardViewModel.switchMain(com.kingzcheung.xime.keyboard.MainType.HANDWRITING)
+            // 手写方案：模型文件已确认存在，后台加载引擎
+            Thread {
+                try {
+                    com.kingzcheung.xime.handwriting.HandwritingEngine.initialize(this)
+                } catch (_: Exception) {
+                }
+            }.start()
             updateSchemaName()
             return
         }
+        // 切离手写方案时释放手写引擎
+        com.kingzcheung.xime.handwriting.HandwritingEngine.release()
         keyboardViewModel.switchMain(com.kingzcheung.xime.keyboard.MainType.FULL)
         try {
             SettingsPreferences.setCurrentSchema(this, schemaId)

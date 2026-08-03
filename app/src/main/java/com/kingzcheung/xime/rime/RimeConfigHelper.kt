@@ -136,6 +136,17 @@ object RimeConfigHelper {
             }
         }
 
+        // 所有词典文件（内置词典与个人词库）纳入 hash：
+        // 否则词典新增/变更（如 pinyin_simp.dict.yaml）不会改变 hash，
+        // build 目录不重建、不重新部署，导致 table.bin 缺失（运行时反复报错）。
+        rimeDir.listFiles()
+            ?.filter { it.isFile && it.name.endsWith(".dict.yaml") }
+            ?.sortedBy { it.name }
+            ?.forEach { dictFile ->
+                digest.update(dictFile.name.toByteArray())
+                fileUpdateDigest(digest, dictFile)
+            }
+
         val defaultYaml = File(rimeDir, "default.yaml")
         if (defaultYaml.exists()) {
             digest.update("default".toByteArray())

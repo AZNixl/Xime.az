@@ -30,6 +30,14 @@ class SpeechRecognitionManager(private val context: Context) {
     private var recordingThread: RecordingThread? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    // 会话序号：用于区分连续语音会话，防止旧会话的回收线程误释放新会话的后端
+    private var sessionId = 0
+    // 后台加载 ASR 模型的进行中标记与取消标记
+    @Volatile
+    private var loadingInProgress = false
+    @Volatile
+    private var loadingCancelled = false
+
     private var resultCallback: ((String) -> Unit)? = null
     private var partialResultCallback: ((String) -> Unit)? = null
     private var stateCallback: ((RecognitionState) -> Unit)? = null
@@ -62,43 +70,54 @@ class SpeechRecognitionManager(private val context: Context) {
         stateCallback?.invoke(RecognitionState.PROCESSING)
 
         if (backend == null) {
-            val useLocal = SettingsPreferences.isSttUseLocal(context)
-            FileLogger.i(TAG, "Creating ASR backend: ${if (useLocal) "Sherpa (local)" else "FunAsr (online)"}")
-            
-            val newBackend = createBackend()
-            if (newBackend == null) {
-                FileLogger.e(TAG, "Failed to create ASR backend")
-                errorCallback?.invoke("无法创建 ASR 引擎")
-                stateCallback?.invoke(RecognitionState.ERROR)
-                return
-            }
-            backend = newBackend
-
-            newBackend.setCallbacks(
-                onResult = { text -> handleResult(text) },
-                onPartialResult = { text -> handlePartialResult(text) },
-                onStateChange = { state -> stateCallback?.invoke(state) },
-                onError = { error -> handleError(error) }
-            )
-
-            if (!newBackend.initialize()) {
-                val msg = when {
-                    newBackend is LocalZipformerAsrBackend -> "本地模型未下载"
-                    newBackend is FunAsrAsrBackend -> "初始化在线引擎失败，请检查 API Key"
-                    else -> "引擎初始化失败"
+            // 按需加载：后台线程加载 ASR 模型，完成后在主线程启动录音，避免阻塞键盘 UI
+            FileLogger.i(TAG, "ASR backend not loaded, loading on demand")
+            synchronized(preloadLock) {
+                if (loadingInProgress) {
+                    // 已有加载进行中（如设置开启触发的预加载），等待其完成
+                    loadingCancelled = false
+                    return
                 }
-                FileLogger.e(TAG, "Backend initialization failed: $msg")
-                errorCallback?.invoke(msg)
-                stateCallback?.invoke(RecognitionState.ERROR)
-                backend = null
-                return
+                loadingInProgress = true
+                loadingCancelled = false
             }
-            
-            FileLogger.i(TAG, "ASR backend initialized successfully")
-            ModelRuntime.keepWarm("asr")
+            Thread {
+                try {
+                    val ok = preload()
+                    if (!ok || synchronized(preloadLock) { backend } == null) {
+                        mainHandler.post {
+                            errorCallback?.invoke("无法初始化本地语音引擎")
+                            stateCallback?.invoke(RecognitionState.ERROR)
+                        }
+                        return@Thread
+                    }
+                    if (loadingCancelled) {
+                        mainHandler.post {
+                            stateCallback?.invoke(RecognitionState.IDLE)
+                        }
+                        return@Thread
+                    }
+                    mainHandler.post {
+                        if (recordingThread == null && !loadingCancelled) {
+                            startRecording()
+                        }
+                    }
+                } finally {
+                    synchronized(preloadLock) {
+                        loadingInProgress = false
+                        preloadLock.notifyAll()
+                    }
+                }
+            }.start()
+            return
         }
 
-        val currentBackend = backend!!
+        startRecording()
+    }
+
+    private fun startRecording() {
+        val currentBackend = synchronized(preloadLock) { backend } ?: return
+        synchronized(preloadLock) { sessionId++ }
 
         // 预启动的 AudioRecord 已运行 ~250ms，直接交给录音线程
         var preStarted: AudioRecord? = null
@@ -114,8 +133,19 @@ class SpeechRecognitionManager(private val context: Context) {
 
     fun stopRecognition() {
         Log.d(TAG, "Stopping recognition")
-        val thread = recordingThread ?: return
+        val thread = recordingThread
+        if (thread == null) {
+            // 模型仍在后台加载中：标记取消，加载完成后不再启动录音
+            if (loadingInProgress) {
+                loadingCancelled = true
+                mainHandler.post {
+                    stateCallback?.invoke(RecognitionState.IDLE)
+                }
+            }
+            return
+        }
         recordingThread = null
+        val session = synchronized(preloadLock) { sessionId }
         thread.interrupt()
         Thread {
             try {
@@ -123,23 +153,43 @@ class SpeechRecognitionManager(private val context: Context) {
             } catch (_: InterruptedException) {
                 Thread.currentThread().interrupt()
             }
+            val releaseBackend = !SettingsPreferences.isSttKeepModelInRam(context)
+            // release() 含跨进程 IPC，放到后台线程执行，避免阻塞主线程；
+            // 仅当会话序号未变化时释放并置空，避免误释放新会话正在使用的后端
+            if (releaseBackend) {
+                val b = synchronized(preloadLock) {
+                    if (sessionId == session) {
+                        val tmp = backend
+                        backend = null
+                        tmp
+                    } else null
+                }
+                if (b != null) {
+                    b.release()
+                    ModelRuntime.releaseWarm("asr")
+                }
+            }
             mainHandler.post {
                 stateCallback?.invoke(RecognitionState.IDLE)
-
-                if (!SettingsPreferences.isSttKeepModelInRam(context)) {
-                    Log.d(TAG, "Release mode: freeing backend resources")
-                    ModelRuntime.releaseWarm("asr")
-                    backend?.release()
-                    backend = null
-                }
             }
         }.start()
     }
 
     fun cancelRecognition() {
         Log.d(TAG, "Canceling recognition")
-        val thread = recordingThread ?: return
+        val thread = recordingThread
+        if (thread == null) {
+            // 模型仍在后台加载中：标记取消，加载完成后不再启动录音
+            if (loadingInProgress) {
+                loadingCancelled = true
+                mainHandler.post {
+                    stateCallback?.invoke(RecognitionState.IDLE)
+                }
+            }
+            return
+        }
         recordingThread = null
+        val session = synchronized(preloadLock) { sessionId }
         thread.interrupt()
         Thread {
             try {
@@ -147,14 +197,24 @@ class SpeechRecognitionManager(private val context: Context) {
             } catch (_: InterruptedException) {
                 Thread.currentThread().interrupt()
             }
+            val releaseBackend = !SettingsPreferences.isSttKeepModelInRam(context)
+            // release() 含跨进程 IPC，放到后台线程执行，避免阻塞主线程；
+            // 仅当会话序号未变化时释放并置空，避免误释放新会话正在使用的后端
+            if (releaseBackend) {
+                val b = synchronized(preloadLock) {
+                    if (sessionId == session) {
+                        val tmp = backend
+                        backend = null
+                        tmp
+                    } else null
+                }
+                if (b != null) {
+                    b.release()
+                    ModelRuntime.releaseWarm("asr")
+                }
+            }
             mainHandler.post {
                 stateCallback?.invoke(RecognitionState.IDLE)
-
-                if (!SettingsPreferences.isSttKeepModelInRam(context)) {
-                    ModelRuntime.releaseWarm("asr")
-                    backend?.release()
-                    backend = null
-                }
             }
         }.start()
     }
@@ -200,8 +260,18 @@ class SpeechRecognitionManager(private val context: Context) {
         Log.d(TAG, "Releasing speech recognition")
         cancelPreStart()
         cancelRecognition()
-        backend?.release()
-        backend = null
+        val b = synchronized(preloadLock) {
+            val tmp = backend
+            backend = null
+            tmp
+        }
+        if (b != null) {
+            // release() 含跨进程 IPC，放到后台线程执行，避免阻塞主线程（onDestroy 等场景）
+            Thread {
+                b.release()
+                ModelRuntime.releaseWarm("asr")
+            }.start()
+        }
     }
 
     private var isPreloading = false
@@ -211,9 +281,9 @@ class SpeechRecognitionManager(private val context: Context) {
         return backend?.getState() ?: RecognitionState.IDLE
     }
 
-    fun preload() {
+    fun preload(): Boolean {
         synchronized(preloadLock) {
-            if (backend != null) return
+            if (backend != null) return true
             isPreloading = true
         }
         
@@ -223,7 +293,7 @@ class SpeechRecognitionManager(private val context: Context) {
                 isPreloading = false
                 preloadLock.notifyAll()
             }
-            return
+            return false
         }
 
         newBackend.setCallbacks(
@@ -238,7 +308,7 @@ class SpeechRecognitionManager(private val context: Context) {
                 isPreloading = false
                 preloadLock.notifyAll()
             }
-            return
+            return false
         }
 
         synchronized(preloadLock) {
@@ -250,11 +320,13 @@ class SpeechRecognitionManager(private val context: Context) {
         ModelRuntime.keepWarm("asr")
         newBackend.start()
         newBackend.stop()
+        return true
     }
 
     private fun createBackend(): AsrBackend {
         return if (SettingsPreferences.isSttUseLocal(context)) {
-            LocalZipformerAsrBackend(context)
+            // 本地 zipformer2 ASR 运行在 :inference 独立进程，不占用输入法进程内存
+            InferenceAsrBackend(context)
         } else {
             FunAsrAsrBackend(context)
         }

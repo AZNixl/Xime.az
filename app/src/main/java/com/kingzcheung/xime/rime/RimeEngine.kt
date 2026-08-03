@@ -454,6 +454,13 @@ class RimeEngine {
         nativeSetUserConfigBool(key, value)
     }
 
+    /** 运行时切换 JNI verbose 日志（仅 Debug 构建生效，Release 为空操作）。 */
+    fun setVerboseLogging(enabled: Boolean) {
+        synchronized(rimeLock) {
+            nativeSetVerboseLogging(enabled)
+        }
+    }
+
     fun destroy() {
         if (isInitialized) {
             synchronized(rimeLock) {
@@ -505,6 +512,7 @@ class RimeEngine {
 
     // Native 方法声明
     private external fun nativeInitialize(userDataDir: String, sharedDataDir: String)
+    private external fun nativeSetVerboseLogging(enabled: Boolean)
     private external fun nativeCreateSession(): Boolean
     private external fun nativeHasSession(): Boolean
     private external fun nativeIsMaintaining(): Boolean

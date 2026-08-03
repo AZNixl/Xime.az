@@ -66,15 +66,8 @@ class VoiceRecognitionHandler(
 
         onStateChanged(getState().copy(voicePluginName = providerName))
         FileLogger.i(TAG, "STT provider: ${if (useLocal) "local" else "funasr"}")
-
-        if (useLocal && SettingsPreferences.isSttEnabled(context)) {
-            Thread {
-                try {
-                    speechRecognitionManager.preload()
-                    initPunctuationModel()
-                } catch (_: Exception) { }
-            }.start()
-        }
+        // ASR 模型按需加载：服务启动时不预加载，首次语音时由 startRecognition() 加载，
+        // 避免本地 zipformer2 模型（约 150MB+）常驻输入法进程内存。
     }
     
     private fun initPunctuationModel() {
@@ -145,6 +138,15 @@ class VoiceRecognitionHandler(
         }
         onStateChanged(getState().copy(voicePluginName = providerName))
 
+        // 标点模型按需加载，避免启动时预加载占内存
+        if (!punctuationInitialized) {
+            Thread {
+                try {
+                    initPunctuationModel()
+                } catch (_: Exception) { }
+            }.start()
+        }
+
         speechRecognitionManager.startRecognition()
     }
 
@@ -168,6 +170,36 @@ class VoiceRecognitionHandler(
     }
 
     fun isInitialized(): Boolean = ::speechRecognitionManager.isInitialized
+
+    /**
+     * 设置驱动：STT 本地功能开启时预加载 ASR 模型到 :inference 进程。
+     * 在后台线程执行，避免阻塞主线程。
+     */
+    fun ensureAsrLoaded() {
+        if (!::speechRecognitionManager.isInitialized) return
+        val useLocal = SettingsPreferences.isSttUseLocal(context)
+        if (!useLocal) return
+        Thread {
+            try {
+                speechRecognitionManager.preload()
+            } catch (_: Exception) {
+            }
+        }.start()
+    }
+
+    /**
+     * 设置驱动：STT 本地功能关闭时卸载 ASR 模型，释放 :inference 进程内存。
+     * 在后台线程执行，避免阻塞主线程。
+     */
+    fun releaseAsr() {
+        if (!::speechRecognitionManager.isInitialized) return
+        Thread {
+            try {
+                speechRecognitionManager.release()
+            } catch (_: Exception) {
+            }
+        }.start()
+    }
 
     private var lastPartialText = ""
     private var lastAmplitudeUpdate = 0L

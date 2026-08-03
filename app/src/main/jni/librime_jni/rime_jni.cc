@@ -16,9 +16,26 @@
 #include <ctime>     // for time
 
 #define LOG_TAG "XimeRime"
-#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
-#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
+
+// 打字/输入高频路径的 LOGI/LOGD 写 logcat 会产生大量格式化+IPC 开销，
+// 是前台耗电偏高的主因。
+// 两级控制：
+//   1) 编译期：RIME_JNI_VERBOSE_LOGGING 由 CMake 按构建类型定义
+//      （Debug=1, Release=0）。Release 下宏展开为空语句，零开销。
+//   2) 运行时：Debug 构建保留运行时开关 g_rime_jni_verbose_logging，
+//      Kotlin 可通过 nativeSetVerboseLogging 手动切换，开发时不用重编。
+#ifndef RIME_JNI_VERBOSE_LOGGING
+#define RIME_JNI_VERBOSE_LOGGING 0
+#endif
+#if RIME_JNI_VERBOSE_LOGGING == 1
+static volatile bool g_rime_jni_verbose_logging = true;
+#define LOGI(...) do { if (g_rime_jni_verbose_logging) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__); } while (0)
+#define LOGD(...) do { if (g_rime_jni_verbose_logging) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__); } while (0)
+#else
+#define LOGI(...) ((void)0)
+#define LOGD(...) ((void)0)
+#endif
 
 extern void rime_require_module_lua();
 extern void rime_require_module_octagram();
@@ -846,6 +863,22 @@ static void ensureJniCache(JNIEnv* env) {
             "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[Lcom/kingzcheung/xime/rime/RimeCandidate;ZZZ)V");
         env->DeleteLocalRef(cls);
     }
+}
+
+// 运行时切换 verbose 日志（仅 Debug 构建生效，Release 下为空操作）
+JNIEXPORT void JNICALL
+Java_com_kingzcheung_xime_rime_RimeEngine_nativeSetVerboseLogging(
+    JNIEnv* env,
+    jobject thiz,
+    jboolean enabled
+) {
+#if RIME_JNI_VERBOSE_LOGGING == 1
+    g_rime_jni_verbose_logging = enabled;
+#else
+    (void)env;
+    (void)thiz;
+    (void)enabled;
+#endif
 }
 
 // 初始化 Rime 引擎

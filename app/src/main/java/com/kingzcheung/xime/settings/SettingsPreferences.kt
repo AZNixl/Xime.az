@@ -11,6 +11,7 @@ object SettingsPreferences {
     private const val KEY_DEPLOYMENT_HASH = "deployment_hash"
     private const val KEY_SETUP_COMPLETED = "setup_completed"
     private const val KEY_DARK_MODE = "dark_mode"
+    private const val KEY_VERBOSE_LOGGING = "verbose_logging"
     
     private const val KEY_SOUND_ENABLED = "sound_enabled"
     private const val KEY_SOUND_VOLUME = "sound_volume"
@@ -18,15 +19,15 @@ object SettingsPreferences {
     private const val KEY_VIBRATION_INTENSITY = "vibration_intensity"
     private const val KEY_KEYBOARD_THEME = "keyboard_theme"
     
-    private const val KEY_SMART_PREDICTION_ENABLED = "smart_prediction_enabled"
+    const val KEY_SMART_PREDICTION_ENABLED = "smart_prediction_enabled"
     private const val KEY_PREDICTION_MODEL_REPO = "prediction_model_repo"
     private const val KEY_PREDICTION_SELECTED_MODEL = "prediction_selected_model"
     
-    private const val KEY_STT_ENABLED = "stt_enabled"
+    const val KEY_STT_ENABLED = "stt_enabled"
     private const val KEY_STT_PROVIDER = "stt_provider"
     private const val KEY_FUNASR_API_KEY = "funasr_api_key"
-    private const val KEY_STT_USE_LOCAL = "stt_use_local"
-    private const val KEY_STT_KEEP_MODEL_IN_RAM = "stt_keep_model_in_ram"
+    const val KEY_STT_USE_LOCAL = "stt_use_local"
+    const val KEY_STT_KEEP_MODEL_IN_RAM = "stt_keep_model_in_ram"
     
     private const val KEY_PUNCTUATION_MODEL_ENABLED = "punctuation_model_enabled"
     
@@ -171,6 +172,15 @@ object SettingsPreferences {
 
     fun setDeploymentHash(context: Context, hash: String) {
         getPrefs(context).edit().putString(KEY_DEPLOYMENT_HASH, hash).apply()
+    }
+
+    /** 调试 verbose 日志总开关（仅 Debug 构建生效，Release 恒关闭）。 */
+    fun isVerboseLoggingEnabled(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_VERBOSE_LOGGING, true)
+    }
+
+    fun setVerboseLoggingEnabled(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_VERBOSE_LOGGING, enabled).apply()
     }
 
     fun isSetupCompleted(context: Context): Boolean {
