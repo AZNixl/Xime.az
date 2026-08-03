@@ -371,6 +371,19 @@ bool T9Processor::SelectCandidate(int candidate_index) {
         int consumed = 0;
         for (size_t i = 0; i < covered; ++i)
             consumed += digit_buffer_.selections()[i].digit_length;
+        // 候选词注释的音节数可能超过已左选（covered）的音节数，如仅左选 "gei" 后
+        // 右选两字候选 "给的"(gei de)。候选词文本已包含多余的 "de"，其数字也必须从
+        // 剩余数字前缀消费，否则 "的" 会在后续输入中重复（"给的的吧"）。
+        // 仅在 covered>0（注释与首个左选对齐）时才做该扩展消费，避免误消费。
+        if (covered > 0 && covered < comment_syllables.size()) {
+            std::vector<std::string> extra(comment_syllables.begin() + covered,
+                                           comment_syllables.end());
+            std::string seg = digit_buffer_.raw_digits().substr(consumed);
+            int extra_consumed = ComputeConsumedDigitsFromSyllables(seg, extra);
+            if (extra_consumed > 0) {
+                consumed += extra_consumed;
+            }
+        }
         remaining = digit_buffer_.raw_digits().substr(consumed);
         T9LOG("SelectCandidate: partial commit (selections), covered=%zu consumed=%d remaining='%s'",
               covered, consumed, remaining.c_str());
