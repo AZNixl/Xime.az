@@ -11,6 +11,7 @@ object SettingsPreferences {
     private const val KEY_DEPLOYMENT_HASH = "deployment_hash"
     private const val KEY_SETUP_COMPLETED = "setup_completed"
     private const val KEY_DARK_MODE = "dark_mode"
+    private const val KEY_VERBOSE_LOGGING = "verbose_logging"
     
     private const val KEY_SOUND_ENABLED = "sound_enabled"
     private const val KEY_SOUND_VOLUME = "sound_volume"
@@ -18,15 +19,15 @@ object SettingsPreferences {
     private const val KEY_VIBRATION_INTENSITY = "vibration_intensity"
     private const val KEY_KEYBOARD_THEME = "keyboard_theme"
     
-    private const val KEY_SMART_PREDICTION_ENABLED = "smart_prediction_enabled"
+    const val KEY_SMART_PREDICTION_ENABLED = "smart_prediction_enabled"
     private const val KEY_PREDICTION_MODEL_REPO = "prediction_model_repo"
     private const val KEY_PREDICTION_SELECTED_MODEL = "prediction_selected_model"
     
-    private const val KEY_STT_ENABLED = "stt_enabled"
+    const val KEY_STT_ENABLED = "stt_enabled"
     private const val KEY_STT_PROVIDER = "stt_provider"
     private const val KEY_FUNASR_API_KEY = "funasr_api_key"
-    private const val KEY_STT_USE_LOCAL = "stt_use_local"
-    private const val KEY_STT_KEEP_MODEL_IN_RAM = "stt_keep_model_in_ram"
+    const val KEY_STT_USE_LOCAL = "stt_use_local"
+    const val KEY_STT_KEEP_MODEL_IN_RAM = "stt_keep_model_in_ram"
     
     private const val KEY_PUNCTUATION_MODEL_ENABLED = "punctuation_model_enabled"
     
@@ -121,11 +122,40 @@ object SettingsPreferences {
     }
     
     fun getCurrentSchema(context: Context): String {
-        return getPrefs(context).getString(KEY_CURRENT_SCHEMA, "wubi86") ?: "wubi86"
+        // 方案状态以 librime user.yaml 的 var/previously_selected_schema 为准
+        val fromRime = try {
+            if (com.kingzcheung.xime.rime.RimeEngine.isInitialized()) {
+                com.kingzcheung.xime.rime.RimeEngine.getInstance()
+                    .getUserConfigString("var/previously_selected_schema")
+            } else null
+        } catch (_: Throwable) {
+            null
+        }
+        if (!fromRime.isNullOrBlank()) return fromRime
+        // 旧版本 SharedPreferences 数据仅作一次性迁移，迁移后不再写入
+        val legacy = getPrefs(context).getString(KEY_CURRENT_SCHEMA, null)
+        if (!legacy.isNullOrBlank()) {
+            try {
+                if (com.kingzcheung.xime.rime.RimeEngine.isInitialized()) {
+                    com.kingzcheung.xime.rime.RimeEngine.getInstance()
+                        .setUserConfigString("var/previously_selected_schema", legacy)
+                }
+            } catch (_: Throwable) {
+            }
+            return legacy
+        }
+        return "wubi86"
     }
-    
+
     fun setCurrentSchema(context: Context, schemaId: String) {
-        getPrefs(context).edit().putString(KEY_CURRENT_SCHEMA, schemaId).apply()
+        // 方案状态只写 librime user.yaml，不写 SharedPreferences
+        try {
+            if (com.kingzcheung.xime.rime.RimeEngine.isInitialized()) {
+                com.kingzcheung.xime.rime.RimeEngine.getInstance()
+                    .setUserConfigString("var/previously_selected_schema", schemaId)
+            }
+        } catch (_: Throwable) {
+        }
     }
     
     fun isDeploymentDone(context: Context): Boolean {
@@ -142,6 +172,15 @@ object SettingsPreferences {
 
     fun setDeploymentHash(context: Context, hash: String) {
         getPrefs(context).edit().putString(KEY_DEPLOYMENT_HASH, hash).apply()
+    }
+
+    /** 调试 verbose 日志总开关（仅 Debug 构建生效，Release 恒关闭）。 */
+    fun isVerboseLoggingEnabled(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_VERBOSE_LOGGING, true)
+    }
+
+    fun setVerboseLoggingEnabled(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_VERBOSE_LOGGING, enabled).apply()
     }
 
     fun isSetupCompleted(context: Context): Boolean {

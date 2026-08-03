@@ -13,7 +13,7 @@ interface IInferenceService {
 
     /** ASR 流式语音识别 */
     boolean startAsr(String modelId, String modelDir, IInferenceCallback callback);
-    oneway void pushAsrAudio(String modelId, in byte[] audioData);
+    void pushAsrAudio(String modelId, in byte[] audioData);
     String stopAsr(String modelId);
     void cancelAsr(String modelId);
 

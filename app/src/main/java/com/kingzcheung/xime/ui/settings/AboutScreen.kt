@@ -38,18 +38,25 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kingzcheung.xime.BuildConfig
+import com.kingzcheung.xime.settings.SettingsPreferences
+import com.kingzcheung.xime.util.FileLogger
 
 data class LicenseItem(
     val name: String,
@@ -129,6 +136,10 @@ fun AboutContent(
     onNavigateToLogViewer: () -> Unit = {}
 ) {
     val uriHandler = LocalUriHandler.current
+    val context = LocalContext.current
+    var verboseLoggingEnabled by remember {
+        mutableStateOf(SettingsPreferences.isVerboseLoggingEnabled(context))
+    }
     
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
@@ -354,6 +365,28 @@ fun AboutContent(
                             title = "日志查看器",
                             onClick = onNavigateToLogViewer
                         )
+                        if (BuildConfig.DEBUG) {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(start = 72.dp),
+                                thickness = 0.5.dp,
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                            )
+                            SettingsItem(
+                                icon = Icons.TwoTone.BugReport,
+                                title = "调试日志",
+                                onClick = {},
+                                trailing = {
+                                    Switch(
+                                        checked = verboseLoggingEnabled,
+                                        onCheckedChange = { enabled ->
+                                            verboseLoggingEnabled = enabled
+                                            SettingsPreferences.setVerboseLoggingEnabled(context, enabled)
+                                            FileLogger.setVerboseLoggingEnabled(enabled)
+                                        }
+                                    )
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -389,7 +422,8 @@ fun AboutContent(
 private fun SettingsItem(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     title: String,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    trailing: (@Composable () -> Unit)? = null
 ) {
     Row(
         modifier = Modifier
@@ -409,11 +443,15 @@ private fun SettingsItem(
             fontSize = 16.sp,
             modifier = Modifier.weight(1f)
         )
-        Icon(
-            imageVector = Icons.Default.ChevronRight,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        if (trailing != null) {
+            trailing()
+        } else {
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 

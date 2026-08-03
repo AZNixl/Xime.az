@@ -274,13 +274,14 @@ Ort::Value Zipformer2Model::RunJoiner(Ort::Value encoder_out,
   // Order input values to match the model's declared input name order.
   const bool enc_first =
       joiner_input_names_[0].find("encoder") != std::string::npos;
-  std::array<Ort::Value, 2> in_vals;
+  std::vector<Ort::Value> in_vals;
+  in_vals.reserve(2);
   if (enc_first) {
-    in_vals[0] = std::move(encoder_out);
-    in_vals[1] = std::move(decoder_out);
+    in_vals.push_back(std::move(encoder_out));
+    in_vals.push_back(std::move(decoder_out));
   } else {
-    in_vals[0] = std::move(decoder_out);
-    in_vals[1] = std::move(encoder_out);
+    in_vals.push_back(std::move(decoder_out));
+    in_vals.push_back(std::move(encoder_out));
   }
   auto out = joiner_sess_->Run(Ort::RunOptions{nullptr}, in_names.data(),
                                in_vals.data(), in_vals.size(), out_names.data(),
