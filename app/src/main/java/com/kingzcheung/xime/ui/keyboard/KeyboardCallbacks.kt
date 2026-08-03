@@ -37,7 +37,11 @@ data class KeyboardCallbacks(
     val onFloatingKeyboardDrag: ((dx: Float, dy: Float) -> Unit)? = null,
     val onFloatingKeyboardDragEnd: (() -> Unit)? = null,
     val onT9ReplaceFullPinyin: ((String) -> Unit)? = null,
-    val onT9RightCommitUndone: ((Int) -> Unit)? = null,
+    /**
+     * 回退最近一次 T9 半提交：清除累积的半提交文本（及输入框中已上屏的文字）。
+     * 服务层根据 t9PartialCommitTexts 计算需回删的文本长度。
+     */
+    val onT9RightCommitUndone: (() -> Unit)? = null,
     /**
      * 右侧候选词即将被 RIME select 前同步通知 T9 控制器。
      * 返回 true 表示控制器判断输入序列已被该候选词完整消费。

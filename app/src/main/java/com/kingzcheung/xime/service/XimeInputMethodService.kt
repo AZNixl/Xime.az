@@ -1159,14 +1159,15 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                             }
                                         }
                                     },
-                                    onT9RightCommitUndone = { count ->
+                                    onT9RightCommitUndone = {
                                         // 半提交文本在 composing 区域时无法用 deleteSurroundingText 删除，
                                         // 需通过 endComposingInputBox 清空，交由后续 applyComposition 重建。
+                                        val len = t9PartialCommitTexts.lastOrNull()?.length ?: 0
                                         if (SettingsPreferences.getInputTextLocation(this@XimeInputMethodService)
                                             == SettingsPreferences.INPUT_TEXT_INPUT_BOX) {
                                             endComposingInputBox()
-                                        } else {
-                                            currentInputConnection?.deleteSurroundingText(count, 0)
+                                        } else if (len > 0) {
+                                            currentInputConnection?.deleteSurroundingText(len, 0)
                                         }
                                         t9PartialCommitTexts.removeLastOrNull()
                                     },

@@ -20,6 +20,9 @@ public:
     std::string GetRemainingDigits() const;
     void GetSyllableCandidates(std::vector<std::string>& out) const;
 
+    // 返回并清除"最近一次退格撤销了 partial commit"标记，供前端感知半提交回退。
+    bool WasCommitUndone() { bool v = commit_undone_; commit_undone_ = false; return v; }
+
     // 第三方方案兼容：t9/isDisplayOriginalPreedit 控制 preedit 是否显示原始数字。
     // true  → 不处理 preedit，显示 rime 原始数字串（默认）。
     // false → 前端根据候选 comment 将 preedit 重建为拼音（由调用方处理）。
@@ -34,6 +37,7 @@ private:
 
     T9DigitBuffer digit_buffer_;
     bool display_original_preedit_ = true;
+    bool commit_undone_ = false;
 };
 
 T9Processor* T9ProcessorRequire();

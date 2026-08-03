@@ -558,6 +558,7 @@ class RimeEngine {
     private external fun nativeT9GetSyllableCandidates(): Array<String>?
     private external fun nativeT9GetRemainingDigits(): String?
     private external fun nativeT9IsDisplayOriginalPreedit(): Boolean
+    private external fun nativeT9WasCommitUndone(): Boolean
 
     /**
      * 直接选择拼音：传入拼音和对应数字长度，t9_processor 替换 buffer。
@@ -589,6 +590,18 @@ class RimeEngine {
         if (!isInitialized) return false
         synchronized(rimeLock) {
             return nativeT9IsDisplayOriginalPreedit()
+        }
+    }
+
+    /**
+     * 查询并清除"最近一次退格撤销了 partial commit"标记。
+     * 返回 true 表示刚发生的退格先回退了半提交（上屏文字回到预编辑），
+     * 前端需据此清除累积的半提交文本，而不是当作普通删除未上屏拼音。
+     */
+    fun t9WasCommitUndone(): Boolean {
+        if (!isInitialized) return false
+        synchronized(rimeLock) {
+            return nativeT9WasCommitUndone()
         }
     }
 

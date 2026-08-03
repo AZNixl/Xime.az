@@ -487,4 +487,90 @@ class T9ProcessorIntegrationTest {
         digits("5485426"); leftSelect("jiu", 3)
         android.util.Log.d(TAG, "scenario46: jiu jian partial, input='${input()}'")
     }
+
+    // ═══════════════════════════════════════════════════════════
+    // 半提交（partial commit）退格回退回归测试
+    // 需求：九键拼音半提交上屏文字后按退格，应先回退半提交（预编辑恢复为拼音），
+    // 再删除输入序列末尾的拼音，由 t9WasCommitUndone() 标记半提交已回退。
+    // ═══════════════════════════════════════════════════════════
+
+    @Test fun test48_undoPartialCommitRestoresPreedit() {
+        // 54482 → 左选 ji → 右选"即"（partial commit，消费 54）→ 退格
+        // 期望：t9WasCommitUndone()==true，预编辑恢复为 54482 再删末尾=5448
+        digits("54482")
+        leftSelect("ji", 2)
+        if (rightSelectByText("即")) {
+            pressKey(0xff08)
+            assertTrue("backspace after partial commit should report commit undone",
+                engine.t9WasCommitUndone())
+            assertEquals("preedit should be full digits minus last pinyin",
+                "5448", input())
+        } else {
+            android.util.Log.w(TAG, "test48 skipped: candidate '即' not available")
+        }
+    }
+
+    @Test fun test49_secondBackspaceIsPlainDelete() {
+        // 半提交回退后，再一次退格只是删除拼音，不应再上报 commit undone
+        digits("54482")
+        leftSelect("ji", 2)
+        if (rightSelectByText("即")) {
+            pressKey(0xff08)
+            assertTrue(engine.t9WasCommitUndone())
+            pressKey(0xff08)
+            assertFalse("second backspace should be a plain pinyin delete",
+                engine.t9WasCommitUndone())
+        } else {
+            android.util.Log.w(TAG, "test49 skipped: candidate '即' not available")
+        }
+    }
+
+    @Test fun test50_plainBackspaceDoesNotUndoCommit() {
+        // 无半提交时，普通退格不应上报 commit undone
+        digits("54482")
+        pressKey(0xff08)
+        assertFalse("plain backspace should not report commit undone",
+            engine.t9WasCommitUndone())
+    }
+
+    @Test fun test51_chainedPartialUndo() {
+        // 连续两次半提交后，退格应逐次回退；最后一次退格为普通删除
+        digits("5143")
+        leftSelect("k", 1); leftSelect("g", 1)
+        if (rightSelectByText("客观")) {
+            press("3"); leftSelect("d", 1)
+            if (rightSelectByText("多")) {
+                pressKey(0xff08)
+                assertTrue("backspace 1 should undo '多'", engine.t9WasCommitUndone())
+                pressKey(0xff08)
+                assertTrue("backspace 2 should undo '客观'", engine.t9WasCommitUndone())
+                pressKey(0xff08)
+                assertFalse("backspace 3 should be plain delete", engine.t9WasCommitUndone())
+            } else {
+                android.util.Log.w(TAG, "test51 skipped: candidate '多' not available")
+            }
+        } else {
+            android.util.Log.w(TAG, "test51 skipped: candidate '客观' not available")
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // 回归：左选音节后右选候选，不得吞掉尾部未消费的拼音。
+    // 场景："给的吧"=4343322，选"给"半提交后剩 3322；左选 de(33) 后右选
+    // 一个 de 候选，尾部 22(吧) 必须保留为半提交，而非被 jianpin full commit 吞掉。
+    // ═══════════════════════════════════════════════════════════
+    @Test fun test52_jianpinSelectKeepsTrailingDigits() {
+        // 3322 = de ba。左选 de 消费 33，尾部 22 应为"吧"的拼音。
+        digits("3322")
+        leftSelect("de", 2)
+        val idx = candidates().indexOfFirst { it.second == "de" }
+        if (idx >= 0) {
+            val isFull = engine.t9SelectCandidate(idx)
+            assertFalse("选 de 候选时尾部 '22' 仍在，必须是 PARTIAL commit", isFull)
+            // 尾部 22 必须被保留在 digit buffer 中（partial commit 后 GetRemainingDigits）
+            assertEquals("尾部 '22'（吧）不能被吞掉", "22", engine.t9GetRemainingDigits())
+        } else {
+            android.util.Log.w(TAG, "test52 skipped: no 'de' candidate available")
+        }
+    }
 }
