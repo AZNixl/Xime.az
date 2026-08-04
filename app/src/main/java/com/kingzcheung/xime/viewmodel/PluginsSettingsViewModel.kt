@@ -6,6 +6,8 @@ import android.provider.OpenableColumns
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.kingzcheung.xime.plugin.ExtensionManager
+import com.kingzcheung.xime.plugin.core.api.PluginIcon
 import com.kingzcheung.xime.plugin.core.model.PluginInfo
 import com.kingzcheung.xime.plugin.core.runtime.PluginManager
 import com.kingzcheung.xime.settings.ImportManager
@@ -20,6 +22,7 @@ import kotlinx.coroutines.withContext
 
 data class PluginsUiState(
     val extensions: List<PluginInfo> = emptyList(),
+    val icons: Map<String, PluginIcon> = emptyMap(),
     val isLoading: Boolean = true,
     val errorMsg: String? = null
 )
@@ -92,9 +95,25 @@ class PluginsSettingsViewModel(application: Application) : AndroidViewModel(appl
                 }
                 
                 val extensions = PluginManager.getAllInstallPlugins()
-                
+
+                // 解析每个已加载插件的图标（文字或已提取的资源文件）
+                val instances = PluginManager.getAllPluginInstances()
+                val icons = mutableMapOf<String, PluginIcon>()
+                extensions.forEach { info ->
+                    val instance = instances[info.id]
+                    if (instance != null) {
+                        try {
+                            ExtensionManager.extractPluginIcon(context, info.id, instance, info)
+                                ?.let { icons[info.id] = it }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed to resolve icon for ${info.name}", e)
+                        }
+                    }
+                }
+
                 _uiState.update { it.copy(
                     extensions = extensions,
+                    icons = icons,
                     isLoading = false
                 )}
             } catch (e: Exception) {

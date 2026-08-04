@@ -25,8 +25,6 @@ interface EmojiPlugin : IPluginEntryClass {
     
     suspend fun getCategoryLayoutConfig(category: String): CategoryLayoutConfig? = null
     
-    fun getIcon(): PluginIcon? = null
-    
     override fun hasSettings(): Boolean = false
     
     override fun openSettings(context: Context) {}

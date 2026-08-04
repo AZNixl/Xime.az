@@ -1,12 +1,14 @@
 package com.kingzcheung.xime.ui.settings
 
 import android.content.Intent
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -73,7 +75,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -81,6 +86,7 @@ import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.kingzcheung.xime.plugin.core.api.PluginIcon
 import com.kingzcheung.xime.plugin.core.model.Activation
 import com.kingzcheung.xime.plugin.core.model.PluginCategory
 import com.kingzcheung.xime.plugin.core.model.PluginSource
@@ -275,6 +281,7 @@ fun PluginsSettingsContent(
                             ExtensionItem(
                                 extension = extension,
                                 pluginInstance = PluginManager.getPluginInstance(extension.id),
+                                icon = uiState.icons[extension.id],
                                 isRunning = isRunning,
                                 viewModel = viewModel,
                                 onClick = { onNavigateToPluginSettings(extension.id) },
@@ -306,6 +313,7 @@ fun PluginsSettingsContent(
 private fun ExtensionItem(
     extension: PluginInfo,
     pluginInstance: Any?,
+    icon: PluginIcon?,
     isRunning: Boolean,
     viewModel: PluginsSettingsViewModel,
     onClick: () -> Unit = {},
@@ -354,11 +362,17 @@ private fun ExtensionItem(
                 .clickable { isExpanded = !isExpanded }
                 .padding(12.dp)
         ) {
-            // 第一行：标题 + 状态指示器
+            // 第一行：图标 + 标题 + 状态指示器
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                PluginIconView(
+                    icon = icon,
+                    category = extension.category,
+                    modifier = Modifier.padding(end = 10.dp)
+                )
+
                 Text(
                     text = extension.name,
                     style = MaterialTheme.typography.bodyLarge,
@@ -570,6 +584,73 @@ private fun ExtensionItem(
                     Text("取消")
                 }
             }
+        )
+    }
+}
+
+// 渲染插件图标：优先用插件提供的本地图标（文字或已提取到本地的资源文件），否则用分类默认图标
+@Composable
+private fun PluginIconView(
+    icon: PluginIcon?,
+    category: PluginCategory,
+    modifier: Modifier = Modifier
+) {
+    val iconText = icon?.text
+    if (!iconText.isNullOrBlank()) {
+        Box(
+            modifier = modifier
+                .size(36.dp)
+                .background(
+                    MaterialTheme.colorScheme.surfaceVariant,
+                    shape = RoundedCornerShape(10.dp)
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = iconText,
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 1
+            )
+        }
+        return
+    }
+
+    val assetPath = icon?.assetName
+    if (assetPath != null) {
+        val bitmap = remember(assetPath) {
+            runCatching { BitmapFactory.decodeFile(assetPath) }.getOrNull()
+        }
+        if (bitmap != null) {
+            val imageBitmap = remember(assetPath) { bitmap.asImageBitmap() }
+            Image(
+                bitmap = imageBitmap,
+                contentDescription = null,
+                modifier = modifier
+                    .size(36.dp)
+                    .background(
+                        MaterialTheme.colorScheme.surfaceVariant,
+                        shape = RoundedCornerShape(10.dp)
+                    ),
+                contentScale = ContentScale.Crop
+            )
+            return
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .size(36.dp)
+            .background(
+                MaterialTheme.colorScheme.surfaceVariant,
+                shape = RoundedCornerShape(10.dp)
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = getCategoryIcon(category),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(20.dp)
         )
     }
 }

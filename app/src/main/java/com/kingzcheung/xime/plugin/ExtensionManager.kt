@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.kingzcheung.xime.plugin.core.api.AsrPlugin
 import com.kingzcheung.xime.plugin.core.api.EmojiPlugin
+import com.kingzcheung.xime.plugin.core.api.IPluginEntryClass
 import com.kingzcheung.xime.plugin.core.api.PluginIcon
 import com.kingzcheung.xime.plugin.core.model.PluginCategory
 import com.kingzcheung.xime.plugin.core.model.PluginInfo
@@ -49,7 +50,7 @@ object ExtensionManager {
         }
     }
     
-    private fun extractPluginIcon(context: Context, pluginId: String, plugin: EmojiPlugin, pluginInfo: PluginInfo?): PluginIcon? {
+    fun extractPluginIcon(context: Context, pluginId: String, plugin: IPluginEntryClass, pluginInfo: PluginInfo?): PluginIcon? {
         val pluginIcon = try {
             plugin.getIcon()
         } catch (e: Exception) {

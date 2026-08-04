@@ -7,6 +7,7 @@ import com.kingzcheung.xime.plugin.core.api.AsrInputMode
 import com.kingzcheung.xime.plugin.core.api.AsrPlugin
 import com.kingzcheung.xime.plugin.core.api.AsrPluginBackend
 import com.kingzcheung.xime.plugin.core.api.AsrPluginCapabilities
+import com.kingzcheung.xime.plugin.core.api.PluginIcon
 import com.kingzcheung.xime.plugin.core.config.PluginFieldType
 import com.kingzcheung.xime.plugin.core.config.PluginSettingField
 import com.kingzcheung.xime.plugin.core.model.PluginContext
@@ -24,6 +25,8 @@ class FunAsrPlugin : AsrPlugin {
     override val providerId: String = "funasr"
 
     override fun getDisplayName(): String = "阿里百炼 FunAsr"
+
+    override fun getIcon(): PluginIcon? = PluginIcon(assetName = "icon.png")
 
     override fun getCapabilities(): AsrPluginCapabilities = AsrPluginCapabilities(
         inputMode = AsrInputMode.STREAMING,
