@@ -712,7 +712,7 @@ private fun T9KeyboardContent(
                     fontSize = t9DigitFontSize,
                 )
                 T9DigitKey(
-                    digit = "9", letters = "WXYZ", longPressItems = listOf("P", "Q", "R", "S"),
+                    digit = "9", letters = "WXYZ", longPressItems = listOf("W", "X", "Y", "Z"),
                     onClick = { controller.onDigitPressed("9") },
                     onLongPressSelect = { letter -> controller.clearAll(); onKeyPress(letter) },
                     onSwipeStateChange = { state, bounds ->
