@@ -59,6 +59,7 @@ class XmlManager(private val context: Application) {
                         writer.write("    <nativeLibPath>${escapeXml(plugin.nativeLibPath)}</nativeLibPath>\n")
                     }
                     writer.write("    <iconResId>${plugin.iconResId}</iconResId>\n")
+                    writer.write("    <trustLevel>${plugin.trustLevel.name}</trustLevel>\n")
                     if (plugin.minHostVersion != null) {
                         writer.write("    <minHostVersion>${escapeXml(plugin.minHostVersion)}</minHostVersion>\n")
                     }
@@ -120,6 +121,9 @@ class XmlManager(private val context: Application) {
             val iconResId = extractTag(pluginContent, "iconResId")?.toIntOrNull() ?: 0
             val minHostVersion = extractTag(pluginContent, "minHostVersion")?.takeIf { it.isNotBlank() }
             val maxHostVersion = extractTag(pluginContent, "maxHostVersion")?.takeIf { it.isNotBlank() }
+            val trustLevel = extractTag(pluginContent, "trustLevel")
+                ?.let { runCatching { com.kingzcheung.xime.plugin.core.model.TrustLevel.valueOf(it) }.getOrNull() }
+                ?: com.kingzcheung.xime.plugin.core.model.TrustLevel.UNKNOWN
             
             val providers = parseProviders(pluginContent)
 
@@ -140,7 +144,8 @@ class XmlManager(private val context: Application) {
                     providers = providers,
                     source = source,
                     minHostVersion = minHostVersion,
-                    maxHostVersion = maxHostVersion
+                    maxHostVersion = maxHostVersion,
+                    trustLevel = trustLevel
                 )
             }
         }

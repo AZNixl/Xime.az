@@ -114,7 +114,10 @@ class InstallerManager(
                 providers = pluginConfig.providers,
                 source = source,
                 minHostVersion = pluginConfig.minHostVersion,
-                maxHostVersion = pluginConfig.maxHostVersion
+                maxHostVersion = pluginConfig.maxHostVersion,
+                trustLevel = com.kingzcheung.xime.plugin.core.util.PluginSignatureUtil.classify(
+                    context, targetApkFile.absolutePath
+                )
             )
 
             if (existingPlugin != null) {

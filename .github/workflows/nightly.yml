@@ -1,4 +1,4 @@
-name: Nightly Build
+﻿name: Nightly Build
 
 on:
   schedule:
@@ -93,18 +93,18 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build
 
-      - name: Cache native ASR deps
+      - name: Cache native deps
         uses: actions/cache@v6
         with:
           path: |
             app/src/main/jni/onnxruntime
             app/src/main/jniLibs/**/libonnxruntime.so
-          key: native-asr-${{ runner.os }}-${{ hashFiles('app/build-logic/tasks-native.gradle.kts') }}
+          key: native-${{ runner.os }}-${{ hashFiles('app/build-logic/tasks-native.gradle.kts') }}
           restore-keys: |
-            native-asr-${{ runner.os }}-
+            native-${{ runner.os }}-
 
-      - name: Download native ASR deps (ONNX Runtime + kaldi-native-fbank)
-        run: ./gradlew downloadOnnx downloadKnf --no-daemon
+      - name: Download native deps (ONNX Runtime)
+        run: ./gradlew downloadOnnx --no-daemon
 
       - name: Cache CMake build
         uses: actions/cache@v6
@@ -120,7 +120,7 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build Nightly APKs (Unsigned)
+      - name: Build Nightly APKs and Plugin XIPKs (Unsigned)
         run: |
           DATE=$(date +'%Y%m%d')
           COMMIT=$(git rev-parse --short HEAD)
@@ -143,6 +143,36 @@ jobs:
         env:
           BUILD_TOOLS_VERSION: "34.0.0"
 
+      - name: Stage plugin xipk as apk for signing
+        run: |
+          mkdir -p build/plugin-staging
+          for dir in plugins/*/build/outputs/apk/release; do
+            for f in "$dir"/*.xipk; do
+              [ -e "$f" ] || continue
+              cp "$f" "build/plugin-staging/$(basename "$f" .xipk).apk"
+            done
+          done
+
+      - name: Sign Plugin XIPKs
+        uses: r0adkll/sign-android-release@v1
+        id: sign_plugins
+        with:
+          releaseDirectory: build/plugin-staging
+          signingKeyBase64: ${{ secrets.SIGNING_KEY }}
+          alias: ${{ secrets.ALIAS }}
+          keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
+          keyPassword: ${{ secrets.KEY_PASSWORD }}
+        env:
+          BUILD_TOOLS_VERSION: "34.0.0"
+
+      - name: Rename signed plugin apk back to xipk
+        run: |
+          mkdir -p build/plugin-release
+          for f in build/plugin-staging/*-signed.apk; do
+            [ -e "$f" ] || continue
+            mv "$f" "build/plugin-release/$(basename "$f" -signed.apk).xipk"
+          done
+
       - name: Get build info
         id: info
         run: |
@@ -155,12 +185,12 @@ jobs:
         run: |
           gh release delete nightly --yes --cleanup-tag 2>/dev/null || true
 
-      - name: Create nightly release and upload APKs
+      - name: Create nightly release and upload artifacts
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           APKS=$(find app/build/outputs/apk/release -name "*-signed.apk" -type f | sort | tr '\n' ' ')
-          PLUGIN_APKS=$(find plugins -path "*/build/outputs/apk/release/*-signed.apk" -type f 2>/dev/null | sort | tr '\n' ' ')
+          PLUGIN_XIPKS=$(find build/plugin-release -name "*.xipk" -type f | sort | tr '\n' ' ')
 
           if [ -z "$APKS" ]; then
             echo "::error::No main APKs found!"
@@ -171,10 +201,10 @@ jobs:
             --title "Nightly Build (${{ steps.info.outputs.DATE }})" \
             --notes "## Nightly Build
 
-            - 日期: ${{ steps.info.outputs.DATE }}
-            - Commit: \`${{ steps.info.outputs.COMMIT }}\`
-            - 构建时间: $(date -u +'%Y-%m-%d %H:%M:%S UTC')
+- 日期: ${{ steps.info.outputs.DATE }}
+- Commit: \`${{ steps.info.outputs.COMMIT }}\`
+- 构建时间: $(date -u +'%Y-%m-%d %H:%M:%S UTC')
 
-            ⚠️ 自动每日构建，非稳定版本。" \
+:warning: 自动每日构建，非稳定版本。" \
             --prerelease \
-            $APKS $PLUGIN_APKS
+            $APKS $PLUGIN_XIPKS

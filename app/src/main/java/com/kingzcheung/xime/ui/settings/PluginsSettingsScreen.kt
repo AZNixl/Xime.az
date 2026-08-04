@@ -91,6 +91,7 @@ import com.kingzcheung.xime.plugin.core.model.Activation
 import com.kingzcheung.xime.plugin.core.model.PluginCategory
 import com.kingzcheung.xime.plugin.core.model.PluginSource
 import com.kingzcheung.xime.plugin.core.model.PluginInfo
+import com.kingzcheung.xime.plugin.core.model.TrustLevel
 import com.kingzcheung.xime.plugin.core.runtime.PluginManager
 import com.kingzcheung.xime.plugin.core.security.PluginErrorLog
 import com.kingzcheung.xime.settings.SettingsPreferences
@@ -325,6 +326,8 @@ private fun ExtensionItem(
     var showErrorDialog by remember { mutableStateOf(false) }
     var isExpanded by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var showTrustConfirm by remember { mutableStateOf(false) }
+    var trustConfirmAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     
     val errors = PluginErrorLog.getErrors(extension.id)
     val hasErrors = errors.isNotEmpty()
@@ -472,6 +475,16 @@ private fun ExtensionItem(
                         color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
                     )
                 }
+
+                // 信任徽标
+                val trustBadge = trustBadge(extension.trustLevel)
+                Text("•", style = MaterialTheme.typography.bodySmall,
+                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
+                Text(
+                    text = trustBadge.first,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = trustBadge.second
+                )
             }
             
             // 展开详情
@@ -532,7 +545,14 @@ private fun ExtensionItem(
                                 )
                             } else if (!isActive && onActivate != null) {
                                 OutlinedButton(
-                                    onClick = onActivate,
+                                    onClick = {
+                                        if (extension.trustLevel == TrustLevel.TRUSTED) {
+                                            onActivate()
+                                        } else {
+                                            trustConfirmAction = { onActivate() }
+                                            showTrustConfirm = true
+                                        }
+                                    },
                                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                                 ) {
                                     Text("去选择", style = MaterialTheme.typography.labelMedium)
@@ -554,8 +574,16 @@ private fun ExtensionItem(
                                     checked = isEnabled,
                                     enabled = hostCompatible,
                                     onCheckedChange = { enabled ->
-                                        isEnabled = enabled
-                                        viewModel.setPluginEnabled(extension.id, enabled)
+                                        if (enabled && extension.trustLevel != TrustLevel.TRUSTED) {
+                                            trustConfirmAction = {
+                                                isEnabled = true
+                                                viewModel.setPluginEnabled(extension.id, true)
+                                            }
+                                            showTrustConfirm = true
+                                        } else {
+                                            isEnabled = enabled
+                                            viewModel.setPluginEnabled(extension.id, enabled)
+                                        }
                                     },
                                     colors = SwitchDefaults.colors(
                                         checkedThumbColor = MaterialTheme.colorScheme.primary,
@@ -631,6 +659,59 @@ private fun ExtensionItem(
                 }
             }
         )
+    }
+
+    if (showTrustConfirm) {
+        val badge = trustBadge(extension.trustLevel)
+        AlertDialog(
+            onDismissRequest = {
+                showTrustConfirm = false
+                trustConfirmAction = null
+            },
+            title = { Text("启用非官方插件") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("插件「${extension.name}」未被标记为官方（${badge?.first ?: "未知来源"}）。")
+                    Text("非官方插件代码运行在主应用进程中，可能访问您输入的内容或网络。请确认来源可信后再启用。")
+                    if (extension.description.isNotEmpty()) {
+                        Text(
+                            text = "描述：${extension.description}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val action = trustConfirmAction
+                        showTrustConfirm = false
+                        trustConfirmAction = null
+                        action?.invoke()
+                    }
+                ) {
+                    Text("继续启用")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showTrustConfirm = false
+                    trustConfirmAction = null
+                }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+}
+
+// 信任徽标：返回 (标签, 颜色)
+private fun trustBadge(level: TrustLevel): Pair<String, Color> {
+    return when (level) {
+        TrustLevel.TRUSTED -> Pair("官方", Color(0xFF4CAF50))
+        TrustLevel.THIRD_PARTY -> Pair("第三方", Color(0xFFF57C00))
+        TrustLevel.UNKNOWN -> Pair("未知来源", Color(0xFFE53935))
     }
 }
 

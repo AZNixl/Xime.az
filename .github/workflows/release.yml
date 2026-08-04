@@ -1,4 +1,4 @@
-name: Build and Release APK
+﻿name: Build and Release APK
 
 on:
   push:
@@ -11,48 +11,48 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
         with:
           submodules: recursive
           fetch-depth: 0
-        
+
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '17'
           cache: 'gradle'
-          
+
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
-        
+
       - name: Install NDK
         run: |
           sdkmanager "ndk;29.0.14206865"
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/29.0.14206865" >> $GITHUB_ENV
           echo "ANDROID_NDK=$ANDROID_HOME/ndk/29.0.14206865" >> $GITHUB_ENV
-          
+
       - name: Install build tools
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build
-          
-      - name: Cache native ASR deps
+
+      - name: Cache native deps
         uses: actions/cache@v6
         with:
           path: |
             app/src/main/jni/onnxruntime
             app/src/main/jniLibs/**/libonnxruntime.so
-          key: native-asr-${{ runner.os }}-${{ hashFiles('app/build-logic/tasks-native.gradle.kts') }}
+          key: native-${{ runner.os }}-${{ hashFiles('app/build-logic/tasks-native.gradle.kts') }}
           restore-keys: |
-            native-asr-${{ runner.os }}-
+            native-${{ runner.os }}-
 
-      - name: Download native ASR deps (ONNX Runtime + kaldi-native-fbank)
-        run: ./gradlew downloadOnnx downloadKnf --no-daemon
-        
+      - name: Download native deps (ONNX Runtime)
+        run: ./gradlew downloadOnnx --no-daemon
+
       - name: Cache CMake build
         uses: actions/cache@v6
         with:
@@ -63,13 +63,13 @@ jobs:
           key: cmake-${{ runner.os }}-${{ hashFiles('app/src/main/jni/CMakeLists.txt') }}
           restore-keys: |
             cmake-${{ runner.os }}-
-            
+
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
-        
-      - name: Build Release APKs (Unsigned)
+
+      - name: Build Release APKs and Plugin XIPKs (Unsigned)
         run: ./gradlew assembleRelease --no-daemon
-        
+
       - name: Sign Main App APKs
         uses: r0adkll/sign-android-release@v1
         id: sign_main_app
@@ -81,50 +81,59 @@ jobs:
           keyPassword: ${{ secrets.KEY_PASSWORD }}
         env:
           BUILD_TOOLS_VERSION: "34.0.0"
-          
-      - name: Sign Meme Bunny Plugin APKs
+
+      # 官方插件用宿主 key 签名，使插件证书与宿主一致，从而被标记为 TRUSTED（官方）。
+      # 签名动作只处理 *.apk，故先把各插件 xipk 临时复制为 .apk 统一签名，再改回 .xipk。
+      - name: Stage plugin xipk as apk for signing
+        run: |
+          mkdir -p build/plugin-staging
+          for dir in plugins/*/build/outputs/apk/release; do
+            for f in "$dir"/*.xipk; do
+              [ -e "$f" ] || continue
+              cp "$f" "build/plugin-staging/$(basename "$f" .xipk).apk"
+            done
+          done
+
+      - name: Sign Plugin XIPKs (official)
         uses: r0adkll/sign-android-release@v1
-        id: sign_emoji_plugin
+        id: sign_plugins
         with:
-          releaseDirectory: plugins/meme-bunny/build/outputs/apk/release
+          releaseDirectory: build/plugin-staging
           signingKeyBase64: ${{ secrets.SIGNING_KEY }}
           alias: ${{ secrets.ALIAS }}
           keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
           keyPassword: ${{ secrets.KEY_PASSWORD }}
         env:
           BUILD_TOOLS_VERSION: "34.0.0"
-          
-      - name: Sign Kaomoji Plugin APKs
-        uses: r0adkll/sign-android-release@v1
-        id: sign_kaomoji_plugin
-        with:
-          releaseDirectory: plugins/kaomoji/build/outputs/apk/release
-          signingKeyBase64: ${{ secrets.SIGNING_KEY }}
-          alias: ${{ secrets.ALIAS }}
-          keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
-          keyPassword: ${{ secrets.KEY_PASSWORD }}
-        env:
-          BUILD_TOOLS_VERSION: "34.0.0"
-        
+
+      - name: Rename signed plugin apk back to xipk
+        run: |
+          mkdir -p build/plugin-release
+          for f in build/plugin-staging/*-signed.apk; do
+            [ -e "$f" ] || continue
+            mv "$f" "build/plugin-release/$(basename "$f" -signed.apk).xipk"
+          done
+
       - name: Get version from tag
         id: get_version
         run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-        
-      - name: Find signed APKs
+
+      - name: Find signed APKs and plugin XIPKs
         id: find_apks
         run: |
           MAIN_APKS=$(find app/build/outputs/apk/release -name "*-signed.apk" -type f | sort | tr '\n' ',' | sed 's/,$//')
-          MEME_BUNNY_APKS=$(find plugins/meme-bunny/build/outputs/apk/release -name "*-signed.apk" -type f | sort | tr '\n' ',' | sed 's/,$//')
-          KAOMOJI_APKS=$(find plugins/kaomoji/build/outputs/apk/release -name "*-signed.apk" -type f | sort | tr '\n' ',' | sed 's/,$//')
-          
+          PLUGIN_XIPKS=$(find build/plugin-release -name "*.xipk" -type f | sort | tr '\n' ',' | sed 's/,$//')
+
           echo "main_apks=$MAIN_APKS" >> $GITHUB_OUTPUT
-          echo "meme_bunny_apks=$MEME_BUNNY_APKS" >> $GITHUB_OUTPUT
-          echo "kaomoji_apks=$KAOMOJI_APKS" >> $GITHUB_OUTPUT
-          
+          echo "plugin_xipks=$PLUGIN_XIPKS" >> $GITHUB_OUTPUT
+
           if [ -z "$MAIN_APKS" ]; then
             echo "::warning::No main app APKs found!"
           fi
-        
+          if [ -z "$PLUGIN_XIPKS" ]; then
+            echo "::warning::No plugin XIPKs found!"
+          fi
+
       - name: Create Release
         uses: softprops/action-gh-release@v3
         with:
@@ -132,8 +141,7 @@ jobs:
           generate_release_notes: true
           files: |
             ${{ steps.find_apks.outputs.main_apks }}
-            ${{ steps.find_apks.outputs.meme_bunny_apks }}
-            ${{ steps.find_apks.outputs.kaomoji_apks }}
+            ${{ steps.find_apks.outputs.plugin_xipks }}
           draft: false
           prerelease: false
         env:

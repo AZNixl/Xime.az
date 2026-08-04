@@ -27,8 +27,24 @@ data class PluginInfo(
     val providers: List<ProviderInfo> = emptyList(),
     val source: PluginSource = PluginSource.SYSTEM,
     val minHostVersion: String? = null,
-    val maxHostVersion: String? = null
+    val maxHostVersion: String? = null,
+    val trustLevel: TrustLevel = TrustLevel.UNKNOWN
 ) {
     val version: String get() = versionName
     val category: PluginCategory get() = PluginCategory.fromId(type)
+}
+
+/**
+ * 插件信任等级：宿主按插件 APK 签名证书与宿主自身签名是否一致来判定。
+ * 仅作为信任标记，不构成强制门槛（避免挡住第三方插件）。
+ */
+enum class TrustLevel {
+    /** 官方：插件签名证书与宿主一致 */
+    TRUSTED,
+
+    /** 第三方：有签名但证书与宿主不一致 */
+    THIRD_PARTY,
+
+    /** 未知：未签名或无法读取签名 */
+    UNKNOWN
 }
