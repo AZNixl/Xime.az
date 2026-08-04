@@ -9,18 +9,6 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     
-    <!-- Android 11+ 需要此权限才能查询其他应用 -->
-    <uses-permission
-        android:name="android.permission.QUERY_ALL_PACKAGES"
-        tools:ignore="QueryAllPackagesPermission" />
-    
-    <!-- 查询已安装的插件应用 -->
-    <queries>
-        <intent>
-            <action android:name="com.kingzcheung.xime.plugin.EXTENSION" />
-        </intent>
-    </queries>
-
     <application
         android:name=".XimeApplication"
         android:allowBackup="true"

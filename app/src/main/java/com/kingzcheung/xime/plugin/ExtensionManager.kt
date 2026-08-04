@@ -2,8 +2,10 @@ package com.kingzcheung.xime.plugin
 
 import android.content.Context
 import android.util.Log
+import com.kingzcheung.xime.plugin.core.api.AsrPlugin
 import com.kingzcheung.xime.plugin.core.api.EmojiPlugin
 import com.kingzcheung.xime.plugin.core.api.PluginIcon
+import com.kingzcheung.xime.plugin.core.model.PluginCategory
 import com.kingzcheung.xime.plugin.core.model.PluginInfo
 import com.kingzcheung.xime.plugin.core.runtime.PluginManager
 import com.kingzcheung.xime.settings.SettingsPreferences
@@ -163,7 +165,6 @@ object ExtensionManager {
     fun reload(context: Context): Boolean {
         return try {
             managerScope.launch {
-                PluginManager.scanAndInstallSystemPlugins()
                 PluginManager.loadEnabledPlugins()
             }
             PluginManager.isInitialized
@@ -189,6 +190,22 @@ object ExtensionManager {
             } else null
         }
     }
+
+    fun getAsrPlugins(): List<AsrPlugin> {
+        val all = PluginManager.getAllPluginInstances()
+        return all.values.mapNotNull { instance ->
+            if (instance is AsrPlugin) instance else null
+        }
+    }
+
+    fun getEnabledAsrPlugins(context: Context): List<Pair<String, AsrPlugin>> {
+        return getAsrPlugins().mapNotNull { plugin ->
+            val pluginId = getPluginId(plugin)
+            if (pluginId.isNotEmpty() && SettingsPreferences.isPluginEnabled(context, pluginId)) {
+                Pair(pluginId, plugin)
+            } else null
+        }
+    }
     
     private fun getPluginId(plugin: Any): String {
         return PluginManager.getAllPluginInstances().entries
@@ -204,6 +221,12 @@ object ExtensionManager {
         }
     
     fun getAllInstalledPlugins(): List<PluginInfo> = PluginManager.getAllInstallPlugins()
+
+    fun getPluginsByCategory(category: PluginCategory): List<PluginInfo> =
+        getAllInstalledPlugins().filter { it.category == category }
+
+    fun getEnabledPluginsByCategory(context: Context, category: PluginCategory): List<PluginInfo> =
+        getPluginsByCategory(category).filter { SettingsPreferences.isPluginEnabled(context, it.id) }
     
     fun getPluginById(id: String): Any? = PluginManager.getPluginInstance(id)
     

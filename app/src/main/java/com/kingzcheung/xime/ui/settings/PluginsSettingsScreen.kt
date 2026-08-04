@@ -3,6 +3,9 @@ package com.kingzcheung.xime.ui.settings
 import android.content.Intent
 import android.net.Uri
 import android.util.Log
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -33,6 +36,7 @@ import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Face
+import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
@@ -72,6 +76,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.kingzcheung.xime.plugin.core.model.Activation
+import com.kingzcheung.xime.plugin.core.model.PluginCategory
+import com.kingzcheung.xime.plugin.core.model.PluginSource
 import com.kingzcheung.xime.plugin.core.model.PluginInfo
 import com.kingzcheung.xime.plugin.core.runtime.PluginManager
 import com.kingzcheung.xime.plugin.core.security.PluginErrorLog
@@ -85,12 +92,30 @@ import kotlinx.coroutines.withContext
 @Composable
 fun PluginsSettingsContent(
     onBack: () -> Unit,
-    onNavigateToPluginSettings: (String) -> Unit = {}
+    onNavigateToPluginSettings: (String) -> Unit = {},
+    onNavigateToSpeechToText: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val viewModel: PluginsSettingsViewModel = viewModel()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val loadedPlugins by viewModel.loadedPlugins.collectAsState()
+    val importMessage by viewModel.importMessage.collectAsState()
+    val groupedByCategory = remember(uiState.extensions) {
+        uiState.extensions.groupBy { it.category }
+    }
+
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        uris.forEach { viewModel.installPluginFromUri(it) }
+    }
+
+    LaunchedEffect(importMessage) {
+        if (importMessage != null) {
+            Toast.makeText(context, importMessage, Toast.LENGTH_SHORT).show()
+            viewModel.consumeImportMessage()
+        }
+    }
     
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
@@ -145,6 +170,16 @@ fun PluginsSettingsContent(
                     )
                 }
             } else {
+                item {
+                    OutlinedButton(
+                        onClick = { importLauncher.launch(arrayOf("*/*")) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.FileOpen, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("从文件安装插件 (.xipk)")
+                    }
+                }
                 if (uiState.extensions.isEmpty()) {
                     item {
                         Box(
@@ -177,24 +212,34 @@ fun PluginsSettingsContent(
                         }
                     }
                 } else {
-                    item {
-                        Text(
-                            text = "已安装插件 (${uiState.extensions.size})",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(bottom = 8.dp)
-                        )
-                    }
-                    
-                    items(uiState.extensions, key = { it.id }) { extension ->
-                        val isRunning = loadedPlugins.containsKey(extension.id)
-                        ExtensionItem(
-                            extension = extension,
-                            pluginInstance = PluginManager.getPluginInstance(extension.id),
-                            isRunning = isRunning,
-                            viewModel = viewModel,
-                            onClick = { onNavigateToPluginSettings(extension.id) }
-                        )
+                    val activeAsrPluginId = SettingsPreferences.getSttOnlinePluginId(context)
+                    PluginCategory.entries.forEach { category ->
+                        val plugins = groupedByCategory[category].orEmpty()
+                        if (plugins.isEmpty()) return@forEach
+                        val activeName = if (category == PluginCategory.ASR) {
+                            plugins.firstOrNull { it.id == activeAsrPluginId }?.name
+                        } else null
+                        item(key = "header_${category.id}") {
+                            PluginCategoryHeader(
+                                category = category,
+                                count = plugins.size,
+                                activeName = activeName
+                            )
+                        }
+                        items(plugins, key = { it.id }) { extension ->
+                            val isRunning = loadedPlugins.containsKey(extension.id)
+                            ExtensionItem(
+                                extension = extension,
+                                pluginInstance = PluginManager.getPluginInstance(extension.id),
+                                isRunning = isRunning,
+                                viewModel = viewModel,
+                                onClick = { onNavigateToPluginSettings(extension.id) },
+                                isActive = category == PluginCategory.ASR && extension.id == activeAsrPluginId,
+                                onActivate = if (category.activation == Activation.SINGLE) {
+                                    onNavigateToSpeechToText
+                                } else null
+                            )
+                        }
                     }
                 }
                 
@@ -219,21 +264,23 @@ private fun ExtensionItem(
     pluginInstance: Any?,
     isRunning: Boolean,
     viewModel: PluginsSettingsViewModel,
-    onClick: () -> Unit = {}
+    onClick: () -> Unit = {},
+    isActive: Boolean = false,
+    onActivate: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     var isEnabled by remember { mutableStateOf(viewModel.isPluginEnabled(extension.id)) }
     var showErrorDialog by remember { mutableStateOf(false) }
     var isExpanded by remember { mutableStateOf(false) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
     
     val errors = PluginErrorLog.getErrors(extension.id)
     val hasErrors = errors.isNotEmpty()
     
-    val hasSettings = pluginInstance?.let { 
-        when (it) {
-            is com.kingzcheung.xime.plugin.core.api.EmojiPlugin -> it.hasSettings()
-            else -> false
-        }
+    val hasSettings = pluginInstance?.let {
+        (it as? com.kingzcheung.xime.plugin.core.config.IPluginConfigurable)
+            ?.getSettingsSchema()?.isNotEmpty() == true ||
+            (it as? com.kingzcheung.xime.plugin.core.api.EmojiPlugin)?.hasSettings() == true
     } ?: false
     
     if (showErrorDialog && hasErrors) {
@@ -325,7 +372,7 @@ private fun ExtensionItem(
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Text(
-                    text = getTypeName(extension.type),
+                    text = extension.category.label,
                     style = MaterialTheme.typography.bodySmall,
                     color = if (isEnabled) MaterialTheme.colorScheme.primary 
                            else MaterialTheme.colorScheme.onSurfaceVariant
@@ -371,30 +418,51 @@ private fun ExtensionItem(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        // 启用开关
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
+                        if (extension.category.activation == Activation.SINGLE) {
+                            // 单选分类：激活在对应功能设置页完成，插件中心不显示启用开关
                             Text(
-                                text = "启用",
-                                style = MaterialTheme.typography.bodyMedium
+                                text = if (isActive) "当前使用中" else "未使用",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = if (isActive) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            Switch(
-                                checked = isEnabled,
-                                onCheckedChange = { enabled ->
-                                    isEnabled = enabled
-                                    viewModel.setPluginEnabled(extension.id, enabled)
-                                },
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = MaterialTheme.colorScheme.primary,
-                                    checkedTrackColor = MaterialTheme.colorScheme.primaryContainer
+
+                            Spacer(modifier = Modifier.weight(1f))
+
+                            if (!isActive && onActivate != null) {
+                                OutlinedButton(
+                                    onClick = onActivate,
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                ) {
+                                    Text("去语音转文本设置选择", style = MaterialTheme.typography.labelMedium)
+                                }
+                            }
+                        } else {
+                            // 多选分类：启用开关
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = "启用",
+                                    style = MaterialTheme.typography.bodyMedium
                                 )
-                            )
+                                Switch(
+                                    checked = isEnabled,
+                                    onCheckedChange = { enabled ->
+                                        isEnabled = enabled
+                                        viewModel.setPluginEnabled(extension.id, enabled)
+                                    },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = MaterialTheme.colorScheme.primary,
+                                        checkedTrackColor = MaterialTheme.colorScheme.primaryContainer
+                                    )
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.weight(1f))
                         }
-                        
-                        Spacer(modifier = Modifier.weight(1f))
-                        
+
                         // 设置按钮
                         if (hasSettings) {
                             OutlinedButton(
@@ -408,44 +476,125 @@ private fun ExtensionItem(
                         }
                         
                         // 删除按钮
-                        IconButton(
-                            onClick = {
-                                try {
-                                    val intent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                                    intent.data = Uri.parse("package:${extension.id}")
-                                    context.startActivity(intent)
-                                    android.widget.Toast.makeText(context, "请在应用信息页面卸载", android.widget.Toast.LENGTH_SHORT).show()
-                                } catch (e: Exception) {
-                                    android.widget.Toast.makeText(context, "无法打开: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                        if (extension.source == PluginSource.SYSTEM) {
+                            IconButton(
+                                onClick = {
+                                    try {
+                                        val intent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                                        intent.data = Uri.parse("package:${extension.id}")
+                                        context.startActivity(intent)
+                                        Toast.makeText(context, "请在应用信息页面卸载", Toast.LENGTH_SHORT).show()
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "无法打开: ${e.message}", Toast.LENGTH_SHORT).show()
+                                    }
                                 }
+                            ) {
+                                Icon(Icons.Default.Delete, contentDescription = "卸载",
+                                     tint = MaterialTheme.colorScheme.error)
                             }
-                        ) {
-                            Icon(Icons.Default.Delete, contentDescription = "卸载", 
-                                 tint = MaterialTheme.colorScheme.error)
+                        } else {
+                            IconButton(
+                                onClick = { showDeleteConfirm = true }
+                            ) {
+                                Icon(Icons.Default.Delete, contentDescription = "卸载",
+                                     tint = MaterialTheme.colorScheme.error)
+                            }
                         }
                     }
                 }
             }
         }
     }
-}
 
-private fun getTypeName(type: String): String {
-    return when (type.lowercase()) {
-        "prediction" -> "联想词"
-        "speech" -> "语音转文字"
-        "emoji" -> "表情推荐"
-        else -> type
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("卸载插件") },
+            text = { Text("确定要卸载「${extension.name}」吗？\n插件文件和配置将被删除，此操作不可恢复。") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteConfirm = false
+                        viewModel.uninstallPlugin(extension.id)
+                    }
+                ) {
+                    Text("卸载", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text("取消")
+                }
+            }
+        )
     }
 }
 
-private fun getTypeIcon(type: String): ImageVector {
-    return when (type.lowercase()) {
-        "prediction" -> Icons.Default.AutoAwesome
-        "speech" -> Icons.Default.Mic
-        "emoji" -> Icons.Default.Face
-        else -> Icons.Default.Extension
+@Composable
+private fun PluginCategoryHeader(
+    category: PluginCategory,
+    count: Int,
+    activeName: String? = null
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Icon(
+            imageVector = getCategoryIcon(category),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(18.dp)
+        )
+        Text(
+            text = category.label,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold
+        )
+        Text(
+            text = "($count)",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(modifier = Modifier.weight(1f))
+        when {
+            category.activation == Activation.SINGLE && !activeName.isNullOrBlank() -> {
+                Text(
+                    text = "当前使用：$activeName",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(0.6f, fill = false)
+                )
+            }
+            category.activation == Activation.SINGLE -> {
+                Text(
+                    text = "未选择 · 去语音转文本设置",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                )
+            }
+            category.activation == Activation.MULTI -> {
+                Text(
+                    text = "可多选 · 启用即生效",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                )
+            }
+            else -> {}
+        }
     }
+}
+
+private fun getCategoryIcon(category: PluginCategory): ImageVector = when (category) {
+    PluginCategory.EMOJI -> Icons.Default.Face
+    PluginCategory.ASR -> Icons.Default.Mic
+    PluginCategory.PREDICTION -> Icons.Default.AutoAwesome
+    PluginCategory.UNKNOWN -> Icons.Default.Extension
 }
 
 @Composable

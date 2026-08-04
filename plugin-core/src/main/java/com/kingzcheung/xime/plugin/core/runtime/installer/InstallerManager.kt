@@ -1,12 +1,13 @@
 package com.kingzcheung.xime.plugin.core.runtime.installer
 
 import android.app.Application
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ProviderInfo as AndroidProviderInfo
+import android.net.Uri
 import android.os.Build
 import android.util.Log
 import com.kingzcheung.xime.plugin.core.model.PluginInfo
+import com.kingzcheung.xime.plugin.core.model.PluginSource
 import com.kingzcheung.xime.plugin.core.model.ProviderInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -40,7 +41,8 @@ class InstallerManager(
 
     suspend fun installPlugin(
         pluginApkFile: File,
-        forceOverwrite: Boolean = false
+        forceOverwrite: Boolean = false,
+        source: PluginSource = PluginSource.SYSTEM
     ): InstallResult = withContext(Dispatchers.IO) {
         if (!pluginApkFile.exists()) {
             return@withContext InstallResult.Failure("插件文件不存在")
@@ -48,7 +50,6 @@ class InstallerManager(
 
         val pluginConfig = parsePluginConfig(pluginApkFile)
             ?: return@withContext InstallResult.Failure("插件配置解析失败")
-
         val pluginId = pluginConfig.id
         val pluginDir = getPluginDirectory(pluginId)
 
@@ -88,7 +89,8 @@ class InstallerManager(
                 enabled = existingPlugin?.enabled ?: true,
                 installTime = existingPlugin?.installTime ?: System.currentTimeMillis(),
                 nativeLibPath = nativeLibPath,
-                providers = pluginConfig.providers
+                providers = pluginConfig.providers,
+                source = source
             )
 
             if (existingPlugin != null) {
@@ -115,6 +117,25 @@ class InstallerManager(
         true
     }
 
+    suspend fun installPluginFromUri(uri: Uri): InstallResult = withContext(Dispatchers.IO) {
+        if (uri.scheme == "file") {
+            val file = File(uri.path ?: return@withContext InstallResult.Failure("无法解析文件路径"))
+            installPlugin(file, source = PluginSource.FILE)
+        } else {
+            val tempFile = File(context.cacheDir, "plugin_import_${System.currentTimeMillis()}.apk")
+            try {
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    tempFile.outputStream().use { output -> input.copyTo(output) }
+                } ?: return@withContext InstallResult.Failure("无法读取文件")
+                installPlugin(tempFile, source = PluginSource.FILE)
+            } catch (e: Exception) {
+                InstallResult.Failure("插件导入失败: ${e.message}", e)
+            } finally {
+                if (tempFile.exists()) tempFile.delete()
+            }
+        }
+    }
+
     internal fun getPluginDirectory(pluginId: String): File {
         return File(pluginsDir, pluginId)
     }
@@ -139,56 +160,6 @@ class InstallerManager(
         }
     }
 
-    suspend fun scanAndInstallSystemPlugins(): Int = withContext(Dispatchers.IO) {
-        Log.d("InstallerManager", "Scanning system installed plugins...")
-        
-        val intent = Intent("com.kingzcheung.xime.plugin.EXTENSION")
-        val resolveInfos = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            context.packageManager.queryIntentActivities(
-                intent,
-                PackageManager.ResolveInfoFlags.of(PackageManager.GET_META_DATA.toLong())
-            )
-        } else {
-            @Suppress("DEPRECATION")
-            context.packageManager.queryIntentActivities(intent, PackageManager.GET_META_DATA)
-        }
-        
-        Log.d("InstallerManager", "Found ${resolveInfos.size} potential plugin apps")
-        
-        var installedCount = 0
-        for (resolveInfo in resolveInfos) {
-            val packageName = resolveInfo.activityInfo.packageName
-            if (packageName == context.packageName) continue
-            
-            Log.d("InstallerManager", "Processing plugin: $packageName")
-            
-            try {
-                val apkPath = resolveInfo.activityInfo.applicationInfo.publicSourceDir
-                    ?: resolveInfo.activityInfo.applicationInfo.sourceDir
-                if (apkPath == null) {
-                    Log.w("InstallerManager", "No APK path for $packageName")
-                    continue
-                }
-                
-                val apkFile = File(apkPath)
-                // 强制更新以确保 providers 信息正确
-                val result = installPlugin(apkFile, forceOverwrite = true)
-                
-                if (result is InstallResult.Success) {
-                    installedCount++
-                    Log.d("InstallerManager", "Successfully installed: ${result.pluginInfo.id}, providers: ${result.pluginInfo.providers.size}")
-                } else if (result is InstallResult.Failure) {
-                    Log.w("InstallerManager", "Failed to install $packageName: ${result.reason}")
-                }
-            } catch (e: Exception) {
-                Log.e("InstallerManager", "Error installing $packageName", e)
-            }
-        }
-        
-        Log.d("InstallerManager", "Total installed from system: $installedCount")
-        installedCount
-    }
-    
     private data class PluginConfig(
         val id: String,
         val name: String,

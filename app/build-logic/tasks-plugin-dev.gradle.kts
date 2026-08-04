@@ -23,7 +23,7 @@ tasks.register("copyPluginsToAssets", Copy::class) {
     pluginProjects.forEach { pluginPath ->
         dependsOn(project(pluginPath).tasks.getByName("assembleDebug"))
         from(project(pluginPath).layout.buildDirectory.dir("outputs/apk/debug")) {
-            include("*universal*.apk")
+            include("*.xipk")
         }
     }
 

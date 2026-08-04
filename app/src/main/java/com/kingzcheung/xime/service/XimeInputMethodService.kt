@@ -416,23 +416,11 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                 }
                 "stt_enabled" -> {
                     uiState.value = uiState.value.copy(isSttEnabled = SettingsPreferences.isSttEnabled(this@XimeInputMethodService))
-                    onSttModelSettingChanged()
                 }
-                SettingsPreferences.KEY_STT_USE_LOCAL -> onSttModelSettingChanged()
                 SettingsPreferences.KEY_SMART_PREDICTION_ENABLED -> onPredictionSettingChanged()
             }
         }
         prefs.registerOnSharedPreferenceChangeListener(sharedPrefsListener)
-    }
-
-    /** 设置驱动：STT 本地功能开启时加载 ASR 模型到 :inference 进程，关闭时卸载。 */
-    private fun onSttModelSettingChanged() {
-        val enabled = SettingsPreferences.isSttEnabled(this) && SettingsPreferences.isSttUseLocal(this)
-        if (enabled) {
-            voiceRecognitionHandler.ensureAsrLoaded()
-        } else {
-            voiceRecognitionHandler.releaseAsr()
-        }
     }
 
     /** 设置驱动：智能联想开启时加载联想模型，关闭时卸载。 */
@@ -517,8 +505,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     
     private fun initSpeechRecognition() {
         voiceRecognitionHandler.initialize()
-        // 启动时若 STT 本地功能已开启，按设置驱动预加载 ASR 模型到 :inference 进程
-        onSttModelSettingChanged()
     }
     
     private fun initAssociationEngine() {

@@ -9,9 +9,7 @@ import android.util.Log
 import com.kingzcheung.xime.association.AssociationCandidate
 import com.kingzcheung.xime.association.NativeOnnxEngine
 import com.kingzcheung.xime.handwriting.HandwritingNativeEngine
-import com.kingzcheung.xime.speech.AsrNative
 import com.kingzcheung.xime.speech.punctuation.PunctuationInference
-import com.kingzcheung.xime.util.FileLogger
 import org.json.JSONObject
 import java.io.File
 
@@ -20,20 +18,13 @@ class InferenceService : Service() {
     companion object {
         private const val TAG = "InferenceService"
         private const val MODEL_PREDICTION = "predictive_text"
-        private const val MODEL_ASR = "asr"
         private const val MODEL_PUNCTUATION = "punctuation"
         private const val MODEL_HANDWRITING = "handwriting"
-        private const val SAMPLE_RATE = 16000
     }
 
     private var onnxLibsLoaded = false
 
     private var predictionVocab: Map<String, Int>? = null
-
-    // ---- 本地 ASR（流式 zipformer2）----
-    private var asrHandle: Long = 0L
-    private var asrCallback: IInferenceCallback? = null
-    private val asrLock = Any()
 
     private val binder = object : IInferenceService.Stub() {
 
@@ -63,16 +54,6 @@ class InferenceService : Service() {
                     }
                     MODEL_PUNCTUATION -> PunctuationInference.release()
                     MODEL_HANDWRITING -> HandwritingNativeEngine.release()
-                    MODEL_ASR -> {
-                        synchronized(asrLock) {
-                            if (asrHandle != 0L) {
-                                AsrNative.nativeRelease(asrHandle)
-                                asrHandle = 0L
-                            }
-                            asrCallback = null
-                        }
-                        FileLogger.i(TAG, "ASR recognizer released in inference process")
-                    }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "unloadModel($modelId) failed", e)
@@ -83,7 +64,6 @@ class InferenceService : Service() {
             return try {
                 when (modelId) {
                     MODEL_PREDICTION -> NativeOnnxEngine.isInitialized()
-                    MODEL_ASR -> synchronized(asrLock) { asrHandle != 0L }
                     MODEL_PUNCTUATION -> PunctuationInference.isInitialized()
                     MODEL_HANDWRITING -> HandwritingNativeEngine.isInitialized()
                     else -> false
@@ -102,77 +82,6 @@ class InferenceService : Service() {
                 result.add(c.score.toString())
             }
             return result
-        }
-
-        override fun startAsr(modelId: String, modelDir: String, callback: IInferenceCallback): Boolean {
-            if (modelId != MODEL_ASR) return false
-            // 模型加载耗时较长，放在 asrLock 外执行，避免阻塞其它 ASR 控制操作
-            if (synchronized(asrLock) { asrHandle } == 0L) {
-                val handle = createAsrHandle(modelDir)
-                if (handle == 0L) {
-                    Log.e(TAG, "Failed to create ASR recognizer from $modelDir")
-                    return false
-                }
-                synchronized(asrLock) {
-                    if (asrHandle == 0L) {
-                        asrHandle = handle
-                        FileLogger.i(TAG, "ASR recognizer created in inference process, handle=$handle")
-                    } else {
-                        AsrNative.nativeRelease(handle)
-                    }
-                }
-            }
-            return try {
-                synchronized(asrLock) {
-                    asrCallback = callback
-                    AsrNative.nativeReset(asrHandle)
-                }
-                true
-            } catch (e: Exception) {
-                Log.e(TAG, "startAsr failed", e)
-                false
-            }
-        }
-
-        override fun pushAsrAudio(modelId: String, audioData: ByteArray) {
-            if (modelId != MODEL_ASR) return
-            val partial: String
-            val cb: IInferenceCallback?
-            synchronized(asrLock) {
-                if (asrHandle == 0L) return
-                AsrNative.nativeAcceptPcm(asrHandle, audioData)
-                partial = AsrNative.nativeGetPartial(asrHandle)
-                cb = asrCallback
-            }
-            if (cb != null && partial.isNotEmpty()) {
-                try {
-                    cb.onPartialResult(MODEL_ASR, partial)
-                } catch (_: Exception) {
-                }
-            }
-        }
-
-        override fun stopAsr(modelId: String): String {
-            if (modelId != MODEL_ASR) return ""
-            return try {
-                synchronized(asrLock) {
-                    if (asrHandle == 0L) return ""
-                    val text = AsrNative.nativeFinalize(asrHandle)
-                    asrCallback = null
-                    text
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "stopAsr failed", e)
-                ""
-            }
-        }
-
-        override fun cancelAsr(modelId: String) {
-            if (modelId != MODEL_ASR) return
-            synchronized(asrLock) {
-                if (asrHandle != 0L) AsrNative.nativeReset(asrHandle)
-                asrCallback = null
-            }
         }
 
         override fun recognizeHandwriting(modelId: String, strokeData: FloatArray, mask: ByteArray, topK: Int): MutableList<String> {
@@ -234,35 +143,6 @@ class InferenceService : Service() {
         val success = NativeOnnxEngine.loadNativeLibrary(this)
         onnxLibsLoaded = success
         return success
-    }
-
-    /** 按 AsrModelInfo 权威清单定位模型文件并创建识别器（在 inference 进程加载模型）。 */
-    private fun createAsrHandle(modelDir: String): Long {
-        return try {
-            val info = com.kingzcheung.xime.speech.AsrModelManager(this).getSelectedModelInfo()
-                ?: run {
-                    Log.e(TAG, "No selected ASR model")
-                    return 0L
-                }
-            val dir = File(modelDir)
-            val encoder = File(dir, info.encoderFile)
-            val decoder = File(dir, info.decoderFile)
-            val joiner = File(dir, info.joinerFile)
-            val tokens = File(dir, "tokens.txt")
-            if (!encoder.exists() || !decoder.exists() || !joiner.exists() || !tokens.exists()) {
-                Log.e(TAG, "ASR model files incomplete in $modelDir")
-                return 0L
-            }
-            AsrNative.nativeCreate(
-                encoder.absolutePath,
-                decoder.absolutePath,
-                joiner.absolutePath,
-                tokens.absolutePath
-            )
-        } catch (e: Exception) {
-            Log.e(TAG, "createAsrHandle failed", e)
-            0L
-        }
     }
 
     private fun loadPredictionModel(modelPath: String, vocabPath: String): Boolean {

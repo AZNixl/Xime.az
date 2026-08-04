@@ -14,8 +14,8 @@ android {
         applicationId = "com.kingzcheung.xime.plugin.kaomoji"
         minSdk = 28
         targetSdk = 35
-        versionCode = 6
-        versionName = "2.0.0"
+        versionCode = 20260804
+        versionName = "2.1.0"
     }
 
     buildTypes {
@@ -48,7 +48,7 @@ android {
 android.applicationVariants.all {
     val pluginName = "kaomoji"
     outputs.all {
-        (this as BaseVariantOutputImpl).outputFileName = "$pluginName-$versionName.apk"
+        (this as BaseVariantOutputImpl).outputFileName = "$pluginName-$versionName.xipk"
     }
 }
 
@@ -57,4 +57,8 @@ dependencies {
         implementation("org.jetbrains:annotations:23.0.0")
     }
     compileOnly(project(":plugin-core"))
+    // stdlib 由 plugin-core 的 api(kotlin("stdlib")) 传递到编译类路径（compileOnly 不打包），跟随宿主
+
+    testImplementation(project(":plugin-core"))
+    testImplementation("junit:junit:4.13.2")
 }

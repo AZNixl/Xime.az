@@ -17,39 +17,13 @@ class InferenceClient(private val context: Context) {
     companion object {
         private const val TAG = "InferenceClient"
         const val MODEL_PREDICTION = "predictive_text"
-        const val MODEL_ASR = "asr"
         const val MODEL_PUNCTUATION = "punctuation"
         const val MODEL_HANDWRITING = "handwriting"
-    }
-
-    interface AsrCallback {
-        fun onPartialResult(text: String)
-        fun onFinalResult(text: String)
-        fun onError(message: String)
     }
 
     private var service: IInferenceService? = null
     private var bound = false
     private val connectLatch = CountDownLatch(1)
-
-    private val asrCallbackStub = object : IInferenceCallback.Stub() {
-        private var callback: AsrCallback? = null
-
-        fun attach(cb: AsrCallback) { callback = cb }
-        fun detach() { callback = null }
-
-        override fun onPartialResult(modelId: String, text: String) {
-            callback?.onPartialResult(text)
-        }
-
-        override fun onFinalResult(modelId: String, text: String) {
-            callback?.onFinalResult(text)
-        }
-
-        override fun onError(modelId: String, message: String) {
-            callback?.onError(message)
-        }
-    }
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, binder: IBinder) {
@@ -133,40 +107,6 @@ class InferenceClient(private val context: Context) {
             FileLogger.e(TAG, "predict failed", e)
             emptyList()
         }
-    }
-
-    suspend fun startAsr(modelDir: String, callback: AsrCallback): Boolean = withContext(Dispatchers.IO) {
-        try {
-            asrCallbackStub.attach(callback)
-            requireService().startAsr(MODEL_ASR, modelDir, asrCallbackStub)
-        } catch (e: Exception) {
-            FileLogger.e(TAG, "startAsr failed", e)
-            asrCallbackStub.detach()
-            false
-        }
-    }
-
-    fun pushAsrAudio(audioData: ByteArray) {
-        try {
-            requireService().pushAsrAudio(MODEL_ASR, audioData)
-        } catch (_: Exception) {}
-    }
-
-    suspend fun stopAsr(): String = withContext(Dispatchers.IO) {
-        try {
-            requireService().stopAsr(MODEL_ASR)
-        } catch (_: Exception) {
-            ""
-        } finally {
-            asrCallbackStub.detach()
-        }
-    }
-
-    fun cancelAsr() {
-        try {
-            requireService().cancelAsr(MODEL_ASR)
-        } catch (_: Exception) {}
-        asrCallbackStub.detach()
     }
 
     suspend fun processAudioBytes(input: ByteArray, sampleRate: Int = 16000): ByteArray = withContext(Dispatchers.IO) {

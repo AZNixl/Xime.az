@@ -76,6 +76,26 @@ class PluginInfoTest {
         
         assertEquals("emoji", emojiPlugin.type)
     }
+
+    @Test
+    fun `PluginInfo category is derived from type`() {
+        assertEquals(
+            PluginCategory.EMOJI,
+            PluginInfo(id = "e", name = "E", iconResId = 0, versionCode = 1, versionName = "1", path = "", entryClass = "", description = "", type = "emoji").category
+        )
+        assertEquals(
+            PluginCategory.ASR,
+            PluginInfo(id = "a", name = "A", iconResId = 0, versionCode = 1, versionName = "1", path = "", entryClass = "", description = "", type = "speech").category
+        )
+        assertEquals(
+            PluginCategory.PREDICTION,
+            PluginInfo(id = "p", name = "P", iconResId = 0, versionCode = 1, versionName = "1", path = "", entryClass = "", description = "", type = "prediction").category
+        )
+        assertEquals(
+            PluginCategory.UNKNOWN,
+            PluginInfo(id = "u", name = "U", iconResId = 0, versionCode = 1, versionName = "1", path = "", entryClass = "", description = "").category
+        )
+    }
     
     @Test
     fun `PluginInfo copy should preserve values`() {

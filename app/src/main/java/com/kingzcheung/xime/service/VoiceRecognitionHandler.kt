@@ -6,11 +6,11 @@ import android.os.Looper
 import android.util.Log
 import android.view.inputmethod.InputConnection
 import com.kingzcheung.xime.model.ModelRuntime
+import com.kingzcheung.xime.plugin.ExtensionManager
 import com.kingzcheung.xime.speech.RecognitionState
 import com.kingzcheung.xime.speech.SpeechRecognitionManager
 import com.kingzcheung.xime.speech.punctuation.PunctuationInference
 import com.kingzcheung.xime.speech.punctuation.PunctuationModelManager
-import com.kingzcheung.xime.speech.AsrModelManager
 import com.kingzcheung.xime.settings.SettingsPreferences
 import com.kingzcheung.xime.util.FileLogger
 
@@ -55,19 +55,11 @@ class VoiceRecognitionHandler(
             }
         )
 
-        val useLocal = SettingsPreferences.isSttUseLocal(context)
-        val providerName = if (useLocal) {
-            val sherpaEngine = AsrModelManager(context)
-            sherpaEngine.getSelectedModelInfo()?.name ?: "本地模型"
-        } else {
-            val apiKey = SettingsPreferences.getFunAsrApiKey(context)
-            if (apiKey.isNotEmpty()) "阿里百炼" else "未配置"
-        }
+        val providerName = resolveProviderName()
 
         onStateChanged(getState().copy(voicePluginName = providerName))
-        FileLogger.i(TAG, "STT provider: ${if (useLocal) "local" else "funasr"}")
-        // ASR 模型按需加载：服务启动时不预加载，首次语音时由 startRecognition() 加载，
-        // 避免本地 zipformer2 模型（约 150MB+）常驻输入法进程内存。
+        FileLogger.i(TAG, "STT provider: online")
+        // ASR 插件按需加载：服务启动时不预加载，首次语音时由 startRecognition() 加载。
     }
     
     private fun initPunctuationModel() {
@@ -128,14 +120,7 @@ class VoiceRecognitionHandler(
         textBeforeVoiceInput = getInputConnection()?.getTextBeforeCursor(1000, 0)?.toString() ?: ""
         textLengthBeforeVoiceInput = textBeforeVoiceInput.length
 
-        val useLocal = SettingsPreferences.isSttUseLocal(context)
-        val providerName = if (useLocal) {
-            val sherpaEngine = AsrModelManager(context)
-            sherpaEngine.getSelectedModelInfo()?.name ?: "本地模型"
-        } else {
-            val apiKey = SettingsPreferences.getFunAsrApiKey(context)
-            if (apiKey.isNotEmpty()) "阿里百炼" else "未配置"
-        }
+        val providerName = resolveProviderName()
         onStateChanged(getState().copy(voicePluginName = providerName))
 
         // 标点模型按需加载，避免启动时预加载占内存
@@ -171,34 +156,15 @@ class VoiceRecognitionHandler(
 
     fun isInitialized(): Boolean = ::speechRecognitionManager.isInitialized
 
-    /**
-     * 设置驱动：STT 本地功能开启时预加载 ASR 模型到 :inference 进程。
-     * 在后台线程执行，避免阻塞主线程。
-     */
-    fun ensureAsrLoaded() {
-        if (!::speechRecognitionManager.isInitialized) return
-        val useLocal = SettingsPreferences.isSttUseLocal(context)
-        if (!useLocal) return
-        Thread {
-            try {
-                speechRecognitionManager.preload()
-            } catch (_: Exception) {
-            }
-        }.start()
-    }
-
-    /**
-     * 设置驱动：STT 本地功能关闭时卸载 ASR 模型，释放 :inference 进程内存。
-     * 在后台线程执行，避免阻塞主线程。
-     */
-    fun releaseAsr() {
-        if (!::speechRecognitionManager.isInitialized) return
-        Thread {
-            try {
-                speechRecognitionManager.release()
-            } catch (_: Exception) {
-            }
-        }.start()
+    private fun resolveProviderName(): String {
+        val enabledPlugins = ExtensionManager.getEnabledAsrPlugins(context)
+        if (enabledPlugins.isNotEmpty()) {
+            val selectedId = SettingsPreferences.getSttOnlinePluginId(context)
+            val plugin = enabledPlugins.firstOrNull { it.first == selectedId }?.second
+                ?: enabledPlugins.firstOrNull()?.second
+            if (plugin != null) return plugin.getDisplayName()
+        }
+        return "未配置"
     }
 
     private var lastPartialText = ""
@@ -220,13 +186,6 @@ class VoiceRecognitionHandler(
     }
     
     private fun addPunctuation(text: String): String {
-        val useLocal = SettingsPreferences.isSttUseLocal(context)
-        if (!useLocal) return text
-        
-        val sherpaEngine = AsrModelManager(context)
-        val needsAutoPunctuation = sherpaEngine.getSelectedModelInfo()?.needsAutoPunctuation ?: true
-        if (!needsAutoPunctuation) return text
-        
         val cleanText = text.trim().replace(" ", "")
         if (cleanText.isEmpty()) return text
         

@@ -1,14 +1,14 @@
 package com.kingzcheung.xime.plugin.core.runtime
 
 import android.app.Application
-import android.content.Intent
-import android.content.pm.PackageManager
-import android.os.Build
 import android.util.Log
 import com.kingzcheung.xime.plugin.core.api.IPluginEntryClass
+import com.kingzcheung.xime.plugin.core.config.NoopPluginConfigStore
+import com.kingzcheung.xime.plugin.core.config.PluginConfigStore
 import com.kingzcheung.xime.plugin.core.model.InitState
 import com.kingzcheung.xime.plugin.core.model.PluginFrameworkContext
 import com.kingzcheung.xime.plugin.core.model.PluginInfo
+import com.kingzcheung.xime.plugin.core.model.PluginSource
 import com.kingzcheung.xime.plugin.core.runtime.loader.LoadedPluginInfo
 import com.kingzcheung.xime.plugin.core.runtime.proxy.ProxyManager
 import com.kingzcheung.xime.plugin.core.security.crash.PluginCrashHandler
@@ -24,6 +24,14 @@ import java.io.File
 object PluginManager {
 
     private const val TAG = "PluginManager"
+
+    fun interface PluginConfigStoreFactory {
+        fun create(application: Application, pluginId: String): PluginConfigStore
+    }
+
+    @Volatile
+    var configStoreFactory: PluginConfigStoreFactory =
+        PluginConfigStoreFactory { _, _ -> NoopPluginConfigStore }
 
     private var frameworkContext: PluginFrameworkContext? = null
     private val _loadedPluginsFlow = MutableStateFlow<Map<String, LoadedPluginInfo>>(emptyMap())
@@ -188,7 +196,7 @@ object PluginManager {
                     input.copyTo(output)
                 }
             }
-            val result = installerManager.installPlugin(pluginFile, forceOverwrite)
+            val result = installerManager.installPlugin(pluginFile, forceOverwrite, source = PluginSource.ASSET)
             pluginFile.delete()
             val success = result is com.kingzcheung.xime.plugin.core.runtime.installer.InstallerManager.InstallResult.Success
             Log.d(TAG, "installPluginFromAssets result: $success")
@@ -209,7 +217,7 @@ object PluginManager {
             Log.d(TAG, "Found ${assetFiles.size} files in assets/$assetsDir: ${assetFiles.toList()}")
             
             for (fileName in assetFiles) {
-                if (fileName.endsWith(".apk")) {
+                if (fileName.endsWith(".xipk") || fileName.endsWith(".apk")) {
                     val assetPath = "$assetsDir/$fileName"
                     Log.d(TAG, "Installing: $assetPath")
                     if (installPluginFromAssets(assetPath, forceOverwrite = true)) {
@@ -226,62 +234,5 @@ object PluginManager {
 
         Log.d(TAG, "Total installed: $installedCount")
         return installedCount
-    }
-    
-    suspend fun scanAndInstallSystemPlugins(): Int {
-        Log.d(TAG, "scanAndInstallSystemPlugins")
-        
-        // 先清理已卸载的插件（APK 不存在）
-        cleanupUninstalledPlugins()
-        
-        return installerManager.scanAndInstallSystemPlugins()
-    }
-    
-    private suspend fun cleanupUninstalledPlugins() {
-        Log.d(TAG, "cleanupUninstalledPlugins")
-        val context = requireContext().application
-        val allPlugins = requireContext().xmlManager.getAllPlugins()
-        
-        // 获取系统中已安装的插件包名
-        val installedPackageNames = try {
-            val intent = android.content.Intent("com.kingzcheung.xime.plugin.EXTENSION")
-            val resolveInfos = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                context.packageManager.queryIntentActivities(
-                    intent,
-                    android.content.pm.PackageManager.ResolveInfoFlags.of(0)
-                )
-            } else {
-                @Suppress("DEPRECATION")
-                context.packageManager.queryIntentActivities(intent, 0)
-            }
-            resolveInfos.map { it.activityInfo.packageName }.toSet()
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to query installed plugins", e)
-            emptySet()
-        }
-        
-        Log.d(TAG, "Installed plugin packages: $installedPackageNames")
-        
-        // 插件 ID 就是 packageName
-        for (plugin in allPlugins) {
-            // 如果插件 ID 不在已安装的包列表中，则移除
-            if (plugin.id !in installedPackageNames && plugin.id != context.packageName) {
-                Log.d(TAG, "Plugin app not installed, removing: ${plugin.id}")
-                requireContext().xmlManager.removePlugin(plugin.id)
-                requireContext().lifecycleManager.unloadPlugin(plugin.id)
-                
-                // 删除复制的文件
-                try {
-                    val pluginDir = File(plugin.path).parentFile
-                    if (pluginDir != null && pluginDir.exists()) {
-                        pluginDir.deleteRecursively()
-                        Log.d(TAG, "Deleted plugin directory: ${pluginDir.absolutePath}")
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to delete plugin directory", e)
-                }
-            }
-        }
-        requireContext().xmlManager.flushToDisk()
     }
 }

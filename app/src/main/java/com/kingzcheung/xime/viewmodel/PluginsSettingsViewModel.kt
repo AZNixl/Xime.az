@@ -1,11 +1,14 @@
 package com.kingzcheung.xime.viewmodel
 
 import android.app.Application
+import android.net.Uri
+import android.provider.OpenableColumns
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.kingzcheung.xime.plugin.core.model.PluginInfo
 import com.kingzcheung.xime.plugin.core.runtime.PluginManager
+import com.kingzcheung.xime.plugin.core.runtime.installer.InstallerManager
 import com.kingzcheung.xime.settings.SettingsPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,9 +32,57 @@ class PluginsSettingsViewModel(application: Application) : AndroidViewModel(appl
     val uiState: StateFlow<PluginsUiState> = _uiState.asStateFlow()
     
     val loadedPlugins = PluginManager.loadedPluginsFlow
-    
+
+    private val _importMessage = MutableStateFlow<String?>(null)
+    val importMessage: StateFlow<String?> = _importMessage.asStateFlow()
+
     init {
         refreshPlugins()
+    }
+
+    fun installPluginFromUri(uri: Uri) {
+        viewModelScope.launch {
+            val displayName = queryDisplayName(uri)
+            if (displayName == null ||
+                !(displayName.endsWith(".xipk", ignoreCase = true) ||
+                    displayName.endsWith(".apk", ignoreCase = true))
+            ) {
+                _importMessage.value = "请选择 .xipk 或 .apk 插件文件"
+                return@launch
+            }
+            val result = withContext(Dispatchers.IO) {
+                PluginManager.installerManager.installPluginFromUri(uri)
+            }
+            when (result) {
+                is InstallerManager.InstallResult.Success -> {
+                    PluginManager.loadEnabledPlugins()
+                    refreshPlugins()
+                    _importMessage.value = "插件「${result.pluginInfo.name}」安装成功"
+                }
+                is InstallerManager.InstallResult.Failure -> {
+                    _importMessage.value = "安装失败：${result.reason}"
+                }
+            }
+        }
+    }
+
+    fun consumeImportMessage() {
+        _importMessage.value = null
+    }
+
+    private fun queryDisplayName(uri: Uri): String? {
+        return try {
+            context.contentResolver.query(
+                uri,
+                arrayOf(OpenableColumns.DISPLAY_NAME),
+                null, null, null
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "queryDisplayName failed", e)
+            null
+        }
     }
     
     fun refreshPlugins() {
@@ -40,7 +91,6 @@ class PluginsSettingsViewModel(application: Application) : AndroidViewModel(appl
             
             try {
                 withContext(Dispatchers.IO) {
-                    PluginManager.scanAndInstallSystemPlugins()
                     PluginManager.loadEnabledPlugins()
                 }
                 
@@ -79,6 +129,10 @@ class PluginsSettingsViewModel(application: Application) : AndroidViewModel(appl
     }
     
     fun uninstallPlugin(pluginId: String) {
+        if (SettingsPreferences.getSttOnlinePluginId(context) == pluginId) {
+            SettingsPreferences.setSttOnlinePluginId(context, "")
+        }
+        
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
                 PluginManager.unloadPlugin(pluginId)

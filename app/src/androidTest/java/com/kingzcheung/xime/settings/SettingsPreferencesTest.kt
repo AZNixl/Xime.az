@@ -234,23 +234,6 @@ class SettingsPreferencesTest {
     }
     
     @Test
-    fun sttProviderSettings() {
-        assertEquals("funasr", SettingsPreferences.getSttProvider(context))
-        
-        SettingsPreferences.setSttProvider(context, "whisper")
-        assertEquals("whisper", SettingsPreferences.getSttProvider(context))
-    }
-    
-    @Test
-    fun funasrApiKeySettings() {
-        assertEquals("", SettingsPreferences.getFunAsrApiKey(context))
-        
-        val apiKey = "test-api-key-12345"
-        SettingsPreferences.setFunAsrApiKey(context, apiKey)
-        assertEquals(apiKey, SettingsPreferences.getFunAsrApiKey(context))
-    }
-    
-    @Test
     fun schemaLegacyMigration() {
         val schemas = listOf("wubi86", "wubi98", "wubi_pinyin")
 

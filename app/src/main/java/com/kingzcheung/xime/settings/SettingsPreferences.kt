@@ -24,10 +24,7 @@ object SettingsPreferences {
     private const val KEY_PREDICTION_SELECTED_MODEL = "prediction_selected_model"
     
     const val KEY_STT_ENABLED = "stt_enabled"
-    private const val KEY_STT_PROVIDER = "stt_provider"
-    private const val KEY_FUNASR_API_KEY = "funasr_api_key"
-    const val KEY_STT_USE_LOCAL = "stt_use_local"
-    const val KEY_STT_KEEP_MODEL_IN_RAM = "stt_keep_model_in_ram"
+    const val KEY_STT_ONLINE_PLUGIN_ID = "stt_online_plugin_id"
     
     private const val KEY_PUNCTUATION_MODEL_ENABLED = "punctuation_model_enabled"
     
@@ -346,37 +343,13 @@ object SettingsPreferences {
     fun setSttEnabled(context: Context, enabled: Boolean) {
         getPrefs(context).edit().putBoolean(KEY_STT_ENABLED, enabled).apply()
     }
-    
-    fun getSttProvider(context: Context): String {
-        return getPrefs(context).getString(KEY_STT_PROVIDER, "funasr") ?: "funasr"
+
+    fun getSttOnlinePluginId(context: Context): String {
+        return getPrefs(context).getString(KEY_STT_ONLINE_PLUGIN_ID, "") ?: ""
     }
-    
-    fun setSttProvider(context: Context, provider: String) {
-        getPrefs(context).edit().putString(KEY_STT_PROVIDER, provider).apply()
-    }
-    
-    fun getFunAsrApiKey(context: Context): String {
-        return getPrefs(context).getString(KEY_FUNASR_API_KEY, "") ?: ""
-    }
-    
-    fun setFunAsrApiKey(context: Context, apiKey: String) {
-        getPrefs(context).edit().putString(KEY_FUNASR_API_KEY, apiKey).apply()
-    }
-    
-    fun isSttUseLocal(context: Context): Boolean {
-        return getPrefs(context).getBoolean(KEY_STT_USE_LOCAL, false)
-    }
-    
-    fun setSttUseLocal(context: Context, useLocal: Boolean) {
-        getPrefs(context).edit().putBoolean(KEY_STT_USE_LOCAL, useLocal).apply()
-    }
-    
-    fun isSttKeepModelInRam(context: Context): Boolean {
-        return getPrefs(context).getBoolean(KEY_STT_KEEP_MODEL_IN_RAM, true)
-    }
-    
-    fun setSttKeepModelInRam(context: Context, keep: Boolean) {
-        getPrefs(context).edit().putBoolean(KEY_STT_KEEP_MODEL_IN_RAM, keep).apply()
+
+    fun setSttOnlinePluginId(context: Context, pluginId: String) {
+        getPrefs(context).edit().putString(KEY_STT_ONLINE_PLUGIN_ID, pluginId).apply()
     }
     
     fun isPunctuationModelEnabled(context: Context): Boolean {

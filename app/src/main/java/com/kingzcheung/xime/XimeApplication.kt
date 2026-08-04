@@ -7,6 +7,7 @@ import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.kingzcheung.xime.plugin.ExtensionManager
+import com.kingzcheung.xime.plugin.PluginConfigStoreImpl
 import com.kingzcheung.xime.util.FileLogger
 import com.kingzcheung.xime.plugin.core.runtime.PluginManager
 import com.kingzcheung.xime.rime.RimeConfigHelper
@@ -61,9 +62,11 @@ class XimeApplication : Application(), ImageLoaderFactory {
         }
 
         val isDebug = BuildConfig.DEBUG
+        PluginManager.configStoreFactory =
+            PluginManager.PluginConfigStoreFactory { app, pluginId ->
+                PluginConfigStoreImpl(app, pluginId)
+            }
         PluginManager.initialize(this, HOST_PROVIDER_AUTHORITY) {
-            PluginManager.scanAndInstallSystemPlugins()
-            
             if (isDebug) {
                 PluginManager.installPluginsFromAssetsForDebug("plugins")
             }

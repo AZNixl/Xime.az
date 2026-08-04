@@ -2,6 +2,7 @@ package com.kingzcheung.xime.plugin.core.runtime.installer
 
 import android.app.Application
 import com.kingzcheung.xime.plugin.core.model.PluginInfo
+import com.kingzcheung.xime.plugin.core.model.PluginSource
 import com.kingzcheung.xime.plugin.core.model.ProviderInfo
 import java.io.File
 
@@ -53,6 +54,7 @@ class XmlManager(private val context: Application) {
                     writer.write("    <type>${escapeXml(plugin.type)}</type>\n")
                     writer.write("    <enabled>${plugin.enabled}</enabled>\n")
                     writer.write("    <installTime>${plugin.installTime}</installTime>\n")
+                    writer.write("    <source>${plugin.source.name}</source>\n")
                     if (plugin.nativeLibPath != null) {
                         writer.write("    <nativeLibPath>${escapeXml(plugin.nativeLibPath)}</nativeLibPath>\n")
                     }
@@ -105,6 +107,9 @@ class XmlManager(private val context: Application) {
             val type = extractTag(pluginContent, "type") ?: "unknown"
             val enabled = extractTag(pluginContent, "enabled")?.toBoolean() ?: true
             val installTime = extractTag(pluginContent, "installTime")?.toLongOrNull() ?: System.currentTimeMillis()
+            val source = extractTag(pluginContent, "source")
+                ?.let { runCatching { PluginSource.valueOf(it) }.getOrNull() }
+                ?: PluginSource.SYSTEM
             val nativeLibPath = extractTag(pluginContent, "nativeLibPath")
             val iconResId = extractTag(pluginContent, "iconResId")?.toIntOrNull() ?: 0
             
@@ -124,7 +129,8 @@ class XmlManager(private val context: Application) {
                     enabled = enabled,
                     installTime = installTime,
                     nativeLibPath = nativeLibPath,
-                    providers = providers
+                    providers = providers,
+                    source = source
                 )
             }
         }

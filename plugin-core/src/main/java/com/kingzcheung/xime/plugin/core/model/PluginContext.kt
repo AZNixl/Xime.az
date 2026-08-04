@@ -1,11 +1,14 @@
 package com.kingzcheung.xime.plugin.core.model
 
 import android.app.Application
+import com.kingzcheung.xime.plugin.core.config.NoopPluginConfigStore
+import com.kingzcheung.xime.plugin.core.config.PluginConfigStore
 
 data class PluginContext(
     val application: Application,
     val pluginInfo: PluginInfo,
-    val pluginId: String = pluginInfo.id
+    val pluginId: String = pluginInfo.id,
+    val configStore: PluginConfigStore = NoopPluginConfigStore
 )
 
 data class PluginInfo(
@@ -21,7 +24,9 @@ data class PluginInfo(
     val enabled: Boolean = true,
     val installTime: Long = System.currentTimeMillis(),
     val nativeLibPath: String? = null,
-    val providers: List<ProviderInfo> = emptyList()
+    val providers: List<ProviderInfo> = emptyList(),
+    val source: PluginSource = PluginSource.SYSTEM
 ) {
     val version: String get() = versionName
+    val category: PluginCategory get() = PluginCategory.fromId(type)
 }

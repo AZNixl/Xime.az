@@ -6,6 +6,7 @@ import android.util.Log
 import com.kingzcheung.xime.plugin.core.api.IPluginEntryClass
 import com.kingzcheung.xime.plugin.core.model.PluginContext
 import com.kingzcheung.xime.plugin.core.model.PluginInfo
+import com.kingzcheung.xime.plugin.core.runtime.PluginManager
 import com.kingzcheung.xime.plugin.core.runtime.installer.InstallerManager
 import com.kingzcheung.xime.plugin.core.runtime.installer.XmlManager
 import com.kingzcheung.xime.plugin.core.runtime.loader.DependencyManager
@@ -204,7 +205,8 @@ class PluginLifecycleManager(
             if (instance != null) {
                 val pluginContext = PluginContext(
                     application = application,
-                    pluginInfo = plugin
+                    pluginInfo = plugin,
+                    configStore = PluginManager.configStoreFactory.create(application, plugin.id)
                 )
                 instance.onLoad(pluginContext)
                 Log.d(TAG, "Plugin ${plugin.id} onLoad called successfully")

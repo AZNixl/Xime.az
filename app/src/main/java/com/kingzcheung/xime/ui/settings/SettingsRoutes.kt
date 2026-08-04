@@ -14,7 +14,6 @@ object SettingsRoutes {
     const val PluginSettings = "plugin_settings"
     const val SmartPrediction = "smart_prediction"
     const val SpeechToText = "speech_to_text"
-    const val FunAsrSettings = "funasr_settings"
     const val About = "about"
     const val Privacy = "privacy"
     const val Licenses = "licenses"
