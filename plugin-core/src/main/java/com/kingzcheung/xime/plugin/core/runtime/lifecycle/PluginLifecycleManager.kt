@@ -70,8 +70,18 @@ class PluginLifecycleManager(
         Log.d(TAG, "loadEnabledPlugins called")
         val allPlugins = xmlManager.getAllPlugins()
         Log.d(TAG, "All plugins from XmlManager: ${allPlugins.map { "${it.id}(enabled=${it.enabled})" }}")
-        
-        val enabledPlugins = allPlugins.filter { it.enabled && !loadedPlugins.containsKey(it.id) }
+
+        val hostVersion = com.kingzcheung.xime.plugin.core.util.VersionUtil.getHostVersionName(application)
+        val enabledPlugins = allPlugins.filter { plugin ->
+            if (!plugin.enabled || loadedPlugins.containsKey(plugin.id)) return@filter false
+            val compatible = com.kingzcheung.xime.plugin.core.util.VersionUtil.isHostSupported(
+                hostVersion ?: "", plugin.minHostVersion, plugin.maxHostVersion
+            )
+            if (!compatible) {
+                Log.w(TAG, "Plugin ${plugin.id} 不兼容当前主应用版本，跳过加载")
+            }
+            compatible
+        }
         Log.d(TAG, "Enabled plugins to load: ${enabledPlugins.map { it.id }}")
 
         if (enabledPlugins.isEmpty()) return@withContext 0
@@ -95,6 +105,14 @@ class PluginLifecycleManager(
         val pluginInfo = xmlManager.getPluginById(pluginId)
         if (pluginInfo == null) {
             Log.w(TAG, "Plugin info not found: $pluginId")
+            return false
+        }
+        val hostVersion = com.kingzcheung.xime.plugin.core.util.VersionUtil.getHostVersionName(application)
+        if (!com.kingzcheung.xime.plugin.core.util.VersionUtil.isHostSupported(
+                hostVersion ?: "", pluginInfo.minHostVersion, pluginInfo.maxHostVersion
+            )
+        ) {
+            Log.w(TAG, "Plugin $pluginId 不兼容当前主应用版本，拒绝加载")
             return false
         }
         Log.d(TAG, "Plugin info: path=${pluginInfo.path}, entryClass=${pluginInfo.entryClass}")

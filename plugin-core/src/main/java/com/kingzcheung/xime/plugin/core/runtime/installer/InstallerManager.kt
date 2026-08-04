@@ -28,6 +28,8 @@ class InstallerManager(
         private const val META_PLUGIN_ENTRY_CLASS = "plugin.entryClass"
         private const val META_PLUGIN_DESCRIPTION = "plugin.description"
         private const val META_PLUGIN_TYPE = "plugin.type"
+        private const val META_PLUGIN_MIN_HOST_VERSION = "plugin.minHostVersion"
+        private const val META_PLUGIN_MAX_HOST_VERSION = "plugin.maxHostVersion"
     }
 
     sealed class InstallResult {
@@ -52,6 +54,26 @@ class InstallerManager(
             ?: return@withContext InstallResult.Failure("插件配置解析失败")
         val pluginId = pluginConfig.id
         val pluginDir = getPluginDirectory(pluginId)
+
+        // 校验插件声明的宿主版本范围
+        val hostVersion = com.kingzcheung.xime.plugin.core.util.VersionUtil.getHostVersionName(context)
+        if (hostVersion != null &&
+            !com.kingzcheung.xime.plugin.core.util.VersionUtil.isHostSupported(
+                hostVersion, pluginConfig.minHostVersion, pluginConfig.maxHostVersion
+            )
+        ) {
+            val range = buildString {
+                append("当前主应用版本 v$hostVersion 不在插件支持范围内")
+                if (!pluginConfig.minHostVersion.isNullOrBlank()) {
+                    append("（最低 v${pluginConfig.minHostVersion}")
+                    if (!pluginConfig.maxHostVersion.isNullOrBlank()) {
+                        append(" - v${pluginConfig.maxHostVersion}")
+                    }
+                    append("）")
+                }
+            }
+            return@withContext InstallResult.Failure(range)
+        }
 
         val existingPlugin = xmlManager.getPluginById(pluginId)
         
@@ -90,7 +112,9 @@ class InstallerManager(
                 installTime = existingPlugin?.installTime ?: System.currentTimeMillis(),
                 nativeLibPath = nativeLibPath,
                 providers = pluginConfig.providers,
-                source = source
+                source = source,
+                minHostVersion = pluginConfig.minHostVersion,
+                maxHostVersion = pluginConfig.maxHostVersion
             )
 
             if (existingPlugin != null) {
@@ -169,7 +193,9 @@ class InstallerManager(
         val entryClass: String,
         val description: String,
         val type: String,
-        val providers: List<ProviderInfo>
+        val providers: List<ProviderInfo>,
+        val minHostVersion: String?,
+        val maxHostVersion: String?
     )
 
     @Suppress("DEPRECATION")
@@ -212,7 +238,9 @@ class InstallerManager(
                 entryClass = entryClass,
                 description = description,
                 type = type,
-                providers = providers
+                providers = providers,
+                minHostVersion = metaData.getString(META_PLUGIN_MIN_HOST_VERSION)?.takeIf { it.isNotBlank() },
+                maxHostVersion = metaData.getString(META_PLUGIN_MAX_HOST_VERSION)?.takeIf { it.isNotBlank() }
             )
         } catch (e: Exception) {
             Log.e("InstallerManager", "parsePluginConfig failed", e)

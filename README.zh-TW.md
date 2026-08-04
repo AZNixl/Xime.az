@@ -51,7 +51,7 @@
 - **Rime 引擎** - 使用成熟穩定的 Rime 輸入法引擎，精準可靠的中文輸入體驗
 - **豐富鍵盤佈局** - QWERTY 全鍵盤、T9 九宮格拼音、九宮格筆畫、手寫、數字（含計算機）
 - **懸浮鍵盤** - 懸浮卡片樣式，支援拖拽移動、半透明圓角設計
-- **語音轉文字** - 支援阿里百煉 FunAsr（線上）和內建本機離線語音辨識引擎
+- **語音轉文字** - 透過阿里百煉 FunAsr 外掛實現即時語音辨識（內建標點）
 - **AI 智能增強** - 基於 Transformer 的聯想詞預測和標點預測，輸入更高效
 - **簡潔介面** - Material Design 3 風格，支援淺色/深色主題及多種配色方案
 - **鍵盤調節** - 支援鍵盤高度調整和位置移動
@@ -120,12 +120,6 @@ git submodule update --init --recursive
 ./gradlew assembleRelease
 ```
 
-### 本地語音辨識構建
-
-專案支援本地離線語音辨識，使用自實現的 zipformer2 ASR 引擎（onnxruntime + kaldi-native-fbank）。首次構建時由 Gradle 自動下載依賴（ONNX Runtime、kaldi-native-fbank）。
-
-本地 ASR 模型可在應用程式內設定頁面下載。
-
 ### AI 模型下載
 
 #### 智慧聯想詞模型
@@ -171,8 +165,7 @@ git submodule update --init --recursive
 - [Rime](https://rime.im/) - 中州韻輸入法引擎
 - [Trime](https://github.com/osfans/trime) - 同文輸入法，設定參考
 - [fcitx5-android](https://github.com/fcitx5-android/fcitx5-android) - 鍵盤佈局參考
-- [onnxruntime](https://github.com/microsoft/onnxruntime) - 本地語音辨識推論引擎
-- [kaldi-native-fbank](https://github.com/csukuangfj/kaldi-native-fbank) - 本地語音辨識特徵提取
+- [onnxruntime](https://github.com/microsoft/onnxruntime) - 聯想詞預測與標點預測的 ONNX 推論引擎
 
 ## 授權條款
 

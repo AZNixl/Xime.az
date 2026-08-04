@@ -59,6 +59,12 @@ class XmlManager(private val context: Application) {
                         writer.write("    <nativeLibPath>${escapeXml(plugin.nativeLibPath)}</nativeLibPath>\n")
                     }
                     writer.write("    <iconResId>${plugin.iconResId}</iconResId>\n")
+                    if (plugin.minHostVersion != null) {
+                        writer.write("    <minHostVersion>${escapeXml(plugin.minHostVersion)}</minHostVersion>\n")
+                    }
+                    if (plugin.maxHostVersion != null) {
+                        writer.write("    <maxHostVersion>${escapeXml(plugin.maxHostVersion)}</maxHostVersion>\n")
+                    }
                     if (plugin.providers.isNotEmpty()) {
                         writer.write("    <providers>\n")
                         for (provider in plugin.providers) {
@@ -112,6 +118,8 @@ class XmlManager(private val context: Application) {
                 ?: PluginSource.SYSTEM
             val nativeLibPath = extractTag(pluginContent, "nativeLibPath")
             val iconResId = extractTag(pluginContent, "iconResId")?.toIntOrNull() ?: 0
+            val minHostVersion = extractTag(pluginContent, "minHostVersion")?.takeIf { it.isNotBlank() }
+            val maxHostVersion = extractTag(pluginContent, "maxHostVersion")?.takeIf { it.isNotBlank() }
             
             val providers = parseProviders(pluginContent)
 
@@ -130,7 +138,9 @@ class XmlManager(private val context: Application) {
                     installTime = installTime,
                     nativeLibPath = nativeLibPath,
                     providers = providers,
-                    source = source
+                    source = source,
+                    minHostVersion = minHostVersion,
+                    maxHostVersion = maxHostVersion
                 )
             }
         }

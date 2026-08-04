@@ -129,6 +129,15 @@ class PluginsSettingsViewModel(application: Application) : AndroidViewModel(appl
     fun isPluginEnabled(pluginId: String): Boolean {
         return SettingsPreferences.isPluginEnabled(context, pluginId)
     }
+
+    /** 插件是否兼容当前主应用版本。 */
+    fun isHostCompatible(extension: PluginInfo): Boolean {
+        return try {
+            PluginManager.isPluginHostCompatible(extension)
+        } catch (e: Exception) {
+            true
+        }
+    }
     
     fun setPluginEnabled(pluginId: String, enabled: Boolean) {
         SettingsPreferences.setPluginEnabled(context, pluginId, enabled)

@@ -25,7 +25,9 @@ data class PluginInfo(
     val installTime: Long = System.currentTimeMillis(),
     val nativeLibPath: String? = null,
     val providers: List<ProviderInfo> = emptyList(),
-    val source: PluginSource = PluginSource.SYSTEM
+    val source: PluginSource = PluginSource.SYSTEM,
+    val minHostVersion: String? = null,
+    val maxHostVersion: String? = null
 ) {
     val version: String get() = versionName
     val category: PluginCategory get() = PluginCategory.fromId(type)

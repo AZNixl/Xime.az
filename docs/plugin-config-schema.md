@@ -206,6 +206,28 @@ manifest 的 `plugin.type` 决定插件在「插件管理」里归入哪个分�
 - 新增分类 = 给 `PluginCategory` 加一个枚举值 + 对应消费页；管理 UI、configStore、来源徽标全部通用。
 - `ExtensionManager.getPluginsByCategory(category)` / `getEnabledPluginsByCategory(context, category)` 按分类取插件元数据，替代散落的硬编码过滤。
 
+### 插件宿主版本范围（可选）
+
+插件可在 manifest 声明其支持的**主应用（宿主）版本范围**，宿主在安装与加载时校验，避免宿主更新后插件行为异常：
+
+```xml
+<meta-data
+    android:name="plugin.minHostVersion"
+    android:value="2.6.0" />
+<meta-data
+    android:name="plugin.maxHostVersion"
+    android:value="3.0.0" />
+```
+
+- 字段均为可选；缺省表示"不限版本"（现有插件不声明即默认兼容，不破坏旧插件）。
+- 取值为主应用 `versionName`（如 `2.6.0` / `2.6.0-beta3`），比较时忽略预发布/构建后缀（`-beta3`），按数字段逐位比较（`VersionUtil`）。
+- 宿主行为：
+  - **安装时**：当前 app 版本不在范围内 → 安装失败并提示"当前主应用版本 vX 不在插件支持范围内（最低 vA - vB）"。
+  - **加载时**：批量加载与单插件启动都校验，不兼容的插件跳过加载 / 拒绝启动。
+  - **插件管理页**：不兼容的插件显示 ⚠ 标记、"与主应用版本不兼容"及支持范围，并禁用启用开关 / "去选择"按钮。
+- 常见用法：`minHostVersion` 指向插件依赖的宿主 API 起始版本，`maxHostVersion` 用于提前拦截已知不兼容的大版本升级。
+
+
 ## 八、体积 / 混淆结论
 
 | 项 | 结论 |

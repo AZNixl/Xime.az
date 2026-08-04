@@ -328,6 +328,17 @@ private fun ExtensionItem(
     
     val errors = PluginErrorLog.getErrors(extension.id)
     val hasErrors = errors.isNotEmpty()
+
+    val hostCompatible = remember(extension.id) { viewModel.isHostCompatible(extension) }
+    val hostRange = remember(extension) {
+        buildString {
+            if (!extension.minHostVersion.isNullOrBlank()) append("v${extension.minHostVersion}")
+            if (!extension.maxHostVersion.isNullOrBlank()) {
+                if (isNotEmpty()) append(" - ") else append("≤ ")
+                append("v${extension.maxHostVersion}")
+            }
+        }
+    }
     
     val hasSettings = pluginInstance?.let {
         (it as? com.kingzcheung.xime.plugin.core.config.IPluginConfigurable)
@@ -412,6 +423,15 @@ private fun ExtensionItem(
                             modifier = Modifier.size(14.dp)
                         )
                     }
+
+                    if (!hostCompatible) {
+                        Icon(
+                            Icons.Default.Warning,
+                            contentDescription = "与主应用版本不兼容",
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
                     
                     // 展开指示器
                     Icon(
@@ -469,6 +489,15 @@ private fun ExtensionItem(
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
                     }
+
+                    if (!hostCompatible) {
+                        Text(
+                            text = "该插件不支持当前主应用版本，已跳过加载" +
+                                if (hostRange.isNotEmpty()) "（要求 $hostRange）" else "。请更新主应用后重试。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error.copy(alpha = 0.8f)
+                        )
+                    }
                     
                     // 操作按钮行
                     Row(
@@ -478,16 +507,30 @@ private fun ExtensionItem(
                     ) {
                         if (extension.category.activation == Activation.SINGLE) {
                             // 单选分类：激活在对应功能设置页完成，插件中心不显示启用开关
-                            Text(
-                                text = if (isActive) "当前使用中" else "未使用",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = if (isActive) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            if (!hostCompatible) {
+                                Text(
+                                    text = "与主应用版本不兼容",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            } else {
+                                Text(
+                                    text = if (isActive) "当前使用中" else "未使用",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = if (isActive) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
 
                             Spacer(modifier = Modifier.weight(1f))
 
-                            if (!isActive && onActivate != null) {
+                            if (!hostCompatible && hostRange.isNotEmpty()) {
+                                Text(
+                                    text = "要求 $hostRange",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                )
+                            } else if (!isActive && onActivate != null) {
                                 OutlinedButton(
                                     onClick = onActivate,
                                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
@@ -502,11 +545,14 @@ private fun ExtensionItem(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 Text(
-                                    text = "启用",
-                                    style = MaterialTheme.typography.bodyMedium
+                                    text = if (hostCompatible) "启用" else "不兼容",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = if (hostCompatible) MaterialTheme.colorScheme.onSurface
+                                    else MaterialTheme.colorScheme.error
                                 )
                                 Switch(
                                     checked = isEnabled,
+                                    enabled = hostCompatible,
                                     onCheckedChange = { enabled ->
                                         isEnabled = enabled
                                         viewModel.setPluginEnabled(extension.id, enabled)

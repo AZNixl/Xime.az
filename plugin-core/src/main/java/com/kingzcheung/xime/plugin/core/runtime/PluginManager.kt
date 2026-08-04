@@ -165,6 +165,14 @@ object PluginManager {
         return requireContext().xmlManager.getAllPlugins()
     }
 
+    /** 判断插件是否兼容当前主应用版本（宿主侧读取自身版本）。 */
+    fun isPluginHostCompatible(plugin: PluginInfo): Boolean {
+        val hostVersion = com.kingzcheung.xime.plugin.core.util.VersionUtil.getHostVersionName(requireContext().application)
+        return com.kingzcheung.xime.plugin.core.util.VersionUtil.isHostSupported(
+            hostVersion ?: "", plugin.minHostVersion, plugin.maxHostVersion
+        )
+    }
+
     fun getPluginDependentsChain(pluginId: String): List<String> {
         return requireContext().dependencyManager.findDependentsRecursive(pluginId)
     }
