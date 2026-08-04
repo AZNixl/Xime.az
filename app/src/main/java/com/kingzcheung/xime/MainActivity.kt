@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowInsetsControllerCompat
 import com.kingzcheung.xime.rime.RimeConfigHelper
 import com.kingzcheung.xime.rime.RimeEngine
+import com.kingzcheung.xime.settings.ImportManager
 import com.kingzcheung.xime.settings.KeysConfigHelper
 import com.kingzcheung.xime.settings.SchemaManager
 import com.kingzcheung.xime.settings.SettingsPreferences
@@ -217,14 +218,37 @@ class MainActivity : ComponentActivity() {
     
     private fun importSchema(uri: android.net.Uri) {
         prewarmScope.launch {
-            val result = SchemaManager.importSchemaFile(this@MainActivity, uri)
-            launch(Dispatchers.Main) {
-                val msg = when {
-                    !result.success -> "方案导入失败"
-                    result.installedDirect -> "方案导入成功，已放入 rime 目录"
-                    else -> "方案导入成功，请到「输入方案」页面部署"
+            when (val result = ImportManager.import(this@MainActivity, uri)) {
+                is ImportManager.ImportResult.Content -> {
+                    launch(Dispatchers.Main) {
+                        val msg = when {
+                            !result.success -> "导入失败"
+                            result.installedDirect -> "导入成功，已放入 rime 目录"
+                            else -> "方案导入成功，请到「输入方案」页面部署"
+                        }
+                        Toast.makeText(this@MainActivity, msg, Toast.LENGTH_LONG).show()
+                    }
                 }
-                Toast.makeText(this@MainActivity, msg, Toast.LENGTH_LONG).show()
+                is ImportManager.ImportResult.Plugin -> {
+                    com.kingzcheung.xime.plugin.core.runtime.PluginManager.loadEnabledPlugins()
+                    launch(Dispatchers.Main) {
+                        Toast.makeText(
+                            this@MainActivity,
+                            "插件「${result.pluginInfo?.name}」安装成功",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+                is ImportManager.ImportResult.Failed -> {
+                    launch(Dispatchers.Main) {
+                        Toast.makeText(this@MainActivity, "导入失败：${result.reason}", Toast.LENGTH_LONG).show()
+                    }
+                }
+                is ImportManager.ImportResult.Unsupported -> {
+                    launch(Dispatchers.Main) {
+                        Toast.makeText(this@MainActivity, "不支持的文件类型", Toast.LENGTH_LONG).show()
+                    }
+                }
             }
         }
     }

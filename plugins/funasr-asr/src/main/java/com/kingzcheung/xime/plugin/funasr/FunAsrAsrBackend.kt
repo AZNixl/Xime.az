@@ -31,9 +31,11 @@ class FunAsrAsrBackend(
         Log.i(TAG, "Initializing FunAsr backend with API key (length: ${apiKey.length})")
         wsManager = FunAsrWebSocketManager(
             apiKey = apiKey,
-            onResult = { text, _ ->
+            onResult = { text, isFinal ->
+                // text 是当前句的完整文本；非最终发 onPartial 整段替换预览，最终发 onFinal 提交
                 if (text.isNotEmpty()) {
-                    listener?.onFinal(text)
+                    if (isFinal) listener?.onFinal(text)
+                    else listener?.onPartial(text)
                 }
             },
             onError = { error ->

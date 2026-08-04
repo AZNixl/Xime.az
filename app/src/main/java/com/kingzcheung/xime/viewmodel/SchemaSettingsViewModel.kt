@@ -4,8 +4,10 @@ import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.kingzcheung.xime.plugin.core.runtime.PluginManager
 import com.kingzcheung.xime.rime.RimeConfigHelper
 import com.kingzcheung.xime.rime.RimeEngine
+import com.kingzcheung.xime.settings.ImportManager
 import com.kingzcheung.xime.settings.KeysConfigHelper
 import com.kingzcheung.xime.settings.PersonalDictManager
 import com.kingzcheung.xime.settings.SchemaManifestManager
@@ -105,17 +107,24 @@ class SchemaSettingsViewModel(application: Application) : AndroidViewModel(appli
 
     fun importSchemaFile(uri: Uri) {
         viewModelScope.launch {
-            val result = SchemaManager.importSchemaFile(context, uri)
-            refresh()
-            _importCompleted.tryEmit(Unit)
-            if (result.success) {
-                if (result.installedDirect) {
-                    showToast("导入成功，已放入 rime 目录")
-                } else {
-                    showToast("导入成功，请到「本地方案」安装")
+            when (val result = ImportManager.import(context, uri)) {
+                is ImportManager.ImportResult.Content -> {
+                    refresh()
+                    _importCompleted.tryEmit(Unit)
+                    showToast(
+                        if (!result.success) "导入失败"
+                        else if (result.installedDirect) "导入成功，已放入 rime 目录"
+                        else "导入成功，请到「本地方案」安装"
+                    )
                 }
-            } else {
-                showToast("导入失败")
+                is ImportManager.ImportResult.Plugin -> {
+                    withContext(Dispatchers.IO) { PluginManager.loadEnabledPlugins() }
+                    refresh()
+                    _importCompleted.tryEmit(Unit)
+                    showToast("插件「${result.pluginInfo?.name}」安装成功")
+                }
+                is ImportManager.ImportResult.Failed -> showToast("导入失败：${result.reason}")
+                is ImportManager.ImportResult.Unsupported -> showToast("不支持的文件类型")
             }
         }
     }

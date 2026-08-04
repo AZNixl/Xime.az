@@ -169,26 +169,65 @@ class VoiceRecognitionHandler(
 
     private var lastPartialText = ""
     private var lastAmplitudeUpdate = 0L
+    // 抬起时已提交当前识别文本后，置真以忽略随后可能迟到的重复最终结果
+    private var suppressDuplicateFinal = false
+
+    // 语音按钮长按抬起时调用：立即提交当前已识别的文本（不依赖可能被断连竞态吞掉的异步最终结果）
+    fun commitPendingOnRelease() {
+        val ic = getInputConnection() ?: return
+        val partial = lastPartialText
+        if (partial.isEmpty()) return
+        val punctuatedText = addPunctuation(partial)
+        commitFinal(ic, punctuatedText, partial)
+        suppressDuplicateFinal = true
+        lastPartialText = ""
+    }
 
     private fun handleSpeechResult(text: String) {
         Log.d(TAG, "Speech result (final): $text")
-        lastPartialText = ""
+
+        if (suppressDuplicateFinal) {
+            // 抬起时已提交，忽略迟到的重复最终结果
+            suppressDuplicateFinal = false
+            lastPartialText = ""
+            onVoiceComplete()
+            return
+        }
 
         val cleanText = text.replace(" ", "")
-        if (cleanText.isNotEmpty() && !cleanText.startsWith("错误:")) {
-            val ic = getInputConnection()
-            if (ic != null) {
-                val punctuatedText = addPunctuation(cleanText)
-                ic.commitText(punctuatedText, 1)
-            }
+        val ic = getInputConnection()
+        if (ic != null && cleanText.isNotEmpty() && !cleanText.startsWith("错误:")) {
+            val punctuatedText = addPunctuation(cleanText)
+            commitFinal(ic, punctuatedText, lastPartialText)
         }
+        lastPartialText = ""
         onVoiceComplete()
+    }
+    
+    // BiBi 模式：先结束 composing，再只提交增量，避免重复与整段重写。
+    private fun commitFinal(ic: InputConnection, finalText: String, partial: String) {
+        ic.finishComposingText()
+        if (partial.isNotEmpty() && finalText.startsWith(partial)) {
+            val remainder = finalText.substring(partial.length)
+            if (remainder.isNotEmpty()) {
+                ic.commitText(remainder, 1)
+            }
+        } else {
+            // 最终结果与部分结果不一致：删除已上屏的部分，再提交完整结果
+            if (partial.isNotEmpty()) {
+                ic.deleteSurroundingText(partial.length, 0)
+            }
+            ic.commitText(finalText, 1)
+        }
     }
     
     private fun addPunctuation(text: String): String {
         val cleanText = text.trim().replace(" ", "")
         if (cleanText.isEmpty()) return text
-        
+
+        // 若文本末尾已带句末标点（如 funasr 等自带标点的后端），不再追加，避免"。。"
+        if (cleanText.last() in "。！？；：，、；：,.!?;:，") return cleanText
+
         val punctuationEnabled = SettingsPreferences.isPunctuationModelEnabled(context)
         if (punctuationEnabled && punctuationInitialized) {
             try {
@@ -231,6 +270,7 @@ class VoiceRecognitionHandler(
         Log.d(TAG, "Speech state changed: $state")
         if (state == RecognitionState.LISTENING) {
             lastPartialText = ""
+            suppressDuplicateFinal = false
         }
         onStateChanged(getState().copy(voiceRecognitionState = state))
     }

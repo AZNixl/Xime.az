@@ -7,6 +7,7 @@ import android.net.wifi.WifiManager
 import android.util.Log
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
+import com.kingzcheung.xime.plugin.core.runtime.PluginManager
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.*
@@ -216,26 +217,40 @@ class WirelessImportHelper(private val context: Context) {
                                 val contentLen = partEnd - contentStart
 
                 when {
+                    ImportManager.isPluginFile(name) ||
                     name.endsWith(".zip", ignoreCase = true) ||
                     name.endsWith(".tar.gz", ignoreCase = true) ||
                     name.endsWith(".tgz", ignoreCase = true) ||
                     name.endsWith(".yaml") || name.endsWith(".schema.yaml") || name.endsWith(".dict.yaml") ||
                     name.endsWith(".jpg", ignoreCase = true) || name.endsWith(".jpeg", ignoreCase = true) ||
                     name.endsWith(".png", ignoreCase = true) -> {
-                        // 经临时文件传递给 saveImportedFile，避免大文件 ByteArray OOM
+                        // 经临时文件传递给 ImportManager，避免大文件 ByteArray OOM
                         val partFile = File.createTempFile("part_", "_$name", context.cacheDir)
                         try {
                             partFile.outputStream().use { out ->
                                 raf.channel.transferTo(contentStart, contentLen, out.channel)
                             }
-                            val result = SchemaManager.saveImportedFile(
-                                context, name, partFile.inputStream(), autoEnable = false
-                            )
-                            saved = result.success
-                            _uploadResults.trySend(
-                                if (result.success) UploadResult(fileName = name, success = true)
-                                else UploadResult(fileName = name, success = false, error = "保存失败")
-                            )
+                            when (val result = ImportManager.importFile(
+                                context, name, partFile, autoEnable = false
+                            )) {
+                                is ImportManager.ImportResult.Plugin -> {
+                                    PluginManager.loadEnabledPlugins()
+                                    saved = true
+                                    _uploadResults.trySend(UploadResult(fileName = name, success = true))
+                                }
+                                is ImportManager.ImportResult.Content -> {
+                                    saved = result.success
+                                    _uploadResults.trySend(
+                                        if (result.success) UploadResult(fileName = name, success = true)
+                                        else UploadResult(fileName = name, success = false, error = "保存失败")
+                                    )
+                                }
+                                else -> {
+                                    _uploadResults.trySend(
+                                        UploadResult(fileName = name, success = false, error = "不支持的文件类型")
+                                    )
+                                }
+                            }
                         } finally {
                             partFile.delete()
                         }

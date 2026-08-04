@@ -37,7 +37,6 @@ class FunAsrWebSocketManager(
     private var state: State = State.IDLE
     private val coroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    private var lastResultText: String = ""
     private val prebuffer = java.util.ArrayDeque<ByteArray>()
     private val prebufferLock = Any()
 
@@ -52,7 +51,6 @@ class FunAsrWebSocketManager(
     fun getState(): State = state
 
     fun connect(): Boolean {
-        lastResultText = ""
         synchronized(prebufferLock) { prebuffer.clear() }
 
         // 已连接或连接中：幂等复用，避免重复发起连接导致时序冲突
@@ -73,7 +71,7 @@ class FunAsrWebSocketManager(
             state = State.CONNECTING
             onStateChanged(state)
 
-            taskId = UUID.randomUUID().toString().replace("-", "").take(32)
+            taskId = UUID.randomUUID().toString()
 
             client = OkHttpClient.Builder()
                 .pingInterval(Duration.ofSeconds(30))
@@ -108,12 +106,12 @@ class FunAsrWebSocketManager(
                 put("action", "run-task")
                 put("task_id", taskId)
                 put("streaming", "duplex")
+            })
+            put("payload", JSONObject().apply {
                 put("task_group", "audio")
                 put("task", "asr")
                 put("function", "recognition")
                 put("model", MODEL)
-            })
-            put("payload", JSONObject().apply {
                 put("parameters", JSONObject().apply {
                     put("format", FORMAT)
                     put("sample_rate", SAMPLE_RATE)
@@ -225,22 +223,10 @@ class FunAsrWebSocketManager(
                                 state = State.PROCESSING
                                 onStateChanged(state)
 
+                                // sentence.text 是当前句的完整累积文本，直接原样上抛，
+                                // 由上层整段替换显示，避免增量/累积导致的重复文本。
                                 if (resultText.isNotEmpty()) {
-                                    val incrementalText = if (lastResultText.isNotEmpty() && resultText.startsWith(lastResultText)) {
-                                        resultText.substring(lastResultText.length)
-                                    } else {
-                                        resultText
-                                    }
-
-                                    if (incrementalText.isNotEmpty()) {
-                                        onResult(incrementalText, isFinal)
-                                    }
-
-                                    if (isFinal) {
-                                        lastResultText = ""
-                                    } else {
-                                        lastResultText = resultText
-                                    }
+                                    onResult(resultText, isFinal)
                                 }
                             } else {
                                 Log.w(TAG, "No sentence in output")

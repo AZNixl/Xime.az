@@ -38,13 +38,17 @@ import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -73,6 +77,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -110,11 +115,24 @@ fun PluginsSettingsContent(
         uris.forEach { viewModel.installPluginFromUri(it) }
     }
 
+    var showWirelessSheet by remember { mutableStateOf(false) }
+    var showMenu by remember { mutableStateOf(false) }
+
     LaunchedEffect(importMessage) {
         if (importMessage != null) {
             Toast.makeText(context, importMessage, Toast.LENGTH_SHORT).show()
             viewModel.consumeImportMessage()
         }
+    }
+
+    if (showWirelessSheet) {
+        WirelessImportSheet(
+            onDismiss = {
+                showWirelessSheet = false
+                viewModel.refreshPlugins()
+            },
+            onRefresh = { viewModel.refreshPlugins() }
+        )
     }
     
     Scaffold(
@@ -131,6 +149,42 @@ fun PluginsSettingsContent(
                     }
                 },
                 actions = {
+                    Box {
+                        IconButton(onClick = { showMenu = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "更多")
+                        }
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false },
+                            offset = DpOffset(0.dp, 4.dp),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("从文件安装插件 (.xipk)") },
+                                onClick = {
+                                    showMenu = false
+                                    importLauncher.launch(arrayOf("*/*"))
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.FileOpen, null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp))
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("浏览器导入") },
+                                onClick = {
+                                    showMenu = false
+                                    showWirelessSheet = true
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Wifi, null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp))
+                                }
+                            )
+                        }
+                    }
                     IconButton(onClick = { viewModel.refreshPlugins() }) {
                         Icon(
                             imageVector = Icons.Default.Refresh,
@@ -170,16 +224,6 @@ fun PluginsSettingsContent(
                     )
                 }
             } else {
-                item {
-                    OutlinedButton(
-                        onClick = { importLauncher.launch(arrayOf("*/*")) },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(Icons.Default.FileOpen, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("从文件安装插件 (.xipk)")
-                    }
-                }
                 if (uiState.extensions.isEmpty()) {
                     item {
                         Box(
@@ -434,7 +478,7 @@ private fun ExtensionItem(
                                     onClick = onActivate,
                                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                                 ) {
-                                    Text("去语音转文本设置选择", style = MaterialTheme.typography.labelMedium)
+                                    Text("去选择", style = MaterialTheme.typography.labelMedium)
                                 }
                             }
                         } else {

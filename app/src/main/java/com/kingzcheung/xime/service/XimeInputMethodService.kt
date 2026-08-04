@@ -1039,6 +1039,9 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                             voiceRecordingStarted = true
                                             voiceRecognitionHandler.startRecognition()
                                         } else {
+                                            // 长按抬起：先立即提交当前已识别文本，再结束识别
+                                            voiceRecognitionHandler.commitPendingOnRelease()
+                                            voiceRecognitionHandler.stopRecognition()
                                             keyboardViewModel.exitVoice()
                                             isTrackingVoiceButtons = false
                                         }

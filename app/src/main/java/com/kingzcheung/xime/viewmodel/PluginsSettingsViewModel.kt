@@ -8,7 +8,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.kingzcheung.xime.plugin.core.model.PluginInfo
 import com.kingzcheung.xime.plugin.core.runtime.PluginManager
-import com.kingzcheung.xime.plugin.core.runtime.installer.InstallerManager
+import com.kingzcheung.xime.settings.ImportManager
 import com.kingzcheung.xime.settings.SettingsPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -43,24 +43,21 @@ class PluginsSettingsViewModel(application: Application) : AndroidViewModel(appl
     fun installPluginFromUri(uri: Uri) {
         viewModelScope.launch {
             val displayName = queryDisplayName(uri)
-            if (displayName == null ||
-                !(displayName.endsWith(".xipk", ignoreCase = true) ||
-                    displayName.endsWith(".apk", ignoreCase = true))
-            ) {
-                _importMessage.value = "请选择 .xipk 或 .apk 插件文件"
+            if (displayName == null || !ImportManager.isPluginFile(displayName)) {
+                _importMessage.value = "请选择 .xipk 插件文件"
                 return@launch
             }
-            val result = withContext(Dispatchers.IO) {
-                PluginManager.installerManager.installPluginFromUri(uri)
-            }
-            when (result) {
-                is InstallerManager.InstallResult.Success -> {
+            when (val result = ImportManager.import(context, uri)) {
+                is ImportManager.ImportResult.Plugin -> {
                     PluginManager.loadEnabledPlugins()
                     refreshPlugins()
-                    _importMessage.value = "插件「${result.pluginInfo.name}」安装成功"
+                    _importMessage.value = "插件「${result.pluginInfo?.name ?: ""}」安装成功"
                 }
-                is InstallerManager.InstallResult.Failure -> {
+                is ImportManager.ImportResult.Failed -> {
                     _importMessage.value = "安装失败：${result.reason}"
+                }
+                else -> {
+                    _importMessage.value = "安装失败：未知错误"
                 }
             }
         }
