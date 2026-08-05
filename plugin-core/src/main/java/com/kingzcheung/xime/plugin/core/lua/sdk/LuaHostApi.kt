@@ -114,6 +114,6 @@ class LuaHostApiImpl(
     }
 
     override fun uuid(): String {
-        return java.util.UUID.randomUUID().toString().replace("-", "")
+        return java.util.UUID.randomUUID().toString()
     }
 }

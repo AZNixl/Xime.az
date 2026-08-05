@@ -5,6 +5,8 @@ import com.kingzcheung.xime.plugin.core.config.PluginConfigStore
 import com.kingzcheung.xime.plugin.core.lua.ws.WsHostApi
 import com.kingzcheung.xime.plugin.core.lua.ws.WsHostListener
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.luaj.vm2.LuaString
@@ -114,9 +116,14 @@ class LuaVolcAsrPluginTest {
         // 设置 schema 非空（插件中心渲染表单的前提）
         val schema = LuaScriptRuntime.tableToList(runtime.call("getSettingsSchema"))
         assertTrue("getSettingsSchema 应非空", schema.isNotEmpty())
-        val schemaKeys = schema.mapNotNull { LuaScriptRuntime.tableToMap(it)["key"]?.tojstring() }
+        val schemaFields = schema.map { LuaScriptRuntime.tableToMap(it) }
+        val schemaKeys = schemaFields.mapNotNull { it["key"]?.tojstring() }
         assertTrue("schema 应含 apiKey", schemaKeys.contains("apiKey"))
         assertTrue("schema 应含 resourceId", schemaKeys.contains("resourceId"))
+        val apiKeyField = schemaFields.first { it["key"]?.tojstring() == "apiKey" }
+        val appKeyField = schemaFields.first { it["key"]?.tojstring() == "appKey" }
+        assertNull("apiKey 未声明 required（默认必填）", apiKeyField["required"])
+        assertFalse("appKey 旧鉴权应为可选", appKeyField["required"]?.toboolean() == true)
 
         val collector = ResultCollector()
         runtime.asrResultCallback = collector
@@ -130,8 +137,10 @@ class LuaVolcAsrPluginTest {
         assertTrue("start 应成功", runtime.call("start").toboolean())
         assertTrue("连接地址应为火山域名", mock.connectedUrl?.contains("openspeech.bytedance.com") == true)
         assertEquals("test-api-key", mock.connectedHeaders["X-Api-Key"])
-        assertEquals("volc.bigasr.sauc.duration", mock.connectedHeaders["X-Api-Resource-Id"])
+        assertEquals("volc.seedasr.sauc.duration", mock.connectedHeaders["X-Api-Resource-Id"])
         assertTrue("应带 X-Api-Request-Id", mock.connectedHeaders["X-Api-Request-Id"].isNullOrEmpty().not())
+        assertEquals("应带 X-Api-Sequence=-1", "-1", mock.connectedHeaders["X-Api-Sequence"])
+        assertTrue("应带 X-Api-Connect-Id", mock.connectedHeaders["X-Api-Connect-Id"].isNullOrEmpty().not())
 
         // onOpen → Lua 组装 full client request 帧（0x1, flags=POS_SEQUENCE, json, gzip）
         mock.hostListener?.onOpen()

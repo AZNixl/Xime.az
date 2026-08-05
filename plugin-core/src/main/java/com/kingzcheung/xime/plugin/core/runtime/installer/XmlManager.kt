@@ -114,9 +114,7 @@ class XmlManager(private val context: Application) {
                 ?.map { it.trim() }
                 ?.filter { it.isNotBlank() }
                 ?: emptyList()
-            val trustLevel = extractTag(pluginContent, "trustLevel")
-                ?.let { runCatching { com.kingzcheung.xime.plugin.core.model.TrustLevel.valueOf(it) }.getOrNull() }
-                ?: com.kingzcheung.xime.plugin.core.model.TrustLevel.UNKNOWN
+            val trustLevel = com.kingzcheung.xime.plugin.core.util.PluginSignatureUtil.classifyLuaPlugin(source)
 
             if (id != null && path != null) {
                 plugins[id] = PluginInfo(

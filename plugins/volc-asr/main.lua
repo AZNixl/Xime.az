@@ -31,7 +31,7 @@ local KEY_API_KEY = "apiKey"
 local KEY_APP_KEY = "appKey"
 local KEY_ACCESS_KEY = "accessKey"
 local KEY_RESOURCE_ID = "resourceId"
-local DEFAULT_RESOURCE = "volc.bigasr.sauc.duration"
+local DEFAULT_RESOURCE = "volc.seedasr.sauc.duration"
 
 local MSG_FULL_CLIENT_REQ = 0x1
 local MSG_AUDIO_ONLY = 0x2
@@ -92,6 +92,7 @@ function plugin.getSettingsSchema()
             key = KEY_APP_KEY,
             label = "App Key（旧鉴权）",
             type = "secret",
+            required = false,
             placeholder = "旧版 App Key（可选）",
             section = "旧鉴权",
         },
@@ -99,6 +100,7 @@ function plugin.getSettingsSchema()
             key = KEY_ACCESS_KEY,
             label = "Access Key（旧鉴权）",
             type = "secret",
+            required = false,
             placeholder = "旧版 Access Key（可选）",
             section = "旧鉴权",
         },
@@ -108,7 +110,7 @@ function plugin.getSettingsSchema()
             type = "text",
             defaultValue = DEFAULT_RESOURCE,
             placeholder = DEFAULT_RESOURCE,
-            helpText = "默认流式识别 1.0；2.0 模型填 volc.seedasr.sauc.duration",
+            helpText = "默认流式识别 2.0（volc.seedasr.sauc.duration）；1.0 模型填 volc.bigasr.sauc.duration",
         },
     }
 end
@@ -222,6 +224,8 @@ function plugin.start()
     end
     headers["X-Api-Resource-Id"] = host.config.get(KEY_RESOURCE_ID) or DEFAULT_RESOURCE
     headers["X-Api-Request-Id"] = taskId
+    headers["X-Api-Connect-Id"] = host.uuid()
+    headers["X-Api-Sequence"] = "-1"
 
     local ok = host.ws.connect(WS_URL, headers, {
         onOpen = function() plugin.onWsOpen() end,

@@ -88,6 +88,20 @@ class PluginSettingFieldTest {
         assertNull(field.defaultValue)
         assertTrue(field.options.isEmpty())
         assertNull(field.helpText)
+        assertNull(field.section)
+        assertTrue("SECRET 字段默认必填", field.required)
+    }
+
+    @Test
+    fun `PluginSettingField can be optional`() {
+        val field = PluginSettingField(
+            key = "appKey",
+            label = "App Key",
+            type = PluginFieldType.SECRET,
+            required = false
+        )
+
+        assertFalse(field.required)
     }
 
     @Test
