@@ -115,6 +115,15 @@ class WsHostApiImpl(
 
     override fun lastError(): String? = lastErrorMsg
 
+    private fun extractServerError(body: String): String? {
+        if (body.isBlank()) return null
+        return try {
+            org.json.JSONObject(body).optString("error").takeIf { it.isNotBlank() }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     private val wsListener = object : WebSocketListener() {
         override fun onOpen(webSocket: WebSocket, response: Response) {
             state = STATE_OPEN
@@ -130,9 +139,14 @@ class WsHostApiImpl(
         }
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-            Log.e(TAG, "WS failure: ${t.message}")
+            val serverMsg = response?.let { r ->
+                val body = try { r.body?.string() ?: "" } catch (e: Exception) { "" }
+                val reason = extractServerError(body) ?: "HTTP ${r.code}"
+                "HTTP ${r.code}: $reason"
+            } ?: ""
+            Log.e(TAG, "WS failure: ${t.message} | $serverMsg")
             state = STATE_CLOSED
-            listener?.onError(t.message ?: "连接失败")
+            listener?.onError(serverMsg.ifEmpty { t.message ?: "连接失败" })
         }
 
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {

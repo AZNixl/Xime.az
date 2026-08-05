@@ -144,7 +144,7 @@ fun PluginConfigFormScreen(
                     onClick = {
                         var allValid = true
                         fields.forEach { field ->
-                            if (field.type == PluginFieldType.SECRET) {
+                            if (field.type == PluginFieldType.SECRET && field.required) {
                                 val current = configStore.get(field.key)
                                 if (current.isNullOrBlank()) allValid = false
                             }

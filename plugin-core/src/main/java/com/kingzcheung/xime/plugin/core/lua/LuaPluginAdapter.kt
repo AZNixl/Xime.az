@@ -33,7 +33,8 @@ open class LuaPluginAdapter(
                 defaultValue = map["defaultValue"]?.tojstring(),
                 options = stringList(map["options"] ?: LuaValue.NIL),
                 helpText = map["helpText"]?.tojstring(),
-                section = map["section"]?.tojstring()
+                section = map["section"]?.tojstring(),
+                required = map["required"]?.toboolean() ?: true
             )
         }
     }

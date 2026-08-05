@@ -10,7 +10,8 @@ data class PluginSettingField(
     val defaultValue: String? = null,
     val options: List<String> = emptyList(),
     val helpText: String? = null,
-    val section: String? = null
+    val section: String? = null,
+    val required: Boolean = true
 )
 
 interface IPluginConfigurable {

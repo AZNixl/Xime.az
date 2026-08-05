@@ -44,16 +44,18 @@ configSchema:
   - key: appKey
     label: App Key（旧鉴权）
     type: secret
+    required: false
     placeholder: 旧版 App Key（可选）
     section: 旧鉴权
   - key: accessKey
     label: Access Key（旧鉴权）
     type: secret
+    required: false
     placeholder: 旧版 Access Key（可选）
     section: 旧鉴权
   - key: resourceId
     label: 模型资源 ID
     type: text
-    defaultValue: volc.bigasr.sauc.duration
-    placeholder: volc.bigasr.sauc.duration
-    helpText: 默认流式识别 1.0；2.0 模型填 volc.seedasr.sauc.duration
+    defaultValue: volc.seedasr.sauc.duration
+    placeholder: volc.seedasr.sauc.duration
+    helpText: 默认流式识别 2.0（volc.seedasr.sauc.duration）；1.0 模型填 volc.bigasr.sauc.duration
