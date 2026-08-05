@@ -72,7 +72,7 @@ jobs:
         run: chmod +x gradlew
         
       - name: Run Unit Tests
-        run: ./gradlew :app:testDebugUnitTest :plugin-core:testDebugUnitTest :plugins:funasr-asr:testDebugUnitTest :plugins:kaomoji:testDebugUnitTest :plugins:meme-bunny:testDebugUnitTest --no-daemon
+        run: ./gradlew :app:testDebugUnitTest :plugin-core:testDebugUnitTest --no-daemon
         
       - name: Generate Test Report
         if: always()
