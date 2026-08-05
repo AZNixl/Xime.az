@@ -120,7 +120,7 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build Nightly APKs and Plugin XIPKs (Unsigned)
+      - name: Build Nightly APKs (Unsigned)
         run: |
           DATE=$(date +'%Y%m%d')
           COMMIT=$(git rev-parse --short HEAD)
@@ -130,6 +130,9 @@ jobs:
             -PversionCode=$DATE \
             -PversionName="${BASE_VERSION}-nightly-$DATE-$COMMIT" \
             --no-daemon
+
+      - name: Build Plugin XIPKs (Unsigned)
+        run: bash scripts/build-plugins.sh
 
       - name: Sign Main App APKs
         uses: r0adkll/sign-android-release@v1
@@ -142,36 +145,6 @@ jobs:
           keyPassword: ${{ secrets.KEY_PASSWORD }}
         env:
           BUILD_TOOLS_VERSION: "34.0.0"
-
-      - name: Stage plugin xipk as apk for signing
-        run: |
-          mkdir -p build/plugin-staging
-          for dir in plugins/*/build/outputs/apk/release; do
-            for f in "$dir"/*.xipk; do
-              [ -e "$f" ] || continue
-              cp "$f" "build/plugin-staging/$(basename "$f" .xipk).apk"
-            done
-          done
-
-      - name: Sign Plugin XIPKs
-        uses: r0adkll/sign-android-release@v1
-        id: sign_plugins
-        with:
-          releaseDirectory: build/plugin-staging
-          signingKeyBase64: ${{ secrets.SIGNING_KEY }}
-          alias: ${{ secrets.ALIAS }}
-          keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
-          keyPassword: ${{ secrets.KEY_PASSWORD }}
-        env:
-          BUILD_TOOLS_VERSION: "34.0.0"
-
-      - name: Rename signed plugin apk back to xipk
-        run: |
-          mkdir -p build/plugin-release
-          for f in build/plugin-staging/*-signed.apk; do
-            [ -e "$f" ] || continue
-            mv "$f" "build/plugin-release/$(basename "$f" -signed.apk).xipk"
-          done
 
       - name: Get build info
         id: info

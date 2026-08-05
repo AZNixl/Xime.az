@@ -24,7 +24,8 @@ for plugin_dir in "$PROJECT_DIR"/plugins/*/; do
   fi
 
   name=$(basename "$plugin_dir")
-  version=$(python3 -c "import yaml; print(yaml.safe_load(open('$manifest')).get('version','0.0.0'))" 2>/dev/null || echo "0.0.0")
+  version=$(sed -n 's/^[[:space:]]*version:[[:space:]]*//p' "$manifest" | head -1 | tr -d '"')
+  version=${version:-0.0.0}
   out="$OUTPUT_DIR/${name}-${version}.xipk"
   rm -f "$out"
 

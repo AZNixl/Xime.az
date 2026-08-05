@@ -91,12 +91,15 @@ jobs:
           
       - name: Build Debug APKs
         run: ./gradlew assembleDebug --no-daemon
-        
+
+      - name: Build Plugin XIPKs
+        run: bash scripts/build-plugins.sh
+
       - name: Upload Debug APKs
         uses: actions/upload-artifact@v7
         with:
           name: debug-apks
           path: |
             app/build/outputs/apk/debug/*.apk
-            plugins/*/build/outputs/apk/debug/*.xipk
+            build/plugin-release/*.xipk
           retention-days: 7
