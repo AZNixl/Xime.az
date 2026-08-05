@@ -2,8 +2,11 @@ package com.kingzcheung.xime.plugin
 
 import android.content.Context
 import android.util.Log
+import com.kingzcheung.xime.plugin.core.api.AsrPlugin
 import com.kingzcheung.xime.plugin.core.api.EmojiPlugin
+import com.kingzcheung.xime.plugin.core.api.IPluginEntryClass
 import com.kingzcheung.xime.plugin.core.api.PluginIcon
+import com.kingzcheung.xime.plugin.core.model.PluginCategory
 import com.kingzcheung.xime.plugin.core.model.PluginInfo
 import com.kingzcheung.xime.plugin.core.runtime.PluginManager
 import com.kingzcheung.xime.settings.SettingsPreferences
@@ -20,7 +23,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.util.zip.ZipFile
 
 object ExtensionManager {
     private const val TAG = "ExtensionManager"
@@ -47,7 +49,7 @@ object ExtensionManager {
         }
     }
     
-    private fun extractPluginIcon(context: Context, pluginId: String, plugin: EmojiPlugin, pluginInfo: PluginInfo?): PluginIcon? {
+    fun extractPluginIcon(context: Context, pluginId: String, plugin: IPluginEntryClass, pluginInfo: PluginInfo?): PluginIcon? {
         val pluginIcon = try {
             plugin.getIcon()
         } catch (e: Exception) {
@@ -70,22 +72,15 @@ object ExtensionManager {
         if (!iconDir.exists()) iconDir.mkdirs()
         
         val iconFile = File(iconDir, "${pluginId}_$assetName")
-        
+
         if (!iconFile.exists()) {
-            val apkPath = pluginInfo?.path
-            if (apkPath != null) {
+            // Lua 插件资源在 resources/ 目录（path 指向入口脚本，其父目录为插件目录）
+            val resourceFile = pluginInfo?.path
+                ?.let { File(it).parentFile }
+                ?.let { File(it, "resources/$assetName") }
+            if (resourceFile != null && resourceFile.exists()) {
                 try {
-                    ZipFile(File(apkPath)).use { zip ->
-                        val entry = zip.entries().asSequence()
-                            .firstOrNull { it.name == "assets/$assetName" }
-                        if (entry != null) {
-                            zip.getInputStream(entry).use { input ->
-                                iconFile.outputStream().use { output ->
-                                    input.copyTo(output)
-                                }
-                            }
-                        }
-                    }
+                    resourceFile.copyTo(iconFile, overwrite = true)
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to extract icon for $pluginId", e)
                 }
@@ -163,7 +158,6 @@ object ExtensionManager {
     fun reload(context: Context): Boolean {
         return try {
             managerScope.launch {
-                PluginManager.scanAndInstallSystemPlugins()
                 PluginManager.loadEnabledPlugins()
             }
             PluginManager.isInitialized
@@ -175,14 +169,29 @@ object ExtensionManager {
     
     fun getEmojiPlugins(): List<EmojiPlugin> {
         val all = PluginManager.getAllPluginInstances()
-        val emoji = all.values.mapNotNull { instance ->
+        return all.values.mapNotNull { instance ->
             if (instance is EmojiPlugin) instance else null
         }
-        return emoji
     }
     
     fun getEnabledEmojiPlugins(context: Context): List<Pair<String, EmojiPlugin>> {
         return getEmojiPlugins().mapNotNull { plugin ->
+            val pluginId = getPluginId(plugin)
+            if (pluginId.isNotEmpty() && SettingsPreferences.isPluginEnabled(context, pluginId)) {
+                Pair(pluginId, plugin)
+            } else null
+        }
+    }
+
+    fun getAsrPlugins(): List<AsrPlugin> {
+        val all = PluginManager.getAllPluginInstances()
+        return all.values.mapNotNull { instance ->
+            if (instance is AsrPlugin) instance else null
+        }
+    }
+
+    fun getEnabledAsrPlugins(context: Context): List<Pair<String, AsrPlugin>> {
+        return getAsrPlugins().mapNotNull { plugin ->
             val pluginId = getPluginId(plugin)
             if (pluginId.isNotEmpty() && SettingsPreferences.isPluginEnabled(context, pluginId)) {
                 Pair(pluginId, plugin)
@@ -204,6 +213,12 @@ object ExtensionManager {
         }
     
     fun getAllInstalledPlugins(): List<PluginInfo> = PluginManager.getAllInstallPlugins()
+
+    fun getPluginsByCategory(category: PluginCategory): List<PluginInfo> =
+        getAllInstalledPlugins().filter { it.category == category }
+
+    fun getEnabledPluginsByCategory(context: Context, category: PluginCategory): List<PluginInfo> =
+        getPluginsByCategory(category).filter { SettingsPreferences.isPluginEnabled(context, it.id) }
     
     fun getPluginById(id: String): Any? = PluginManager.getPluginInstance(id)
     

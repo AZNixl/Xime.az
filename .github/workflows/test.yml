@@ -1,4 +1,4 @@
-name: Full Test Suite
+﻿name: Full Test Suite
 
 permissions:
   contents: read
@@ -45,18 +45,18 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build
 
-      - name: Cache native ASR deps
+      - name: Cache native deps
         uses: actions/cache@v6
         with:
           path: |
             app/src/main/jni/onnxruntime
             app/src/main/jniLibs/**/libonnxruntime.so
-          key: native-asr-${{ runner.os }}-${{ hashFiles('app/build-logic/tasks-native.gradle.kts') }}
+          key: native-${{ runner.os }}-${{ hashFiles('app/build-logic/tasks-native.gradle.kts') }}
           restore-keys: |
-            native-asr-${{ runner.os }}-
+            native-${{ runner.os }}-
 
-      - name: Download native ASR deps (ONNX Runtime + kaldi-native-fbank)
-        run: ./gradlew downloadOnnx downloadKnf --no-daemon
+      - name: Download native deps (ONNX Runtime)
+        run: ./gradlew downloadOnnx --no-daemon
 
       - name: Cache CMake build
         uses: actions/cache@v6
@@ -125,8 +125,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build
 
-      - name: Download native ASR deps (ONNX Runtime + kaldi-native-fbank)
-        run: ./gradlew downloadOnnx downloadKnf --no-daemon
+      - name: Download native deps (ONNX Runtime)
+        run: ./gradlew downloadOnnx --no-daemon
 
       - name: Enable KVM group perms
         run: |

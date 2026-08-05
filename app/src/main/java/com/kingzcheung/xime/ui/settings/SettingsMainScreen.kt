@@ -291,7 +291,7 @@ fun SettingsMainContent(
                     SettingsToggleItem(
                         icon = Icons.TwoTone.GraphicEq,
                         title = "语音转文本",
-                        subtitle = "在线 ASR 服务和本地模型管理",
+                        subtitle = "在线 ASR 服务（需安装语音识别插件）",
                         checked = sttEnabled,
                         showArrow = true,
                         onClick = {

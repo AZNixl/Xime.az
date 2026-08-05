@@ -3,43 +3,13 @@ NOTICE for Xime Application
 This application uses third-party libraries and code:
 
 ================================================================================
-sherpa-onnx - Speech Recognition Engine (algorithm reference)
-================================================================================
-
-Source: https://github.com/k2-fsa/sherpa-onnx
-License: Apache License 2.0
-
-The self-implemented streaming ASR (app/src/main/jni/asr) references the
-sherpa-onnx algorithm for the zipformer2 streaming decoder.
-
-sherpa-onnx is developed by the k2-fsa team.
-GitHub: https://github.com/k2-fsa
-
-Apache License 2.0 Summary:
-- You may use, distribute, and modify this software
-- You must include this license notice
-- You must state changes if you modify the files
-
-Full license text available at:
-https://www.apache.org/licenses/LICENSE-2.0
-
-================================================================================
-kaldi-native-fbank
-================================================================================
-
-Source: https://github.com/csukuangfj/kaldi-native-fbank
-License: Apache License 2.0
-
-Used for fbank feature extraction in the local ASR engine.
-
-================================================================================
 ONNX Runtime
 ================================================================================
 
 Source: https://github.com/microsoft/onnxruntime
 License: MIT License
 
-Used for neural network inference in association prediction and speech recognition.
+Used for neural network inference in association prediction, punctuation and handwriting recognition.
 
 ================================================================================
 Librime

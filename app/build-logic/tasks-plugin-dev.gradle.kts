@@ -11,29 +11,6 @@ fun executeCommand(command: String): String {
     }
 }
 
-tasks.register("copyPluginsToAssets", Copy::class) {
-    group = "plugin-dev"
-    description = "Manually copy plugin APKs to assets for debugging"
-
-    val pluginProjects = listOf(
-        ":plugins:meme-bunny",
-        ":plugins:kaomoji"
-    )
-
-    pluginProjects.forEach { pluginPath ->
-        dependsOn(project(pluginPath).tasks.getByName("assembleDebug"))
-        from(project(pluginPath).layout.buildDirectory.dir("outputs/apk/debug")) {
-            include("*universal*.apk")
-        }
-    }
-
-    into(layout.projectDirectory.dir("src/main/assets/plugins"))
-
-    doFirst {
-        layout.projectDirectory.dir("src/main/assets/plugins").asFile.mkdirs()
-    }
-}
-
 tasks.register("clearPlugins", DefaultTask::class) {
     group = "plugin-dev"
     description = "Clear all plugin data from device (requires connected device with adb)"

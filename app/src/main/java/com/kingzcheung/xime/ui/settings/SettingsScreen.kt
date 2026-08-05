@@ -90,7 +90,8 @@ fun SettingsScreen(
                 onBack = { navController.popBackStack() },
                 onNavigateToPluginSettings = { pluginId ->
                     navController.navigate("${SettingsRoutes.PluginSettings}/$pluginId")
-                }
+                },
+                onNavigateToSpeechToText = { navController.navigate(SettingsRoutes.SpeechToText) }
             )
         }
         composable(
@@ -122,13 +123,11 @@ fun SettingsScreen(
         composable(SettingsRoutes.SpeechToText) {
             SpeechToTextSettingsContent(
                 onBack = { navController.popBackStack() },
-                onNavigateToFunAsrSettings = { navController.navigate(SettingsRoutes.FunAsrSettings) },
-                onNavigateToModelManagement = { navController.navigate(SettingsRoutes.ModelManagement) }
-            )
-        }
-        composable(SettingsRoutes.FunAsrSettings) {
-            FunAsrSettingsContent(
-                onBack = { navController.popBackStack() }
+                onNavigateToModelManagement = { navController.navigate(SettingsRoutes.ModelManagement) },
+                onNavigateToPluginSettings = { pluginId ->
+                    navController.navigate("${SettingsRoutes.PluginSettings}/$pluginId")
+                },
+                onNavigateToPlugins = { navController.navigate(SettingsRoutes.Plugins) }
             )
         }
         composable(SettingsRoutes.Dictionary) {

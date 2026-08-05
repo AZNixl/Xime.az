@@ -22,8 +22,10 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Warning
@@ -49,6 +51,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
@@ -62,8 +65,16 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.kingzcheung.xime.R
 import com.kingzcheung.xime.model.ModelManager
+import com.kingzcheung.xime.plugin.ExtensionManager
+import com.kingzcheung.xime.plugin.core.api.PluginIcon
+import com.kingzcheung.xime.plugin.core.model.PluginCategory
+import com.kingzcheung.xime.plugin.core.api.AsrInputMode
+import com.kingzcheung.xime.plugin.core.api.AsrPlugin
+import com.kingzcheung.xime.plugin.core.runtime.PluginManager
 import com.kingzcheung.xime.settings.SettingsPreferences
-import com.kingzcheung.xime.speech.AsrModelManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class AsrProvider(
     val id: String,
@@ -71,8 +82,10 @@ data class AsrProvider(
     val description: String,
     val iconRes: Int? = null,
     val icon: ImageVector? = null,
+    val pluginIcon: PluginIcon? = null,
     val isOnline: Boolean,
     val isConfigured: Boolean,
+    val isActive: Boolean = false,
     val features: List<String> = emptyList(),
     val needsAutoPunctuation: Boolean = false
 )
@@ -81,24 +94,55 @@ data class AsrProvider(
 @Composable
 fun SpeechToTextSettingsContent(
     onBack: () -> Unit,
-    onNavigateToFunAsrSettings: () -> Unit,
-    onNavigateToModelManagement: () -> Unit = {}
+    onNavigateToModelManagement: () -> Unit = {},
+    onNavigateToPluginSettings: (String) -> Unit = {},
+    onNavigateToPlugins: () -> Unit = {}
 ) {
     val context = LocalContext.current
-    var useLocal by remember { mutableStateOf(SettingsPreferences.isSttUseLocal(context)) }
 
-    val onlineProviders = remember {
-        mutableStateListOf(
-            AsrProvider(
-                id = "funasr",
-                name = "阿里百炼 FunAsr",
-                description = "阿里云实时语音识别",
-                iconRes = R.drawable.bailian,
-                isOnline = true,
-                isConfigured = SettingsPreferences.getFunAsrApiKey(context).isNotEmpty(),
-                features = listOf("实时流式", "高准确率", "多格式支持")
-            )
-        )
+    var activeAsrPluginId by remember {
+        mutableStateOf(SettingsPreferences.getSttOnlinePluginId(context))
+    }
+
+    val onlineProviders = remember(activeAsrPluginId) {
+        val installedAsr = ExtensionManager.getAllInstalledPlugins()
+            .filter { it.category == PluginCategory.ASR }
+        mutableStateListOf<AsrProvider>().apply {
+            installedAsr.forEach { info ->
+                val instance = PluginManager.getPluginInstance(info.id) as? AsrPlugin
+                if (instance != null) {
+                    val caps = instance.getCapabilities()
+                    add(
+                        AsrProvider(
+                            id = info.id,
+                            name = instance.getDisplayName(),
+                            description = "在线语音识别插件",
+                            isOnline = true,
+                            isConfigured = instance.isConfigured(),
+                            isActive = info.id == activeAsrPluginId,
+                            pluginIcon = ExtensionManager.extractPluginIcon(context, info.id, instance, info),
+                            features = buildList {
+                                add(if (caps.inputMode == AsrInputMode.STREAMING) "实时流式" else "文件识别")
+                                if (caps.supportsPartialResults) add("中间结果")
+                                if (caps.requiresNetwork) add("在线")
+                            }
+                        )
+                    )
+                } else {
+                    add(
+                        AsrProvider(
+                            id = info.id,
+                            name = info.name,
+                            description = info.description.ifBlank { "在线语音识别插件" },
+                            isOnline = true,
+                            isConfigured = false,
+                            isActive = info.id == activeAsrPluginId,
+                            features = listOf("在线")
+                        )
+                    )
+                }
+            }
+        }
     }
 
     Scaffold(
@@ -128,245 +172,34 @@ fun SpeechToTextSettingsContent(
         ) {
             Spacer(modifier = Modifier.height(8.dp))
 
-            EngineSelectorComposable(
-                useLocal = useLocal,
-                onUseLocalChange = {
-                    useLocal = it
-                    SettingsPreferences.setSttUseLocal(context, it)
-                }
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            if (useLocal) {
-                LocalAsrTab(
-                    onNavigateToModelManagement = onNavigateToModelManagement
-                )
-            } else {
-                OnlineAsrTab(
-                    providers = onlineProviders,
-                    onProviderClick = { provider ->
-                        if (provider.id == "funasr") {
-                            onNavigateToFunAsrSettings()
+            val scope = rememberCoroutineScope()
+            OnlineAsrTab(
+                providers = onlineProviders,
+                onProviderClick = { provider ->
+                    if (provider.isActive) {
+                        onNavigateToPluginSettings(provider.id)
+                        return@OnlineAsrTab
+                    }
+                    val wasConfigured = provider.isConfigured
+                    scope.launch(Dispatchers.IO) {
+                        // 单选激活：同一时间只能使用 1 个在线 ASR 插件
+                        ExtensionManager.getAllInstalledPlugins()
+                            .filter { it.category == PluginCategory.ASR && it.id != provider.id }
+                            .forEach { SettingsPreferences.setPluginEnabled(context, it.id, false) }
+                        SettingsPreferences.setSttOnlinePluginId(context, provider.id)
+                        SettingsPreferences.setPluginEnabled(context, provider.id, true)
+                        PluginManager.launchPlugin(provider.id)
+                        activeAsrPluginId = provider.id
+                        if (!wasConfigured) {
+                            withContext(Dispatchers.Main) {
+                                onNavigateToPluginSettings(provider.id)
+                            }
                         }
                     }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun EngineSelectorComposable(
-    useLocal: Boolean,
-    onUseLocalChange: (Boolean) -> Unit
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "使用本地模型",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = if (useLocal) "离线运行，无需网络" else "使用阿里百炼在线 API",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.7f)
-                )
-            }
-            Switch(
-                checked = useLocal,
-                onCheckedChange = onUseLocalChange,
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = MaterialTheme.colorScheme.primary,
-                    checkedTrackColor = MaterialTheme.colorScheme.primaryContainer
-                )
+                },
+                onManagePlugins = onNavigateToPlugins,
+                onSettings = onNavigateToPluginSettings
             )
-        }
-    }
-}
-
-@Composable
-fun OnlineAsrTab(
-    providers: List<AsrProvider>,
-    onProviderClick: (AsrProvider) -> Unit
-) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item {
-            Text(
-                text = "选择在线语音识别服务商",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-        }
-
-        items(providers) { provider ->
-            AsrProviderCardModern(
-                provider = provider,
-                onClick = { onProviderClick(provider) }
-            )
-        }
-
-        item {
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = "在线 ASR 需要网络连接，适合需要高准确率的场景",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.7f),
-                modifier = Modifier.padding(top = 8.dp)
-            )
-        }
-    }
-}
-
-@Composable
-fun LocalAsrTab(
-    onNavigateToModelManagement: () -> Unit
-) {
-    val context = LocalContext.current
-    val models = remember { AsrModelManager.AVAILABLE_MODELS }
-
-    val downloadedStates = remember {
-        models.map { it.id to ModelManager.isModelDownloaded(context, it.id) }
-    }
-
-    val savedModelId = remember {
-        context.getSharedPreferences("asr_model", Context.MODE_PRIVATE)
-            .getString("selected_model", "") ?: ""
-    }
-
-    val autoSelectedId = remember {
-        if (savedModelId.isEmpty()) {
-            val downloadedIds = downloadedStates.filter { it.second }.map { it.first }
-            if (downloadedIds.size == 1) downloadedIds.first() else ""
-        } else ""
-    }
-
-    var selectedModelId by remember {
-        mutableStateOf(
-            if (savedModelId.isNotEmpty()) savedModelId
-            else autoSelectedId
-        )
-    }
-
-    LaunchedEffect(autoSelectedId) {
-        if (autoSelectedId.isNotEmpty() && savedModelId.isEmpty()) {
-            context.getSharedPreferences("asr_model", Context.MODE_PRIVATE)
-                .edit().putString("selected_model", autoSelectedId).apply()
-        }
-    }
-
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item {
-            Text(
-                text = "选择本地模型",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-        }
-
-        items(models) { modelInfo ->
-            LocalModelCard(
-                modelInfo = modelInfo,
-                isSelected = modelInfo.id == selectedModelId,
-                onSelect = {
-                    selectedModelId = modelInfo.id
-                    context.getSharedPreferences("asr_model", Context.MODE_PRIVATE)
-                        .edit().putString("selected_model", modelInfo.id).apply()
-                    SettingsPreferences.setSttUseLocal(context, true)
-                }
-            )
-        }
-
-        item {
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 4.dp),
-                horizontalArrangement = Arrangement.End
-            ) {
-                OutlinedButton(
-                    onClick = onNavigateToModelManagement
-                ) {
-                    Icon(
-                        Icons.Default.Build,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text("模型管理")
-                }
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.Top,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Icon(
-                        Icons.Default.Warning,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.outline,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Column {
-                        Text(
-                            text = "说明",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.outline
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "• 选择模型后会自动应用于语音识别\n" +
-                                    "• 切换到已下载的模型无需重新下载\n" +
-                                    "• 下载/删除模型请前往「模型管理」",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.7f)
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            KeepModelInRamToggle()
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -378,207 +211,53 @@ fun LocalAsrTab(
 }
 
 @Composable
-fun LocalModelCard(
-    modelInfo: AsrModelManager.AsrModelInfo,
-    isSelected: Boolean,
-    onSelect: () -> Unit
+fun OnlineAsrTab(
+    providers: List<AsrProvider>,
+    onProviderClick: (AsrProvider) -> Unit,
+    onManagePlugins: () -> Unit = {},
+    onSettings: (String) -> Unit = {}
 ) {
-    val context = LocalContext.current
-    val isDownloaded = remember {
-        ModelManager.isModelDownloaded(context, modelInfo.id)
-    }
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isSelected)
-                MaterialTheme.colorScheme.primaryContainer
-            else
-                MaterialTheme.colorScheme.surface
-        )
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+        item {
+            Text(
+                text = "在线语音识别服务商只能同时使用一个",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+        }
+
+        items(providers) { provider ->
+            AsrProviderCardModern(
+                provider = provider,
+                onClick = { onProviderClick(provider) },
+                onSettings = { onSettings(provider.id) }
+            )
+        }
+
+        item {
+            OutlinedButton(
+                onClick = onManagePlugins,
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(
-                            if (isDownloaded)
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                            else
-                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.1f)
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Storage,
-                        contentDescription = null,
-                        tint = if (isDownloaded)
-                            MaterialTheme.colorScheme.primary
-                        else
-                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(16.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = modelInfo.name,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-
-                    Spacer(modifier = Modifier.height(2.dp))
-
-                    Text(
-                        text = modelInfo.description,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Surface(
-                            shape = RoundedCornerShape(4.dp),
-                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
-                        ) {
-                            Text(
-                                text = modelInfo.size,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.secondary,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
-                        }
-                        if (isDownloaded) {
-                            Surface(
-                                shape = RoundedCornerShape(4.dp),
-                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
-                            ) {
-                                Text(
-                                    text = "已下载",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
-                            }
-                        } else {
-                            Surface(
-                                shape = RoundedCornerShape(4.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                            ) {
-                                Text(
-                                    text = "未下载",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (isDownloaded) {
-                    Button(
-                        onClick = onSelect,
-                        enabled = !isSelected,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (isSelected)
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
-                            else
-                                MaterialTheme.colorScheme.primary
-                        )
-                    ) {
-                        Icon(
-                            Icons.Default.Check,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text(if (isSelected) "使用中" else "使用")
-                    }
-                } else {
-                    Text(
-                        text = "请先下载模型",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                Icon(Icons.Default.Extension, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("管理插件")
             }
         }
-    }
-}
 
-@Composable
-fun KeepModelInRamToggle() {
-    val context = LocalContext.current
-    var keepInRam by remember { mutableStateOf(SettingsPreferences.isSttKeepModelInRam(context)) }
-    val sherpaAvailable = try {
-        System.loadLibrary("asr_jni"); true
-    } catch (e: UnsatisfiedLinkError) { false }
+        item {
+            Spacer(modifier = Modifier.height(8.dp))
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        )
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "保持模型常驻内存",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = if (keepInRam) "首次语音后模型保持加载，后续秒级启动" else "每次语音后释放模型，下次需重新加载",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.7f)
-                )
-            }
-            Switch(
-                checked = keepInRam,
-                onCheckedChange = {
-                    keepInRam = it
-                    SettingsPreferences.setSttKeepModelInRam(context, it)
-                },
-                enabled = sherpaAvailable,
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = MaterialTheme.colorScheme.primary,
-                    checkedTrackColor = MaterialTheme.colorScheme.primaryContainer
-                )
+            Text(
+                text = "在线 ASR 需要网络连接，适合需要高准确率的场景",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.7f),
+                modifier = Modifier.padding(top = 8.dp)
             )
         }
     }
@@ -788,12 +467,12 @@ fun PunctuationModelSection(
 fun AsrProviderCardModern(
     provider: AsrProvider,
     onClick: () -> Unit,
-    enabled: Boolean = true
+    onSettings: () -> Unit = {}
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        onClick = { if (enabled) onClick() },
+        onClick = onClick,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         ),
@@ -815,7 +494,7 @@ fun AsrProviderCardModern(
                         .background(
                             if (provider.iconRes != null)
                                 MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                            else if (enabled && provider.isConfigured)
+                            else if (provider.isActive)
                                 MaterialTheme.colorScheme.primary
                             else
                                 MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
@@ -832,11 +511,18 @@ fun AsrProviderCardModern(
                         Icon(
                             imageVector = provider.icon,
                             contentDescription = null,
-                            tint = if (enabled && provider.isConfigured)
+                            tint = if (provider.isActive)
                                 MaterialTheme.colorScheme.onPrimary
                             else
                                 MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                             modifier = Modifier.size(24.dp)
+                        )
+                    } else {
+                        PluginIconView(
+                            icon = provider.pluginIcon,
+                            category = PluginCategory.ASR,
+                            modifier = Modifier.size(36.dp),
+                            showBackground = false
                         )
                     }
                 }
@@ -848,7 +534,7 @@ fun AsrProviderCardModern(
                         text = provider.name,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
-                        color = if (enabled)
+                        color = if (provider.isActive)
                             MaterialTheme.colorScheme.onSurface
                         else
                             MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
@@ -859,62 +545,72 @@ fun AsrProviderCardModern(
                     Text(
                         text = provider.description,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = if (enabled)
+                        color = if (provider.isActive)
                             MaterialTheme.colorScheme.onSurfaceVariant
                         else
                             MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                     )
                 }
 
-                if (enabled) {
+                if (provider.isActive) {
                     Surface(
                         shape = RoundedCornerShape(8.dp),
-                        color = if (provider.isConfigured)
-                            MaterialTheme.colorScheme.primary
-                        else
-                            MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
+                        color = MaterialTheme.colorScheme.primary
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            if (provider.isConfigured) {
-                                Icon(
-                                    Icons.Default.Check,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onPrimary,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Text(
-                                    text = "已配置",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onPrimary,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            } else {
-                                Icon(
-                                    Icons.Default.Key,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Text(
-                                    text = "待配置",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+                            Icon(
+                                Icons.Default.Check,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = "当前使用中",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                fontWeight = FontWeight.Medium
+                            )
                         }
                     }
+                } else {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (provider.isConfigured)
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                        else
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = if (provider.isConfigured) "已配置" else "未配置",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (provider.isConfigured)
+                                    MaterialTheme.colorScheme.primary
+                                else
+                                    MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                }
 
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                        contentDescription = "进入设置",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                if (provider.isActive || provider.isConfigured) {
+                    IconButton(onClick = onSettings) {
+                        Icon(
+                            Icons.Default.Settings,
+                            contentDescription = "设置",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
             }
 

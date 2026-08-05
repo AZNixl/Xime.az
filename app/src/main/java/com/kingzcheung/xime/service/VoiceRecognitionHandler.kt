@@ -6,11 +6,11 @@ import android.os.Looper
 import android.util.Log
 import android.view.inputmethod.InputConnection
 import com.kingzcheung.xime.model.ModelRuntime
+import com.kingzcheung.xime.plugin.ExtensionManager
 import com.kingzcheung.xime.speech.RecognitionState
 import com.kingzcheung.xime.speech.SpeechRecognitionManager
 import com.kingzcheung.xime.speech.punctuation.PunctuationInference
 import com.kingzcheung.xime.speech.punctuation.PunctuationModelManager
-import com.kingzcheung.xime.speech.AsrModelManager
 import com.kingzcheung.xime.settings.SettingsPreferences
 import com.kingzcheung.xime.util.FileLogger
 
@@ -55,19 +55,11 @@ class VoiceRecognitionHandler(
             }
         )
 
-        val useLocal = SettingsPreferences.isSttUseLocal(context)
-        val providerName = if (useLocal) {
-            val sherpaEngine = AsrModelManager(context)
-            sherpaEngine.getSelectedModelInfo()?.name ?: "本地模型"
-        } else {
-            val apiKey = SettingsPreferences.getFunAsrApiKey(context)
-            if (apiKey.isNotEmpty()) "阿里百炼" else "未配置"
-        }
+        val providerName = resolveProviderName()
 
         onStateChanged(getState().copy(voicePluginName = providerName))
-        FileLogger.i(TAG, "STT provider: ${if (useLocal) "local" else "funasr"}")
-        // ASR 模型按需加载：服务启动时不预加载，首次语音时由 startRecognition() 加载，
-        // 避免本地 zipformer2 模型（约 150MB+）常驻输入法进程内存。
+        FileLogger.i(TAG, "STT provider: online")
+        // ASR 插件按需加载：服务启动时不预加载，首次语音时由 startRecognition() 加载。
     }
     
     private fun initPunctuationModel() {
@@ -128,14 +120,7 @@ class VoiceRecognitionHandler(
         textBeforeVoiceInput = getInputConnection()?.getTextBeforeCursor(1000, 0)?.toString() ?: ""
         textLengthBeforeVoiceInput = textBeforeVoiceInput.length
 
-        val useLocal = SettingsPreferences.isSttUseLocal(context)
-        val providerName = if (useLocal) {
-            val sherpaEngine = AsrModelManager(context)
-            sherpaEngine.getSelectedModelInfo()?.name ?: "本地模型"
-        } else {
-            val apiKey = SettingsPreferences.getFunAsrApiKey(context)
-            if (apiKey.isNotEmpty()) "阿里百炼" else "未配置"
-        }
+        val providerName = resolveProviderName()
         onStateChanged(getState().copy(voicePluginName = providerName))
 
         // 标点模型按需加载，避免启动时预加载占内存
@@ -171,65 +156,78 @@ class VoiceRecognitionHandler(
 
     fun isInitialized(): Boolean = ::speechRecognitionManager.isInitialized
 
-    /**
-     * 设置驱动：STT 本地功能开启时预加载 ASR 模型到 :inference 进程。
-     * 在后台线程执行，避免阻塞主线程。
-     */
-    fun ensureAsrLoaded() {
-        if (!::speechRecognitionManager.isInitialized) return
-        val useLocal = SettingsPreferences.isSttUseLocal(context)
-        if (!useLocal) return
-        Thread {
-            try {
-                speechRecognitionManager.preload()
-            } catch (_: Exception) {
-            }
-        }.start()
-    }
-
-    /**
-     * 设置驱动：STT 本地功能关闭时卸载 ASR 模型，释放 :inference 进程内存。
-     * 在后台线程执行，避免阻塞主线程。
-     */
-    fun releaseAsr() {
-        if (!::speechRecognitionManager.isInitialized) return
-        Thread {
-            try {
-                speechRecognitionManager.release()
-            } catch (_: Exception) {
-            }
-        }.start()
+    private fun resolveProviderName(): String {
+        val enabledPlugins = ExtensionManager.getEnabledAsrPlugins(context)
+        if (enabledPlugins.isNotEmpty()) {
+            val selectedId = SettingsPreferences.getSttOnlinePluginId(context)
+            val plugin = enabledPlugins.firstOrNull { it.first == selectedId }?.second
+                ?: enabledPlugins.firstOrNull()?.second
+            if (plugin != null) return plugin.getDisplayName()
+        }
+        return "未配置"
     }
 
     private var lastPartialText = ""
     private var lastAmplitudeUpdate = 0L
+    // 抬起时已提交当前识别文本后，置真以忽略随后可能迟到的重复最终结果
+    private var suppressDuplicateFinal = false
+
+    // 语音按钮长按抬起时调用：立即提交当前已识别的文本（不依赖可能被断连竞态吞掉的异步最终结果）
+    fun commitPendingOnRelease() {
+        val ic = getInputConnection() ?: return
+        val partial = lastPartialText
+        if (partial.isEmpty()) return
+        val punctuatedText = addPunctuation(partial)
+        commitFinal(ic, punctuatedText, partial)
+        suppressDuplicateFinal = true
+        lastPartialText = ""
+    }
 
     private fun handleSpeechResult(text: String) {
         Log.d(TAG, "Speech result (final): $text")
-        lastPartialText = ""
+
+        if (suppressDuplicateFinal) {
+            // 抬起时已提交，忽略迟到的重复最终结果
+            suppressDuplicateFinal = false
+            lastPartialText = ""
+            onVoiceComplete()
+            return
+        }
 
         val cleanText = text.replace(" ", "")
-        if (cleanText.isNotEmpty() && !cleanText.startsWith("错误:")) {
-            val ic = getInputConnection()
-            if (ic != null) {
-                val punctuatedText = addPunctuation(cleanText)
-                ic.commitText(punctuatedText, 1)
-            }
+        val ic = getInputConnection()
+        if (ic != null && cleanText.isNotEmpty() && !cleanText.startsWith("错误:")) {
+            val punctuatedText = addPunctuation(cleanText)
+            commitFinal(ic, punctuatedText, lastPartialText)
         }
+        lastPartialText = ""
         onVoiceComplete()
     }
     
+    // BiBi 模式：先结束 composing，再只提交增量，避免重复与整段重写。
+    private fun commitFinal(ic: InputConnection, finalText: String, partial: String) {
+        ic.finishComposingText()
+        if (partial.isNotEmpty() && finalText.startsWith(partial)) {
+            val remainder = finalText.substring(partial.length)
+            if (remainder.isNotEmpty()) {
+                ic.commitText(remainder, 1)
+            }
+        } else {
+            // 最终结果与部分结果不一致：删除已上屏的部分，再提交完整结果
+            if (partial.isNotEmpty()) {
+                ic.deleteSurroundingText(partial.length, 0)
+            }
+            ic.commitText(finalText, 1)
+        }
+    }
+    
     private fun addPunctuation(text: String): String {
-        val useLocal = SettingsPreferences.isSttUseLocal(context)
-        if (!useLocal) return text
-        
-        val sherpaEngine = AsrModelManager(context)
-        val needsAutoPunctuation = sherpaEngine.getSelectedModelInfo()?.needsAutoPunctuation ?: true
-        if (!needsAutoPunctuation) return text
-        
         val cleanText = text.trim().replace(" ", "")
         if (cleanText.isEmpty()) return text
-        
+
+        // 若文本末尾已带句末标点（如 funasr 等自带标点的后端），不再追加，避免"。。"
+        if (cleanText.last() in "。！？；：，、；：,.!?;:，") return cleanText
+
         val punctuationEnabled = SettingsPreferences.isPunctuationModelEnabled(context)
         if (punctuationEnabled && punctuationInitialized) {
             try {
@@ -272,6 +270,7 @@ class VoiceRecognitionHandler(
         Log.d(TAG, "Speech state changed: $state")
         if (state == RecognitionState.LISTENING) {
             lastPartialText = ""
+            suppressDuplicateFinal = false
         }
         onStateChanged(getState().copy(voiceRecognitionState = state))
     }

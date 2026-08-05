@@ -9,18 +9,6 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     
-    <!-- Android 11+ 需要此权限才能查询其他应用 -->
-    <uses-permission
-        android:name="android.permission.QUERY_ALL_PACKAGES"
-        tools:ignore="QueryAllPackagesPermission" />
-    
-    <!-- 查询已安装的插件应用 -->
-    <queries>
-        <intent>
-            <action android:name="com.kingzcheung.xime.plugin.EXTENSION" />
-        </intent>
-    </queries>
-
     <application
         android:name=".XimeApplication"
         android:allowBackup="true"
@@ -51,12 +39,6 @@
             </intent-filter>
         </activity>
         
-        <!-- 插件 Activity 代理 -->
-        <activity
-            android:name=".ui.HostProxyActivity"
-            android:exported="true"
-            android:theme="@style/Theme.Xime" />
-        
         <!-- 输入法服务 -->
         <service
             android:name=".service.XimeInputMethodService"
@@ -81,12 +63,6 @@
                 android:resource="@xml/filepaths" />
         </provider>
         
-        <!-- 插件 ContentProvider 代理 -->
-        <provider
-            android:name=".provider.HostProvider"
-            android:authorities="com.kingzcheung.xime.plugin.proxy"
-            android:exported="true" />
-
         <!-- AI 模型推理服务（独立进程，crash 不影响 IME） -->
         <service
             android:name=".service.InferenceService"

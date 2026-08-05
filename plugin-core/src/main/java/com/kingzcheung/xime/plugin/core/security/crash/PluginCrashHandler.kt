@@ -5,9 +5,7 @@ import android.content.Intent
 import android.content.res.Resources
 import android.os.Process
 import android.util.Log
-import com.kingzcheung.xime.plugin.core.exception.PluginDependencyException
 import com.kingzcheung.xime.plugin.core.model.PluginCrashInfo
-import com.kingzcheung.xime.plugin.core.runtime.PluginManager
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
@@ -57,14 +55,6 @@ object PluginCrashHandler : Thread.UncaughtExceptionHandler {
             defaultMessage = buildDefaultMessage(throwable, culpritPluginId)
         )
 
-        findCause<PluginDependencyException>(throwable)?.let {
-            val depCrashInfo = PluginCrashInfo(it, it.culpritPluginId, "Plugin dependency missing: ${it.missingClassName}")
-            if (pluginCallback?.onDependencyException(depCrashInfo) == true) return true
-            if (globalCallback?.onDependencyException(depCrashInfo) == true) return true
-            showCrashActivity(depCrashInfo)
-            return true
-        }
-
         findCause<ClassCastException>(throwable)?.let {
             if (pluginCallback?.onClassCastException(crashInfo) == true) return true
             if (globalCallback?.onClassCastException(crashInfo) == true) return true
@@ -99,19 +89,11 @@ object PluginCrashHandler : Thread.UncaughtExceptionHandler {
         return false
     }
 
-    private fun findCulpritPluginId(throwable: Throwable?): String? {
-        var current: Throwable? = throwable
-        while (current != null) {
-            for (element in current.stackTrace) {
-                val pluginId = PluginManager.getClassIndex()[element.className]
-                if (pluginId != null) {
-                    return pluginId
-                }
-            }
-            current = current.cause
-        }
-        return null
-    }
+    /**
+     * Lua 插件在沙箱内执行，脚本错误不会传播到宿主进程；
+     * 已加载插件列表无法通过栈帧类名归属（Lua 无 class），故固定返回 null。
+     */
+    private fun findCulpritPluginId(throwable: Throwable?): String? = null
 
     private inline fun <reified T : Throwable> findCause(throwable: Throwable): T? {
         var current: Throwable? = throwable

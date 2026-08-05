@@ -5,10 +5,7 @@ import com.kingzcheung.xime.plugin.core.api.IPluginEntryClass
 import com.kingzcheung.xime.plugin.core.runtime.installer.InstallerManager
 import com.kingzcheung.xime.plugin.core.runtime.installer.XmlManager
 import com.kingzcheung.xime.plugin.core.runtime.lifecycle.PluginLifecycleManager
-import com.kingzcheung.xime.plugin.core.runtime.loader.DependencyManager
 import com.kingzcheung.xime.plugin.core.runtime.loader.LoadedPluginInfo
-import com.kingzcheung.xime.plugin.core.runtime.proxy.ProxyManager
-import com.kingzcheung.xime.plugin.core.runtime.resource.PluginResourcesManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.util.concurrent.ConcurrentHashMap
@@ -19,11 +16,7 @@ internal class PluginFrameworkContext(val application: Application) {
 
     val xmlManager = XmlManager(application)
     val installerManager = InstallerManager(application, xmlManager)
-    val resourcesManager = PluginResourcesManager(application)
-    val dependencyManager = DependencyManager(this)
-    val proxyManager = ProxyManager(application)
 
-    val classIndex = ConcurrentHashMap<String, String>()
     val loadedPlugins = ConcurrentHashMap<String, LoadedPluginInfo>()
     val pluginInstances = ConcurrentHashMap<String, IPluginEntryClass>()
 
@@ -39,9 +32,6 @@ internal class PluginFrameworkContext(val application: Application) {
             application = application,
             xmlManager = xmlManager,
             installerManager = installerManager,
-            dependencyManager = dependencyManager,
-            proxyManager = proxyManager,
-            classIndex = classIndex,
             loadedPlugins = loadedPlugins,
             pluginInstances = pluginInstances
         )

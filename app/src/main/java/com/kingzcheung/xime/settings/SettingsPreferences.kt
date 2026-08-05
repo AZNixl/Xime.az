@@ -24,13 +24,9 @@ object SettingsPreferences {
     private const val KEY_PREDICTION_SELECTED_MODEL = "prediction_selected_model"
     
     const val KEY_STT_ENABLED = "stt_enabled"
-    private const val KEY_STT_PROVIDER = "stt_provider"
-    private const val KEY_FUNASR_API_KEY = "funasr_api_key"
-    const val KEY_STT_USE_LOCAL = "stt_use_local"
-    const val KEY_STT_KEEP_MODEL_IN_RAM = "stt_keep_model_in_ram"
+    const val KEY_STT_ONLINE_PLUGIN_ID = "stt_online_plugin_id"
     
-    private const val KEY_PUNCTUATION_MODEL_ENABLED = "punctuation_model_enabled"
-    
+    private const val KEY_PUNCTUATION_MODEL_ENABLED = "punctuation_model_enabled"    
     /** 默认主题 ID，可从 xime.yaml 的 style.color_scheme 初始化。 */
     @JvmStatic
     var defaultKeyboardTheme: String = "lavender_purple"
@@ -346,37 +342,13 @@ object SettingsPreferences {
     fun setSttEnabled(context: Context, enabled: Boolean) {
         getPrefs(context).edit().putBoolean(KEY_STT_ENABLED, enabled).apply()
     }
-    
-    fun getSttProvider(context: Context): String {
-        return getPrefs(context).getString(KEY_STT_PROVIDER, "funasr") ?: "funasr"
+
+    fun getSttOnlinePluginId(context: Context): String {
+        return getPrefs(context).getString(KEY_STT_ONLINE_PLUGIN_ID, "") ?: ""
     }
-    
-    fun setSttProvider(context: Context, provider: String) {
-        getPrefs(context).edit().putString(KEY_STT_PROVIDER, provider).apply()
-    }
-    
-    fun getFunAsrApiKey(context: Context): String {
-        return getPrefs(context).getString(KEY_FUNASR_API_KEY, "") ?: ""
-    }
-    
-    fun setFunAsrApiKey(context: Context, apiKey: String) {
-        getPrefs(context).edit().putString(KEY_FUNASR_API_KEY, apiKey).apply()
-    }
-    
-    fun isSttUseLocal(context: Context): Boolean {
-        return getPrefs(context).getBoolean(KEY_STT_USE_LOCAL, false)
-    }
-    
-    fun setSttUseLocal(context: Context, useLocal: Boolean) {
-        getPrefs(context).edit().putBoolean(KEY_STT_USE_LOCAL, useLocal).apply()
-    }
-    
-    fun isSttKeepModelInRam(context: Context): Boolean {
-        return getPrefs(context).getBoolean(KEY_STT_KEEP_MODEL_IN_RAM, true)
-    }
-    
-    fun setSttKeepModelInRam(context: Context, keep: Boolean) {
-        getPrefs(context).edit().putBoolean(KEY_STT_KEEP_MODEL_IN_RAM, keep).apply()
+
+    fun setSttOnlinePluginId(context: Context, pluginId: String) {
+        getPrefs(context).edit().putString(KEY_STT_ONLINE_PLUGIN_ID, pluginId).apply()
     }
     
     fun isPunctuationModelEnabled(context: Context): Boolean {
@@ -385,6 +357,30 @@ object SettingsPreferences {
     
     fun setPunctuationModelEnabled(context: Context, enabled: Boolean) {
         getPrefs(context).edit().putBoolean(KEY_PUNCTUATION_MODEL_ENABLED, enabled).apply()
+    }
+
+    // ---- 插件网络授权（per plugin per host） ----
+
+    /** 插件已获用户授权的域名集合。 */
+    fun getPluginAuthorizedHosts(context: Context, pluginId: String): Set<String> {
+        val raw = getPrefs(context).getString("plugin_net_auth_$pluginId", "") ?: ""
+        return raw.split(",").map { it.trim() }.filter { it.isNotBlank() }.toSet()
+    }
+
+    /** 授权插件访问指定域名。 */
+    fun authorizePluginHost(context: Context, pluginId: String, host: String) {
+        val hosts = getPluginAuthorizedHosts(context, pluginId) + host
+        getPrefs(context).edit()
+            .putString("plugin_net_auth_$pluginId", hosts.joinToString(","))
+            .apply()
+    }
+
+    /** 撤销插件对指定域名的授权。 */
+    fun revokePluginHost(context: Context, pluginId: String, host: String) {
+        val hosts = getPluginAuthorizedHosts(context, pluginId) - host
+        getPrefs(context).edit()
+            .putString("plugin_net_auth_$pluginId", hosts.joinToString(","))
+            .apply()
     }
     
     fun isSwipeUpHintsEnabled(context: Context): Boolean {

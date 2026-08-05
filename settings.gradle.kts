@@ -24,5 +24,3 @@ dependencyResolutionManagement {
 rootProject.name = "Xime"
 include(":app")
 include(":plugin-core")
-include(":plugins:meme-bunny")
-include(":plugins:kaomoji")

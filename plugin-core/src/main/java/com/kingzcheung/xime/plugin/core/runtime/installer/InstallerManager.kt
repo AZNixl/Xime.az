@@ -1,32 +1,33 @@
 package com.kingzcheung.xime.plugin.core.runtime.installer
 
 import android.app.Application
-import android.content.Intent
-import android.content.pm.PackageManager
-import android.content.pm.ProviderInfo as AndroidProviderInfo
-import android.os.Build
+import android.net.Uri
 import android.util.Log
 import com.kingzcheung.xime.plugin.core.model.PluginInfo
-import com.kingzcheung.xime.plugin.core.model.ProviderInfo
+import com.kingzcheung.xime.plugin.core.model.PluginSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import com.android.tools.smali.dexlib2.DexFileFactory
-import com.android.tools.smali.dexlib2.Opcodes
 import java.io.File
 import java.util.zip.ZipFile
 
+/**
+ * 插件安装器（Lua 脚本插件）。
+ *
+ * 插件包为 zip（.xipk），结构：
+ *   manifest.yaml   元数据（宿主解析）
+ *   main.lua        入口脚本（宿主 Lua 沙箱执行）
+ *   libs/           纯 Lua 依赖库
+ *   resources/      资源文件
+ *
+ * 安装 = 解压到 files/plugins/<id>/ + 解析 manifest 写入注册表。
+ */
 class InstallerManager(
     private val context: Application,
     private val xmlManager: XmlManager
 ) {
     companion object {
         private const val PLUGINS_DIR = "plugins"
-        private const val PLUGIN_BASE_APK_NAME = "base.apk"
-        private const val NATIVE_LIBS_DIR_NAME = "lib"
-        private const val CLASS_INDEX_FILENAME = "class_index"
-        private const val META_PLUGIN_ENTRY_CLASS = "plugin.entryClass"
-        private const val META_PLUGIN_DESCRIPTION = "plugin.description"
-        private const val META_PLUGIN_TYPE = "plugin.type"
+        private const val MANIFEST_YAML = "manifest.yaml"
     }
 
     sealed class InstallResult {
@@ -39,56 +40,76 @@ class InstallerManager(
     }
 
     suspend fun installPlugin(
-        pluginApkFile: File,
-        forceOverwrite: Boolean = false
+        pluginFile: File,
+        forceOverwrite: Boolean = false,
+        source: PluginSource = PluginSource.FILE
     ): InstallResult = withContext(Dispatchers.IO) {
-        if (!pluginApkFile.exists()) {
+        if (!pluginFile.exists()) {
             return@withContext InstallResult.Failure("插件文件不存在")
         }
 
-        val pluginConfig = parsePluginConfig(pluginApkFile)
-            ?: return@withContext InstallResult.Failure("插件配置解析失败")
-
+        val pluginConfig = parsePluginConfig(pluginFile)
+            ?: return@withContext InstallResult.Failure("插件配置解析失败（缺少 manifest.yaml）")
         val pluginId = pluginConfig.id
         val pluginDir = getPluginDirectory(pluginId)
 
-        val existingPlugin = xmlManager.getPluginById(pluginId)
-        
-        // 强制覆盖或版本更新时重新安装
-        val needsReinstall = forceOverwrite || 
-            (existingPlugin != null && pluginConfig.versionCode > existingPlugin.versionCode) ||
-            (existingPlugin != null && existingPlugin.providers.isEmpty() && pluginConfig.providers.isNotEmpty())
+        // 校验插件声明的宿主版本范围
+        val hostVersion = com.kingzcheung.xime.plugin.core.util.VersionUtil.getHostVersionName(context)
+        if (hostVersion != null &&
+            !com.kingzcheung.xime.plugin.core.util.VersionUtil.isHostSupported(
+                hostVersion, pluginConfig.minHostVersion, pluginConfig.maxHostVersion
+            )
+        ) {
+            val range = buildString {
+                append("当前主应用版本 v$hostVersion 不在插件支持范围内")
+                if (!pluginConfig.minHostVersion.isNullOrBlank()) {
+                    append("（最低 v${pluginConfig.minHostVersion}")
+                    if (!pluginConfig.maxHostVersion.isNullOrBlank()) {
+                        append(" - v${pluginConfig.maxHostVersion}")
+                    }
+                    append("）")
+                }
+            }
+            return@withContext InstallResult.Failure(range)
+        }
 
-        if (!needsReinstall && existingPlugin != null) {
-            fixExistingPluginPermissions(pluginDir)
+        val existingPlugin = xmlManager.getPluginById(pluginId)
+
+        // Lua 插件无版本号概念：只有首次安装或强制覆盖才重新解压
+        if (!forceOverwrite && existingPlugin != null) {
             return@withContext InstallResult.Success(existingPlugin)
         }
 
         if (pluginDir.exists()) {
             pluginDir.deleteRecursively()
         }
-
         pluginDir.mkdirs()
 
         try {
-            val targetApkFile = copyPluginApk(pluginApkFile, pluginDir)
-            val nativeLibPath = extractNativeLibs(pluginApkFile, pluginDir)
-            createClassIndex(targetApkFile, pluginDir)
+            extractPluginArchive(pluginFile, pluginDir)
+            val entryScript = pluginConfig.entryScript ?: "main.lua"
+            val entryFile = File(pluginDir, entryScript)
+            if (!entryFile.exists()) {
+                throw IllegalArgumentException("Lua 入口脚本不存在: $entryScript")
+            }
 
             val pluginInfo = PluginInfo(
                 id = pluginConfig.id,
                 name = pluginConfig.name,
-                iconResId = pluginConfig.iconResId,
+                iconResId = 0,
                 description = pluginConfig.description,
-                versionCode = pluginConfig.versionCode,
-                versionName = pluginConfig.versionName,
-                path = targetApkFile.absolutePath,
-                entryClass = pluginConfig.entryClass,
+                versionCode = 0,
+                versionName = pluginConfig.version,
+                path = entryFile.absolutePath,
                 type = pluginConfig.type,
                 enabled = existingPlugin?.enabled ?: true,
                 installTime = existingPlugin?.installTime ?: System.currentTimeMillis(),
-                nativeLibPath = nativeLibPath,
-                providers = pluginConfig.providers
+                source = source,
+                minHostVersion = pluginConfig.minHostVersion,
+                maxHostVersion = pluginConfig.maxHostVersion,
+                trustLevel = com.kingzcheung.xime.plugin.core.util.PluginSignatureUtil.classifyLuaPlugin(pluginDir),
+                entryScript = entryScript,
+                declaredHosts = pluginConfig.declaredHosts
             )
 
             if (existingPlugin != null) {
@@ -115,224 +136,98 @@ class InstallerManager(
         true
     }
 
+    suspend fun installPluginFromUri(uri: Uri): InstallResult = withContext(Dispatchers.IO) {
+        if (uri.scheme == "file") {
+            val file = File(uri.path ?: return@withContext InstallResult.Failure("无法解析文件路径"))
+            installPlugin(file, forceOverwrite = true, source = PluginSource.FILE)
+        } else {
+            val tempFile = File(context.cacheDir, "plugin_import_${System.currentTimeMillis()}.xipk")
+            try {
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    tempFile.outputStream().use { output -> input.copyTo(output) }
+                } ?: return@withContext InstallResult.Failure("无法读取文件")
+                installPlugin(tempFile, forceOverwrite = true, source = PluginSource.FILE)
+            } catch (e: Exception) {
+                InstallResult.Failure("插件导入失败: ${e.message}", e)
+            } finally {
+                if (tempFile.exists()) tempFile.delete()
+            }
+        }
+    }
+
     internal fun getPluginDirectory(pluginId: String): File {
         return File(pluginsDir, pluginId)
     }
 
-    internal fun getOptimizedDirectory(pluginId: String): File? {
-        return if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-            File(File(context.cacheDir, "dex_opt"), pluginId).apply { mkdirs() }
-        } else {
-            null
-        }
-    }
-
-    private fun fixExistingPluginPermissions(pluginDir: File) {
-        val apkFile = File(pluginDir, PLUGIN_BASE_APK_NAME)
-        if (apkFile.exists() && apkFile.canWrite()) {
-            apkFile.setReadOnly()
-        }
-        
-        val libDir = File(pluginDir, NATIVE_LIBS_DIR_NAME)
-        if (libDir.exists()) {
-            libDir.walk().filter { it.isFile }.forEach { it.setReadOnly() }
-        }
-    }
-
-    suspend fun scanAndInstallSystemPlugins(): Int = withContext(Dispatchers.IO) {
-        Log.d("InstallerManager", "Scanning system installed plugins...")
-        
-        val intent = Intent("com.kingzcheung.xime.plugin.EXTENSION")
-        val resolveInfos = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            context.packageManager.queryIntentActivities(
-                intent,
-                PackageManager.ResolveInfoFlags.of(PackageManager.GET_META_DATA.toLong())
-            )
-        } else {
-            @Suppress("DEPRECATION")
-            context.packageManager.queryIntentActivities(intent, PackageManager.GET_META_DATA)
-        }
-        
-        Log.d("InstallerManager", "Found ${resolveInfos.size} potential plugin apps")
-        
-        var installedCount = 0
-        for (resolveInfo in resolveInfos) {
-            val packageName = resolveInfo.activityInfo.packageName
-            if (packageName == context.packageName) continue
-            
-            Log.d("InstallerManager", "Processing plugin: $packageName")
-            
-            try {
-                val apkPath = resolveInfo.activityInfo.applicationInfo.publicSourceDir
-                    ?: resolveInfo.activityInfo.applicationInfo.sourceDir
-                if (apkPath == null) {
-                    Log.w("InstallerManager", "No APK path for $packageName")
-                    continue
+    /** 解压 Lua 插件包到插件目录（防 zip-slip 路径穿越）。 */
+    private fun extractPluginArchive(archiveFile: File, pluginDir: File) {
+        ZipFile(archiveFile).use { zip ->
+            for (entry in zip.entries()) {
+                if (entry.isDirectory) continue
+                val name = entry.name
+                if (name.startsWith("lib/")) continue
+                if (name.contains("../") || name.startsWith("/") || name.contains("..\\")) {
+                    throw IllegalArgumentException("非法路径: $name")
                 }
-                
-                val apkFile = File(apkPath)
-                // 强制更新以确保 providers 信息正确
-                val result = installPlugin(apkFile, forceOverwrite = true)
-                
-                if (result is InstallResult.Success) {
-                    installedCount++
-                    Log.d("InstallerManager", "Successfully installed: ${result.pluginInfo.id}, providers: ${result.pluginInfo.providers.size}")
-                } else if (result is InstallResult.Failure) {
-                    Log.w("InstallerManager", "Failed to install $packageName: ${result.reason}")
+                val outputFile = File(pluginDir, name)
+                outputFile.parentFile?.mkdirs()
+                zip.getInputStream(entry).use { input ->
+                    outputFile.outputStream().use { output -> input.copyTo(output) }
                 }
-            } catch (e: Exception) {
-                Log.e("InstallerManager", "Error installing $packageName", e)
             }
         }
-        
-        Log.d("InstallerManager", "Total installed from system: $installedCount")
-        installedCount
     }
-    
+
     private data class PluginConfig(
         val id: String,
         val name: String,
-        val iconResId: Int,
-        val versionCode: Long,
-        val versionName: String,
-        val entryClass: String,
+        val version: String,
         val description: String,
         val type: String,
-        val providers: List<ProviderInfo>
+        val minHostVersion: String?,
+        val maxHostVersion: String?,
+        val entryScript: String?,
+        val declaredHosts: List<String> = emptyList()
     )
 
-    @Suppress("DEPRECATION")
-    private fun parsePluginConfig(pluginApkFile: File): PluginConfig? {
-        return try {
-            val pm = context.packageManager
-            val packageInfo = pm.getPackageArchiveInfo(
-                pluginApkFile.absolutePath,
-                PackageManager.GET_META_DATA or PackageManager.GET_PROVIDERS
-            )
-
-            if (packageInfo == null) return null
-            val appInfo = packageInfo.applicationInfo ?: return null
-            
-            appInfo.publicSourceDir = pluginApkFile.absolutePath
-
-            val metaData = appInfo.metaData ?: return null
-
-            val pluginId = packageInfo.packageName
-            val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                packageInfo.longVersionCode
-            } else {
-                packageInfo.versionCode.toLong()
+    private fun parsePluginConfig(pluginFile: File): PluginConfig? {
+        val content = try {
+            ZipFile(pluginFile).use { zip ->
+                val entry = zip.getEntry(MANIFEST_YAML) ?: return null
+                zip.getInputStream(entry).readBytes().toString(Charsets.UTF_8)
             }
-            val versionName = packageInfo.versionName ?: "0.0.0"
-            val name = pm.getApplicationLabel(appInfo).toString()
-            val iconResId = appInfo.icon
-            val entryClass = metaData.getString(META_PLUGIN_ENTRY_CLASS) ?: return null
-            val description = metaData.getString(META_PLUGIN_DESCRIPTION) ?: ""
-            val type = metaData.getString(META_PLUGIN_TYPE) ?: "unknown"
-
-            val providers = parseProviders(packageInfo.providers)
-
-            PluginConfig(
-                id = pluginId,
-                name = name,
-                iconResId = iconResId,
-                versionCode = versionCode,
-                versionName = versionName,
-                entryClass = entryClass,
-                description = description,
-                type = type,
-                providers = providers
-            )
         } catch (e: Exception) {
             Log.e("InstallerManager", "parsePluginConfig failed", e)
-            null
+            return null
         }
-    }
 
-    private fun parseProviders(androidProviders: Array<AndroidProviderInfo>?): List<ProviderInfo> {
-        if (androidProviders == null || androidProviders.isEmpty()) return emptyList()
-        
-        return androidProviders.map { provider ->
-            ProviderInfo(
-                className = provider.name,
-                authorities = provider.authority?.split(";")?.filter { it.isNotBlank() } ?: emptyList(),
-                exported = provider.exported,
-                enabled = provider.isEnabled
-            )
-        }
-    }
-
-    private fun copyPluginApk(sourceFile: File, pluginDir: File): File {
-        val targetFile = File(pluginDir, PLUGIN_BASE_APK_NAME)
-        sourceFile.inputStream().use { input ->
-            targetFile.outputStream().use { output ->
-                input.copyTo(output)
-            }
-        }
-        targetFile.setReadOnly()
-        return targetFile
-    }
-
-    private fun extractNativeLibs(pluginApk: File, pluginDir: File): String? {
-        val libDir = File(pluginDir, NATIVE_LIBS_DIR_NAME)
-        libDir.mkdirs()
-
-        var extractedPath: String? = null
-
-        ZipFile(pluginApk).use { zip ->
-            for (entry in zip.entries()) {
-                if (entry.name.startsWith("lib/") && !entry.isDirectory) {
-                    val abi = entry.name.substringAfter("lib/").substringBefore('/')
-                    if (Build.SUPPORTED_ABIS.contains(abi)) {
-                        val abiDir = File(libDir, abi).apply { mkdirs() }
-                        val outputFile = File(abiDir, entry.name.substringAfterLast('/'))
-                        zip.getInputStream(entry).use { input ->
-                            outputFile.outputStream().use { output ->
-                                input.copyTo(output)
-                            }
-                        }
-                        outputFile.setReadOnly()
-                        if (extractedPath == null) {
-                            extractedPath = abiDir.absolutePath
-                        }
-                    }
-                }
-            }
-        }
-        return extractedPath
-    }
-
-    private fun createClassIndex(pluginApkFile: File, pluginDir: File): Boolean {
-        val indexFile = File(pluginDir, CLASS_INDEX_FILENAME)
         return try {
-            val dexContainer = DexFileFactory.loadDexContainer(
-                pluginApkFile,
-                Opcodes.forApi(Build.VERSION.SDK_INT)
+            val yaml = org.yaml.snakeyaml.Yaml().load<Map<String, Any>>(content) ?: return null
+            val id = yaml["id"] as? String ?: return null
+            val name = yaml["name"] as? String ?: id
+            val type = yaml["type"] as? String ?: "unknown"
+            val entry = yaml["entry"] as? String ?: "main.lua"
+            val version = yaml["version"] as? String ?: "0.0.0"
+            val minHostVersion = (yaml["minHostVersion"] as? String)?.takeIf { it.isNotBlank() }
+            val maxHostVersion = (yaml["maxHostVersion"] as? String)?.takeIf { it.isNotBlank() }
+            val hostsRaw = (yaml["network"] as? Map<*, *>)?.get("hosts")
+            val declaredHosts = (hostsRaw as? List<*>)?.mapNotNull { it as? String }
+                ?.filter { it.isNotBlank() } ?: emptyList()
+
+            PluginConfig(
+                id = id,
+                name = name,
+                version = version,
+                description = yaml["description"] as? String ?: "",
+                type = type,
+                minHostVersion = minHostVersion,
+                maxHostVersion = maxHostVersion,
+                entryScript = entry,
+                declaredHosts = declaredHosts
             )
-
-            indexFile.bufferedWriter().use { writer ->
-                for (dexEntryName in dexContainer.dexEntryNames) {
-                    val dexEntry = dexContainer.getEntry(dexEntryName) ?: continue
-                    val dexFile = dexEntry.dexFile
-                    dexFile.classes.asSequence().forEach { classDef ->
-                        val className = convertDexTypeToClassName(classDef.type)
-                        writer.write(className)
-                        writer.newLine()
-                    }
-                }
-            }
-            true
         } catch (e: Exception) {
-            indexFile.delete()
-            false
-        }
-    }
-
-    private fun convertDexTypeToClassName(dexType: String): String {
-        return if (dexType.startsWith("L") && dexType.endsWith(";")) {
-            dexType.substring(1, dexType.length - 1).replace('/', '.')
-        } else {
-            dexType.replace('/', '.')
+            Log.e("InstallerManager", "parsePluginConfig yaml failed", e)
+            null
         }
     }
 }

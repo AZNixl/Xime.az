@@ -10,9 +10,8 @@ import android.os.Looper
 import android.util.Log
 
 import androidx.annotation.RequiresPermission
-import com.kingzcheung.xime.model.ModelRuntime
+import com.kingzcheung.xime.plugin.ExtensionManager
 import com.kingzcheung.xime.settings.SettingsPreferences
-import com.kingzcheung.xime.speech.funasr.FunAsrAsrBackend
 import com.kingzcheung.xime.util.FileLogger
 
 class SpeechRecognitionManager(private val context: Context) {
@@ -86,7 +85,7 @@ class SpeechRecognitionManager(private val context: Context) {
                     val ok = preload()
                     if (!ok || synchronized(preloadLock) { backend } == null) {
                         mainHandler.post {
-                            errorCallback?.invoke("无法初始化本地语音引擎")
+                            errorCallback?.invoke("无法初始化语音引擎，请确认已安装并启用在线语音识别插件")
                             stateCallback?.invoke(RecognitionState.ERROR)
                         }
                         return@Thread
@@ -153,7 +152,7 @@ class SpeechRecognitionManager(private val context: Context) {
             } catch (_: InterruptedException) {
                 Thread.currentThread().interrupt()
             }
-            val releaseBackend = !SettingsPreferences.isSttKeepModelInRam(context)
+            val releaseBackend = true
             // release() 含跨进程 IPC，放到后台线程执行，避免阻塞主线程；
             // 仅当会话序号未变化时释放并置空，避免误释放新会话正在使用的后端
             if (releaseBackend) {
@@ -166,7 +165,6 @@ class SpeechRecognitionManager(private val context: Context) {
                 }
                 if (b != null) {
                     b.release()
-                    ModelRuntime.releaseWarm("asr")
                 }
             }
             mainHandler.post {
@@ -197,7 +195,7 @@ class SpeechRecognitionManager(private val context: Context) {
             } catch (_: InterruptedException) {
                 Thread.currentThread().interrupt()
             }
-            val releaseBackend = !SettingsPreferences.isSttKeepModelInRam(context)
+            val releaseBackend = true
             // release() 含跨进程 IPC，放到后台线程执行，避免阻塞主线程；
             // 仅当会话序号未变化时释放并置空，避免误释放新会话正在使用的后端
             if (releaseBackend) {
@@ -210,7 +208,6 @@ class SpeechRecognitionManager(private val context: Context) {
                 }
                 if (b != null) {
                     b.release()
-                    ModelRuntime.releaseWarm("asr")
                 }
             }
             mainHandler.post {
@@ -269,7 +266,6 @@ class SpeechRecognitionManager(private val context: Context) {
             // release() 含跨进程 IPC，放到后台线程执行，避免阻塞主线程（onDestroy 等场景）
             Thread {
                 b.release()
-                ModelRuntime.releaseWarm("asr")
             }.start()
         }
     }
@@ -317,19 +313,24 @@ class SpeechRecognitionManager(private val context: Context) {
             preloadLock.notifyAll()
         }
 
-        ModelRuntime.keepWarm("asr")
-        newBackend.start()
-        newBackend.stop()
         return true
     }
 
-    private fun createBackend(): AsrBackend {
-        return if (SettingsPreferences.isSttUseLocal(context)) {
-            // 本地 zipformer2 ASR 运行在 :inference 独立进程，不占用输入法进程内存
-            InferenceAsrBackend(context)
-        } else {
-            FunAsrAsrBackend(context)
-        }
+    private fun createBackend(): AsrBackend? {
+        return createOnlineAsrBackend()
+    }
+
+    private fun createOnlineAsrBackend(): AsrBackend? {
+        val enabledPlugins = ExtensionManager.getEnabledAsrPlugins(context)
+        if (enabledPlugins.isEmpty()) return null
+
+        val selectedId = SettingsPreferences.getSttOnlinePluginId(context)
+        val selected = enabledPlugins.firstOrNull { it.first == selectedId }
+            ?: enabledPlugins.firstOrNull()
+        val (_, plugin) = selected ?: return null
+
+        val backend = plugin.createBackend(context.applicationContext)
+        return PluginAsrBackendAdapter(plugin.getDisplayName(), backend)
     }
 
     private fun createAudioRecord(bufferSecs: Float = 2.0f): AudioRecord? {

@@ -1,7 +1,5 @@
 package com.kingzcheung.xime.service;
 
-import com.kingzcheung.xime.service.IInferenceCallback;
-
 interface IInferenceService {
     /** 加载模型 */
     boolean loadModel(String modelId, String modelPath, String extraPath);
@@ -10,12 +8,6 @@ interface IInferenceService {
 
     /** 智能联想预测 — 返回交替 [word, score, word, score, ...] */
     List<String> predict(String modelId, String text, int topK);
-
-    /** ASR 流式语音识别 */
-    boolean startAsr(String modelId, String modelDir, IInferenceCallback callback);
-    void pushAsrAudio(String modelId, in byte[] audioData);
-    String stopAsr(String modelId);
-    void cancelAsr(String modelId);
 
     /** 手写识别 — 返回交替 [index, score, index, score, ...] */
     List<String> recognizeHandwriting(String modelId, in float[] strokeData, in byte[] mask, int topK);
