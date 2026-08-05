@@ -13,7 +13,7 @@ id: com.kingzcheung.xime.plugin.kaomoji
 
 # 插件名称与描述（插件中心展示）
 name: 颜文字表情包
-description: 包含 174 个常用颜文字的表情插件（Lua 脚本示例）
+description: 包含 174 个常用颜文字的表情插件
 
 # 插件中心列表图标（字符图标，宿主渲染；也可留空用默认）
 icon: "థ౪థ"

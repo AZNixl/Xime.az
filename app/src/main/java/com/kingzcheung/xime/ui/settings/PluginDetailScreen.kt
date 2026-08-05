@@ -33,7 +33,7 @@ fun PluginSettingsContent(
     val pluginInstance = remember(pluginId) { ExtensionManager.getPluginById(pluginId) }
     val pluginInfo = remember(pluginId) { ExtensionManager.getAllInstalledPlugins().find { it.id == pluginId } }
 
-    if (pluginInstance == null || pluginInfo == null) {
+    if (pluginInfo == null) {
         Scaffold(
             topBar = {
                 TopAppBar(
@@ -58,6 +58,36 @@ fun PluginSettingsContent(
                 contentAlignment = Alignment.Center
             ) {
                 Text("插件未找到")
+            }
+        }
+        return
+    }
+
+    if (pluginInstance == null) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text(pluginInfo.name) },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "返回"
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        titleContentColor = MaterialTheme.colorScheme.onSurface
+                    )
+                )
+            }
+        ) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("插件未加载，请在插件中心启用后重试")
             }
         }
         return

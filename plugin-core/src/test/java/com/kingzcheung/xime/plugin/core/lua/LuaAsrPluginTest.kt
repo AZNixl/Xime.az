@@ -7,6 +7,7 @@ import com.kingzcheung.xime.plugin.core.lua.ws.WsHostListener
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.luaj.vm2.LuaString
 import org.luaj.vm2.LuaValue
 import java.io.File
 
@@ -99,7 +100,7 @@ class LuaAsrPluginTest {
         assertTrue("含 sample_rate", runTask.contains("\"sample_rate\":16000"))
 
         // 音频提交给 Lua：task-started 前缓冲（不经宿主直接发）
-        runtime.call("processAudioChunk", LuaValue.userdataOf(byteArrayOf(1, 2, 3, 4)))
+        runtime.call("processAudioChunk", LuaString.valueOf(byteArrayOf(1, 2, 3, 4)))
         assertTrue("task-started 前不应直发音频", mock.sentBinaries.isEmpty())
 
         // task-started → Lua 冲刷 prebuffer
@@ -109,7 +110,7 @@ class LuaAsrPluginTest {
         assertEquals("task-started 后冲刷缓冲音频", 1, mock.sentBinaries.size)
 
         // 音频直发（audioReady）
-        runtime.call("processAudioChunk", LuaValue.userdataOf(byteArrayOf(5, 6, 7, 8)))
+        runtime.call("processAudioChunk", LuaString.valueOf(byteArrayOf(5, 6, 7, 8)))
         assertEquals("audioReady 后直发", 2, mock.sentBinaries.size)
 
         // result-generated（partial / final）→ Lua 解析并 emit

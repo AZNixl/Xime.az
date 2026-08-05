@@ -47,7 +47,7 @@ class PluginsSettingsViewModel(application: Application) : AndroidViewModel(appl
         viewModelScope.launch {
             val displayName = queryDisplayName(uri)
             if (displayName == null || !ImportManager.isPluginFile(displayName)) {
-                _importMessage.value = "请选择 .xipk 插件文件"
+                _importMessage.value = "请选择有效的插件文件"
                 return@launch
             }
             when (val result = ImportManager.import(context, uri)) {

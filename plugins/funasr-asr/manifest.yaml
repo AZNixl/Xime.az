@@ -8,7 +8,7 @@ id: com.kingzcheung.xime.plugin.funasr_asr
 # 插件名称与描述（语音转文本服务商列表展示）
 name: 阿里百炼 FunAsr
 icon: "🎤"
-description: 阿里百炼 FunAsr 在线语音识别（Lua 脚本版）
+description: 阿里百炼 FunAsr 在线语音识别
 
 # 插件版本（字符串）
 version: 1.1.0

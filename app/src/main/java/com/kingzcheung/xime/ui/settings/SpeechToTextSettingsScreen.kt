@@ -22,6 +22,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Extension
@@ -65,11 +66,15 @@ import androidx.compose.ui.unit.dp
 import com.kingzcheung.xime.R
 import com.kingzcheung.xime.model.ModelManager
 import com.kingzcheung.xime.plugin.ExtensionManager
+import com.kingzcheung.xime.plugin.core.api.PluginIcon
+import com.kingzcheung.xime.plugin.core.model.PluginCategory
 import com.kingzcheung.xime.plugin.core.api.AsrInputMode
+import com.kingzcheung.xime.plugin.core.api.AsrPlugin
 import com.kingzcheung.xime.plugin.core.runtime.PluginManager
 import com.kingzcheung.xime.settings.SettingsPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class AsrProvider(
     val id: String,
@@ -77,8 +82,10 @@ data class AsrProvider(
     val description: String,
     val iconRes: Int? = null,
     val icon: ImageVector? = null,
+    val pluginIcon: PluginIcon? = null,
     val isOnline: Boolean,
     val isConfigured: Boolean,
+    val isActive: Boolean = false,
     val features: List<String> = emptyList(),
     val needsAutoPunctuation: Boolean = false
 )
@@ -93,25 +100,47 @@ fun SpeechToTextSettingsContent(
 ) {
     val context = LocalContext.current
 
-    val onlineProviders = remember {
-        val asrPlugins = ExtensionManager.getEnabledAsrPlugins(context)
+    var activeAsrPluginId by remember {
+        mutableStateOf(SettingsPreferences.getSttOnlinePluginId(context))
+    }
+
+    val onlineProviders = remember(activeAsrPluginId) {
+        val installedAsr = ExtensionManager.getAllInstalledPlugins()
+            .filter { it.category == PluginCategory.ASR }
         mutableStateListOf<AsrProvider>().apply {
-            asrPlugins.forEach { (pluginId, plugin) ->
-                val caps = plugin.getCapabilities()
-                add(
-                    AsrProvider(
-                        id = pluginId,
-                        name = plugin.getDisplayName(),
-                        description = "在线语音识别插件",
-                        isOnline = true,
-                        isConfigured = plugin.isConfigured(),
-                        features = buildList {
-                            add(if (caps.inputMode == AsrInputMode.STREAMING) "实时流式" else "文件识别")
-                            if (caps.supportsPartialResults) add("中间结果")
-                            if (caps.requiresNetwork) add("在线")
-                        }
+            installedAsr.forEach { info ->
+                val instance = PluginManager.getPluginInstance(info.id) as? AsrPlugin
+                if (instance != null) {
+                    val caps = instance.getCapabilities()
+                    add(
+                        AsrProvider(
+                            id = info.id,
+                            name = instance.getDisplayName(),
+                            description = "在线语音识别插件",
+                            isOnline = true,
+                            isConfigured = instance.isConfigured(),
+                            isActive = info.id == activeAsrPluginId,
+                            pluginIcon = ExtensionManager.extractPluginIcon(context, info.id, instance, info),
+                            features = buildList {
+                                add(if (caps.inputMode == AsrInputMode.STREAMING) "实时流式" else "文件识别")
+                                if (caps.supportsPartialResults) add("中间结果")
+                                if (caps.requiresNetwork) add("在线")
+                            }
+                        )
                     )
-                )
+                } else {
+                    add(
+                        AsrProvider(
+                            id = info.id,
+                            name = info.name,
+                            description = info.description.ifBlank { "在线语音识别插件" },
+                            isOnline = true,
+                            isConfigured = false,
+                            isActive = info.id == activeAsrPluginId,
+                            features = listOf("在线")
+                        )
+                    )
+                }
             }
         }
     }
@@ -147,15 +176,29 @@ fun SpeechToTextSettingsContent(
             OnlineAsrTab(
                 providers = onlineProviders,
                 onProviderClick = { provider ->
-                    SettingsPreferences.setSttOnlinePluginId(context, provider.id)
-                    // 单选激活：选中即启用并确保插件已加载，插件中心不再提供启用开关
-                    SettingsPreferences.setPluginEnabled(context, provider.id, true)
-                    scope.launch(Dispatchers.IO) {
-                        PluginManager.launchPlugin(provider.id)
+                    if (provider.isActive) {
+                        onNavigateToPluginSettings(provider.id)
+                        return@OnlineAsrTab
                     }
-                    onNavigateToPluginSettings(provider.id)
+                    val wasConfigured = provider.isConfigured
+                    scope.launch(Dispatchers.IO) {
+                        // 单选激活：同一时间只能使用 1 个在线 ASR 插件
+                        ExtensionManager.getAllInstalledPlugins()
+                            .filter { it.category == PluginCategory.ASR && it.id != provider.id }
+                            .forEach { SettingsPreferences.setPluginEnabled(context, it.id, false) }
+                        SettingsPreferences.setSttOnlinePluginId(context, provider.id)
+                        SettingsPreferences.setPluginEnabled(context, provider.id, true)
+                        PluginManager.launchPlugin(provider.id)
+                        activeAsrPluginId = provider.id
+                        if (!wasConfigured) {
+                            withContext(Dispatchers.Main) {
+                                onNavigateToPluginSettings(provider.id)
+                            }
+                        }
+                    }
                 },
-                onManagePlugins = onNavigateToPlugins
+                onManagePlugins = onNavigateToPlugins,
+                onSettings = onNavigateToPluginSettings
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -171,7 +214,8 @@ fun SpeechToTextSettingsContent(
 fun OnlineAsrTab(
     providers: List<AsrProvider>,
     onProviderClick: (AsrProvider) -> Unit,
-    onManagePlugins: () -> Unit = {}
+    onManagePlugins: () -> Unit = {},
+    onSettings: (String) -> Unit = {}
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -180,7 +224,7 @@ fun OnlineAsrTab(
     ) {
         item {
             Text(
-                text = "选择在线语音识别服务商",
+                text = "在线语音识别服务商只能同时使用一个",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 8.dp)
@@ -190,7 +234,8 @@ fun OnlineAsrTab(
         items(providers) { provider ->
             AsrProviderCardModern(
                 provider = provider,
-                onClick = { onProviderClick(provider) }
+                onClick = { onProviderClick(provider) },
+                onSettings = { onSettings(provider.id) }
             )
         }
 
@@ -422,12 +467,12 @@ fun PunctuationModelSection(
 fun AsrProviderCardModern(
     provider: AsrProvider,
     onClick: () -> Unit,
-    enabled: Boolean = true
+    onSettings: () -> Unit = {}
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        onClick = { if (enabled) onClick() },
+        onClick = onClick,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         ),
@@ -449,7 +494,7 @@ fun AsrProviderCardModern(
                         .background(
                             if (provider.iconRes != null)
                                 MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                            else if (enabled && provider.isConfigured)
+                            else if (provider.isActive)
                                 MaterialTheme.colorScheme.primary
                             else
                                 MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
@@ -466,11 +511,18 @@ fun AsrProviderCardModern(
                         Icon(
                             imageVector = provider.icon,
                             contentDescription = null,
-                            tint = if (enabled && provider.isConfigured)
+                            tint = if (provider.isActive)
                                 MaterialTheme.colorScheme.onPrimary
                             else
                                 MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                             modifier = Modifier.size(24.dp)
+                        )
+                    } else {
+                        PluginIconView(
+                            icon = provider.pluginIcon,
+                            category = PluginCategory.ASR,
+                            modifier = Modifier.size(36.dp),
+                            showBackground = false
                         )
                     }
                 }
@@ -482,7 +534,7 @@ fun AsrProviderCardModern(
                         text = provider.name,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
-                        color = if (enabled)
+                        color = if (provider.isActive)
                             MaterialTheme.colorScheme.onSurface
                         else
                             MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
@@ -493,62 +545,72 @@ fun AsrProviderCardModern(
                     Text(
                         text = provider.description,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = if (enabled)
+                        color = if (provider.isActive)
                             MaterialTheme.colorScheme.onSurfaceVariant
                         else
                             MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                     )
                 }
 
-                if (enabled) {
+                if (provider.isActive) {
                     Surface(
                         shape = RoundedCornerShape(8.dp),
-                        color = if (provider.isConfigured)
-                            MaterialTheme.colorScheme.primary
-                        else
-                            MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
+                        color = MaterialTheme.colorScheme.primary
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            if (provider.isConfigured) {
-                                Icon(
-                                    Icons.Default.Check,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onPrimary,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Text(
-                                    text = "已配置",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onPrimary,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            } else {
-                                Icon(
-                                    Icons.Default.Key,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Text(
-                                    text = "待配置",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+                            Icon(
+                                Icons.Default.Check,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = "当前使用中",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                fontWeight = FontWeight.Medium
+                            )
                         }
                     }
+                } else {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (provider.isConfigured)
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                        else
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = if (provider.isConfigured) "已配置" else "未配置",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (provider.isConfigured)
+                                    MaterialTheme.colorScheme.primary
+                                else
+                                    MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                }
 
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                        contentDescription = "进入设置",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                if (provider.isActive || provider.isConfigured) {
+                    IconButton(onClick = onSettings) {
+                        Icon(
+                            Icons.Default.Settings,
+                            contentDescription = "设置",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
             }
 

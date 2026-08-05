@@ -46,7 +46,7 @@ class LuaAsrBackend(
     }
 
     override fun processAudioChunk(pcm: ByteArray) {
-        runtime.call("processAudioChunk", LuaValue.userdataOf(pcm))
+        runtime.call("processAudioChunk", org.luaj.vm2.LuaString.valueOf(pcm))
     }
 
     override fun stop() {

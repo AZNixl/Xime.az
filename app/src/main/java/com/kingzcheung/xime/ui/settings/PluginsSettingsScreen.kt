@@ -58,8 +58,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -110,11 +108,7 @@ fun PluginsSettingsContent(
     val context = LocalContext.current
     val viewModel: PluginsSettingsViewModel = viewModel()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val loadedPlugins by viewModel.loadedPlugins.collectAsState()
     val importMessage by viewModel.importMessage.collectAsState()
-    val groupedByCategory = remember(uiState.extensions) {
-        uiState.extensions.groupBy { it.category }
-    }
 
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments()
@@ -156,6 +150,12 @@ fun PluginsSettingsContent(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { viewModel.refreshPlugins() }) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "刷新"
+                        )
+                    }
                     Box {
                         IconButton(onClick = { showMenu = true }) {
                             Icon(Icons.Default.MoreVert, contentDescription = "更多")
@@ -167,7 +167,7 @@ fun PluginsSettingsContent(
                             shape = RoundedCornerShape(12.dp)
                         ) {
                             DropdownMenuItem(
-                                text = { Text("从文件安装插件 (.xipk)") },
+                                text = { Text("从文件安装插件") },
                                 onClick = {
                                     showMenu = false
                                     importLauncher.launch(arrayOf("*/*"))
@@ -191,12 +191,6 @@ fun PluginsSettingsContent(
                                 }
                             )
                         }
-                    }
-                    IconButton(onClick = { viewModel.refreshPlugins() }) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "刷新"
-                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -264,34 +258,18 @@ fun PluginsSettingsContent(
                     }
                 } else {
                     val activeAsrPluginId = SettingsPreferences.getSttOnlinePluginId(context)
-                    PluginCategory.entries.forEach { category ->
-                        val plugins = groupedByCategory[category].orEmpty()
-                        if (plugins.isEmpty()) return@forEach
-                        val activeName = if (category == PluginCategory.ASR) {
-                            plugins.firstOrNull { it.id == activeAsrPluginId }?.name
-                        } else null
-                        item(key = "header_${category.id}") {
-                            PluginCategoryHeader(
-                                category = category,
-                                count = plugins.size,
-                                activeName = activeName
-                            )
-                        }
-                        items(plugins, key = { it.id }) { extension ->
-                            val isRunning = loadedPlugins.containsKey(extension.id)
-                            ExtensionItem(
-                                extension = extension,
-                                pluginInstance = PluginManager.getPluginInstance(extension.id),
-                                icon = uiState.icons[extension.id],
-                                isRunning = isRunning,
-                                viewModel = viewModel,
-                                onClick = { onNavigateToPluginSettings(extension.id) },
-                                isActive = category == PluginCategory.ASR && extension.id == activeAsrPluginId,
-                                onActivate = if (category.activation == Activation.SINGLE) {
-                                    onNavigateToSpeechToText
-                                } else null
-                            )
-                        }
+                    items(uiState.extensions, key = { it.id }) { extension ->
+                        ExtensionItem(
+                            extension = extension,
+                            pluginInstance = PluginManager.getPluginInstance(extension.id),
+                            icon = uiState.icons[extension.id],
+                            viewModel = viewModel,
+                            onClick = { onNavigateToPluginSettings(extension.id) },
+                            isActive = extension.category == PluginCategory.ASR && extension.id == activeAsrPluginId,
+                            onActivate = if (extension.category.activation == Activation.SINGLE) {
+                                onNavigateToSpeechToText
+                            } else null
+                        )
                     }
                 }
                 
@@ -299,7 +277,7 @@ fun PluginsSettingsContent(
                     Spacer(modifier = Modifier.height(8.dp))
                     
                     Text(
-                        text = "提示: 插件以独立 APK 形式安装，安装后点击右上角刷新按钮",
+                        text = "提示: 安装插件后点击右上角刷新按钮生效",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f),
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
@@ -315,7 +293,6 @@ private fun ExtensionItem(
     extension: PluginInfo,
     pluginInstance: Any?,
     icon: PluginIcon?,
-    isRunning: Boolean,
     viewModel: PluginsSettingsViewModel,
     onClick: () -> Unit = {},
     isActive: Boolean = false,
@@ -401,23 +378,6 @@ private fun ExtensionItem(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    val runningColor = Color(0xFF4CAF50)  // 绿色
-                    Box(
-                        modifier = Modifier
-                            .size(6.dp)
-                            .background(
-                                if (isRunning) runningColor 
-                                else MaterialTheme.colorScheme.outline,
-                                shape = RoundedCornerShape(3.dp)
-                            )
-                    )
-                    Text(
-                        text = if (isRunning) "运行中" else "未运行",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (isRunning) runningColor 
-                               else MaterialTheme.colorScheme.outline
-                    )
-                    
                     if (hasErrors) {
                         Icon(
                             Icons.Default.Warning,
@@ -466,16 +426,6 @@ private fun ExtensionItem(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 
-                if (hasSettings) {
-                    Text("•", style = MaterialTheme.typography.bodySmall, 
-                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
-                    Text(
-                        text = "可配置",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
-                    )
-                }
-
                 // 信任徽标
                 val trustBadge = trustBadge(extension.trustLevel)
                 Text("•", style = MaterialTheme.typography.bodySmall,
@@ -567,38 +517,21 @@ private fun ExtensionItem(
                                 }
                             }
                         } else {
-                            // 多选分类：启用开关
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Text(
-                                    text = if (hostCompatible) "启用" else "不兼容",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = if (hostCompatible) MaterialTheme.colorScheme.onSurface
-                                    else MaterialTheme.colorScheme.error
-                                )
-                                Switch(
-                                    checked = isEnabled,
-                                    enabled = hostCompatible,
-                                    onCheckedChange = { enabled ->
-                                        if (enabled && extension.trustLevel != TrustLevel.TRUSTED) {
-                                            trustConfirmAction = {
-                                                isEnabled = true
-                                                viewModel.setPluginEnabled(extension.id, true)
-                                            }
-                                            showTrustConfirm = true
-                                        } else {
-                                            isEnabled = enabled
-                                            viewModel.setPluginEnabled(extension.id, enabled)
-                                        }
-                                    },
-                                    colors = SwitchDefaults.colors(
-                                        checkedThumbColor = MaterialTheme.colorScheme.primary,
-                                        checkedTrackColor = MaterialTheme.colorScheme.primaryContainer
-                                    )
-                                )
-                            }
+                            // 多选分类：插件管理不提供启用开关，启用/停用在使用处进行（如表情面板）
+                            Text(
+                                text = when {
+                                    !hostCompatible -> "不兼容"
+                                    isEnabled -> "已启用"
+                                    else -> "未启用"
+                                },
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = if (!hostCompatible)
+                                    MaterialTheme.colorScheme.error
+                                else if (isEnabled)
+                                    MaterialTheme.colorScheme.onSurface
+                                else
+                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
 
                             Spacer(modifier = Modifier.weight(1f))
                         }
@@ -680,7 +613,7 @@ private fun ExtensionItem(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("插件「${extension.name}」未被标记为官方（${badge?.first ?: "未知来源"}）。")
-                    Text("非官方插件代码运行在主应用进程中，可能访问您输入的内容或网络。请确认来源可信后再启用。")
+                    Text("非官方插件可能访问您输入的内容或网络，请确认来源可信后再启用。")
                     if (extension.description.isNotEmpty()) {
                         Text(
                             text = "描述：${extension.description}",
@@ -803,20 +736,26 @@ private fun trustBadge(level: TrustLevel): Pair<String, Color> {
 
 // 渲染插件图标：优先用插件提供的本地图标（文字或已提取到本地的资源文件），否则用分类默认图标
 @Composable
-private fun PluginIconView(
+fun PluginIconView(
     icon: PluginIcon?,
     category: PluginCategory,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    showBackground: Boolean = true
 ) {
+    val bgModifier = if (showBackground) {
+        modifier
+            .size(36.dp)
+            .background(
+                MaterialTheme.colorScheme.surfaceVariant,
+                shape = RoundedCornerShape(10.dp)
+            )
+    } else {
+        modifier
+    }
     val iconText = icon?.text
     if (!iconText.isNullOrBlank()) {
         Box(
-            modifier = modifier
-                .size(36.dp)
-                .background(
-                    MaterialTheme.colorScheme.surfaceVariant,
-                    shape = RoundedCornerShape(10.dp)
-                ),
+            modifier = bgModifier,
             contentAlignment = Alignment.Center
         ) {
             Text(
@@ -838,12 +777,7 @@ private fun PluginIconView(
             Image(
                 bitmap = imageBitmap,
                 contentDescription = null,
-                modifier = modifier
-                    .size(36.dp)
-                    .background(
-                        MaterialTheme.colorScheme.surfaceVariant,
-                        shape = RoundedCornerShape(10.dp)
-                    ),
+                modifier = bgModifier,
                 contentScale = ContentScale.Crop
             )
             return
@@ -851,12 +785,7 @@ private fun PluginIconView(
     }
 
     Box(
-        modifier = modifier
-            .size(36.dp)
-            .background(
-                MaterialTheme.colorScheme.surfaceVariant,
-                shape = RoundedCornerShape(10.dp)
-            ),
+        modifier = bgModifier,
         contentAlignment = Alignment.Center
     ) {
         Icon(
@@ -865,66 +794,6 @@ private fun PluginIconView(
             tint = MaterialTheme.colorScheme.primary,
             modifier = Modifier.size(20.dp)
         )
-    }
-}
-
-@Composable
-private fun PluginCategoryHeader(
-    category: PluginCategory,
-    count: Int,
-    activeName: String? = null
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 8.dp, bottom = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Icon(
-            imageVector = getCategoryIcon(category),
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(18.dp)
-        )
-        Text(
-            text = category.label,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold
-        )
-        Text(
-            text = "($count)",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Spacer(modifier = Modifier.weight(1f))
-        when {
-            category.activation == Activation.SINGLE && !activeName.isNullOrBlank() -> {
-                Text(
-                    text = "当前使用：$activeName",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(0.6f, fill = false)
-                )
-            }
-            category.activation == Activation.SINGLE -> {
-                Text(
-                    text = "未选择 · 去语音转文本设置",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                )
-            }
-            category.activation == Activation.MULTI -> {
-                Text(
-                    text = "可多选 · 启用即生效",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                )
-            }
-            else -> {}
-        }
     }
 }
 

@@ -3,11 +3,11 @@
 # =============================================
 
 # 插件唯一标识（沿用原 DEX 插件 id，覆盖旧实现）
-id: com.kingzcheung.xime.plugin.emoji
+id: com.kingzcheung.xime.plugin.meme_bunny
 
 # 插件名称与描述
 name: 恶搞兔表情包
-description: 恶搞兔表情包（6 个表情图片，Lua 脚本版）
+description: 恶搞兔表情包（6 个表情图片）
 
 # 插件中心列表图标（字符图标）
 icon: "🐰"

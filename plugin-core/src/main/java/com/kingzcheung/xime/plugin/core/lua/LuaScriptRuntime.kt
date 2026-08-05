@@ -7,13 +7,17 @@ import com.kingzcheung.xime.plugin.core.lua.sdk.LuaHostApiImpl
 import com.kingzcheung.xime.plugin.core.lua.sdk.LuaPluginContract
 import org.luaj.vm2.Globals
 import org.luaj.vm2.LuaError
+import org.luaj.vm2.LuaString
 import org.luaj.vm2.LuaTable
 import org.luaj.vm2.LuaValue
 import org.luaj.vm2.Varargs
 import org.luaj.vm2.lib.VarArgFunction
 import org.luaj.vm2.lib.jse.CoerceJavaToLua
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
+import java.util.zip.GZIPInputStream
+import java.util.zip.GZIPOutputStream
 
 /**
  * Lua 脚本插件运行时。
@@ -109,6 +113,20 @@ class LuaScriptRuntime(
         }
     }
 
+    /** Lua 字符串（二进制可含 \0）或 ByteArray userdata → ByteArray。 */
+    private fun luaToBytes(value: LuaValue): ByteArray? {
+        if (value is LuaString) {
+            val out = ByteArray(value.m_length)
+            value.copyInto(0, out, 0, value.m_length)
+            return out
+        }
+        return try {
+            value.checkuserdata(ByteArray::class.java) as ByteArray
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     private val api: LuaHostApi = hostApi ?: LuaHostApiImpl(pluginId, pluginDir, configStore)
     private val globals: Globals = buildSandbox()
     private val loadedModules = ConcurrentHashMap<String, LuaValue>()
@@ -131,7 +149,7 @@ class LuaScriptRuntime(
     private val wsListener = object : com.kingzcheung.xime.plugin.core.lua.ws.WsHostListener {
         override fun onOpen() { wsCallbacks?.get("onOpen")?.invoke() }
         override fun onMessage(text: String) { wsCallbacks?.get("onMessage")?.invoke(LuaValue.valueOf(text)) }
-        override fun onBinary(data: ByteArray) { wsCallbacks?.get("onBinary")?.invoke(LuaValue.userdataOf(data)) }
+        override fun onBinary(data: ByteArray) { wsCallbacks?.get("onBinary")?.invoke(LuaString.valueOf(data)) }
         override fun onError(message: String) { wsCallbacks?.get("onError")?.invoke(LuaValue.valueOf(message)) }
         override fun onClose() { wsCallbacks?.get("onClose")?.invoke() }
     }
@@ -232,6 +250,55 @@ class LuaScriptRuntime(
             LuaValue.valueOf(api.uuid())
         })
 
+        // 二进制原语：大端 int32（帧序号，负数按补码输出）与 gzip 压缩/解压（火山等二进制协议需要）
+        val bin = LuaTable()
+        bin.set("int32be", luaFunction { args ->
+            val n = args.arg1().toint()
+            LuaString.valueOf(
+                byteArrayOf(
+                    ((n ushr 24) and 0xFF).toByte(),
+                    ((n ushr 16) and 0xFF).toByte(),
+                    ((n ushr 8) and 0xFF).toByte(),
+                    (n and 0xFF).toByte()
+                )
+            )
+        })
+        bin.set("uint32be", luaFunction { args ->
+            val n = args.arg1().toint()
+            LuaString.valueOf(
+                byteArrayOf(
+                    ((n ushr 24) and 0xFF).toByte(),
+                    ((n ushr 16) and 0xFF).toByte(),
+                    ((n ushr 8) and 0xFF).toByte(),
+                    (n and 0xFF).toByte()
+                )
+            )
+        })
+        host.set("bin", bin)
+
+        val zlib = LuaTable()
+        zlib.set("gzip", luaFunction { args ->
+            val data = luaToBytes(args.arg1()) ?: return@luaFunction LuaValue.NIL
+            try {
+                val bos = ByteArrayOutputStream()
+                GZIPOutputStream(bos).use { it.write(data) }
+                LuaString.valueOf(bos.toByteArray())
+            } catch (e: Exception) {
+                api.log("zlib.gzip failed: ${e.message}")
+                LuaValue.NIL
+            }
+        })
+        zlib.set("gunzip", luaFunction { args ->
+            val data = luaToBytes(args.arg1()) ?: return@luaFunction LuaValue.NIL
+            try {
+                LuaString.valueOf(GZIPInputStream(data.inputStream()).readBytes())
+            } catch (e: Exception) {
+                api.log("zlib.gunzip failed: ${e.message}")
+                LuaValue.NIL
+            }
+        })
+        host.set("zlib", zlib)
+
         // 通用 WebSocket 白名单 API（协议无关，ASR 等网络插件使用，见 WsHostApi）
         if (wsHostApi != null) {
             host.set("ws", buildWsTable())
@@ -269,12 +336,8 @@ class LuaScriptRuntime(
             LuaValue.NIL
         })
         ws.set("sendBinary", luaFunction { args ->
-            val data = try {
-                args.arg1().checkuserdata(ByteArray::class.java) as ByteArray
-            } catch (e: Exception) {
-                return@luaFunction LuaValue.NIL
-            }
-            wsHostApi?.sendBinary(data)
+            val data = luaToBytes(args.arg1())
+            if (data != null) wsHostApi?.sendBinary(data)
             LuaValue.NIL
         })
         ws.set("close", luaFunction { _ ->
