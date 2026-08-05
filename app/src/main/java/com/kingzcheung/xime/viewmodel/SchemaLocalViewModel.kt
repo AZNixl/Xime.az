@@ -170,10 +170,23 @@ class SchemaLocalViewModel(application: Application) : AndroidViewModel(applicat
         viewModelScope.launch {
             _uiState.update { it.copy(conflictPackageId = null, installingId = pkgId) }
             for (sid in _uiState.value.conflictingSchemeIds) {
-                withContext(Dispatchers.IO) {
-                    // 先刷新 builtin 清单：APP 更新后可能新增了未被清单追踪的文件
-                    SchemaManifestManager.refreshBuiltinManifest(context)
-                    SchemaManifestManager.uninstallWithManifest(context, sid)
+                val uninstallOk = withContext(Dispatchers.IO) {
+                    try {
+                        // 先刷新 builtin 清单：APP 更新后可能新增了未被清单追踪的文件
+                        SchemaManifestManager.refreshBuiltinManifest(context)
+                        SchemaManifestManager.uninstallWithManifest(context, sid).success
+                    } catch (e: Exception) {
+                        android.util.Log.e("SchemaLocalViewModel", "uninstall $sid failed", e)
+                        false
+                    }
+                }
+                if (!uninstallOk) {
+                    _uiState.update {
+                        it.copy(installingId = null, conflictPackageId = null, conflictingSchemeIds = emptyList())
+                    }
+                    showToast("卸载冲突方案「$sid」失败，安装已取消")
+                    loadLocalPackages()
+                    return@launch
                 }
             }
             val result = try {

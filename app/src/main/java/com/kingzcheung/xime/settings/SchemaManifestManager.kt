@@ -413,9 +413,7 @@ object SchemaManifestManager {
                 while (keys.hasNext()) {
                     val fn = keys.next() as String
                     val src = File(rimeDir, fn)
-                    if (src.exists()) {
-                        src.copyTo(File(builtinDir, fn), overwrite = true)
-                    }
+                    copyToBuiltinBackup(src, builtinDir, fn)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "failed to backup builtin", e)
@@ -511,7 +509,7 @@ object SchemaManifestManager {
                             put("sha256", sha256)
                             put("size", file.length())
                         })
-                        file.copyTo(File(builtinDir, fn), overwrite = true)
+                        copyToBuiltinBackup(file, builtinDir, fn)
                     }
 
                     if (fileEntries.length() == 0) return@withContext
@@ -570,6 +568,14 @@ object SchemaManifestManager {
         return false
     }
 
+    /** 备份文件到 market/builtin/，确保嵌套路径的父目录存在（如 lua/t9_preedit.lua）。 */
+    internal fun copyToBuiltinBackup(src: File, builtinDir: File, relPath: String) {
+        if (!src.exists()) return
+        val dest = File(builtinDir, relPath)
+        dest.parentFile?.mkdirs()
+        src.copyTo(dest, overwrite = true)
+    }
+
     /**
      * 扫描 rime/ 下未被任何包（registry）追踪的文件，追加到 builtin 清单和注册表中。
      *
@@ -580,9 +586,20 @@ object SchemaManifestManager {
      * 用户数据文件（.userdb/、*.custom.yaml、installation.yaml、custom_phrase.txt）
      * 不会被追踪，确保卸载时不被误删。
      */
-    suspend fun refreshBuiltinManifest(context: Context) = withContext(Dispatchers.IO) {
+    suspend fun refreshBuiltinManifest(context: Context) {
+        withContext(Dispatchers.IO) {
+            try {
+                refreshBuiltinManifestInternal(context)
+            } catch (e: Exception) {
+                // 备份/刷新失败不应中断安装流程或导致崩溃，只记录日志
+                Log.e(TAG, "refreshBuiltinManifest failed", e)
+            }
+        }
+    }
+
+    private suspend fun refreshBuiltinManifestInternal(context: Context) {
         val rimeDir = SchemaManager.getRimeDir(context)
-        if (!rimeDir.exists()) return@withContext
+        if (!rimeDir.exists()) return
 
         val registry = loadRegistry(context)
         val allFiles = registry.optJSONObject("files") ?: JSONObject()
@@ -616,7 +633,7 @@ object SchemaManifestManager {
             }
         }
 
-        if (untracked.isEmpty() && fileEntries.length() == (existingManifest?.optJSONObject("files")?.length() ?: 0)) return@withContext
+        if (untracked.isEmpty() && fileEntries.length() == (existingManifest?.optJSONObject("files")?.length() ?: 0)) return
 
         for ((relPath, file) in untracked) {
             val sha256 = SchemaManager.fileSha256(file) ?: continue
@@ -656,7 +673,7 @@ object SchemaManifestManager {
         val builtinDir = SchemaManager.getMarketDir(context, BUILTIN_PACKAGE_ID)
         builtinDir.mkdirs()
         for ((relPath, file) in untracked) {
-            file.copyTo(File(builtinDir, relPath), overwrite = true)
+            copyToBuiltinBackup(file, builtinDir, relPath)
         }
 
         Log.i(TAG, "refreshBuiltinManifest: added ${untracked.size} untracked files")
