@@ -9,8 +9,8 @@ import java.io.File
  *
  * 所有模型统一存放到 `filesDir/models/<modelId>/`，按模型 id 区分。
  *
- * 旧版本曾把模型分散存放在 `filesDir/`（联想）、`filesDir/punctuation_models/`（标点）、
- * `filesDir/asr_models/<id>/`（ASR）。通过 [migrateLegacy] 在首次访问时把旧目录中的
+ * 旧版本曾把模型分散存放在 `filesDir/`（联想）、`filesDir/asr_models/<id>/`（ASR）。
+ * 通过 [migrateLegacy] 在首次访问时把旧目录中的
  * 模型文件自动迁移到新目录，保证升级后已下载的模型仍可用。
  */
 object ModelStorage {
@@ -34,7 +34,6 @@ object ModelStorage {
             "predictive-text-small" -> context.filesDir
             // base 联想模型是新增版本，无旧路径，无需迁移
             "predictive-text-base" -> null
-            "punctuation_int8" -> File(context.filesDir, "punctuation_models")
             // 手写模型：旧版在 filesDir 根目录
             "ochwpro" -> context.filesDir
             else -> {

@@ -123,7 +123,6 @@ fun SettingsScreen(
         composable(SettingsRoutes.SpeechToText) {
             SpeechToTextSettingsContent(
                 onBack = { navController.popBackStack() },
-                onNavigateToModelManagement = { navController.navigate(SettingsRoutes.ModelManagement) },
                 onNavigateToPluginSettings = { pluginId ->
                     navController.navigate("${SettingsRoutes.PluginSettings}/$pluginId")
                 },

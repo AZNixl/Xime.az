@@ -164,9 +164,10 @@ class InstallerManager(
         ZipFile(archiveFile).use { zip ->
             for (entry in zip.entries()) {
                 if (entry.isDirectory) continue
-                val name = entry.name
+                // Windows 打包工具可能产生 "\" 分隔的条目名，统一规范为 "/"
+                val name = entry.name.replace('\\', '/')
                 if (name.startsWith("lib/")) continue
-                if (name.contains("../") || name.startsWith("/") || name.contains("..\\")) {
+                if (name.contains("../") || name.startsWith("/")) {
                     throw IllegalArgumentException("非法路径: $name")
                 }
                 val outputFile = File(pluginDir, name)
