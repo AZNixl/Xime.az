@@ -111,7 +111,6 @@ object ModelIndexLoader {
         return when (category.lowercase()) {
             "prediction" -> ModelCategory.PREDICTION
             "asr" -> ModelCategory.ASR
-            "punctuation" -> ModelCategory.PUNCTUATION
             "handwriting" -> ModelCategory.HANDWRITING
             else -> ModelCategory.OTHER
         }

@@ -17,7 +17,6 @@ class InferenceClient(private val context: Context) {
     companion object {
         private const val TAG = "InferenceClient"
         const val MODEL_PREDICTION = "predictive_text"
-        const val MODEL_PUNCTUATION = "punctuation"
         const val MODEL_HANDWRITING = "handwriting"
     }
 

@@ -26,7 +26,6 @@ object SettingsPreferences {
     const val KEY_STT_ENABLED = "stt_enabled"
     const val KEY_STT_ONLINE_PLUGIN_ID = "stt_online_plugin_id"
     
-    private const val KEY_PUNCTUATION_MODEL_ENABLED = "punctuation_model_enabled"    
     /** 默认主题 ID，可从 xime.yaml 的 style.color_scheme 初始化。 */
     @JvmStatic
     var defaultKeyboardTheme: String = "lavender_purple"
@@ -349,14 +348,6 @@ object SettingsPreferences {
 
     fun setSttOnlinePluginId(context: Context, pluginId: String) {
         getPrefs(context).edit().putString(KEY_STT_ONLINE_PLUGIN_ID, pluginId).apply()
-    }
-    
-    fun isPunctuationModelEnabled(context: Context): Boolean {
-        return getPrefs(context).getBoolean(KEY_PUNCTUATION_MODEL_ENABLED, false)
-    }
-    
-    fun setPunctuationModelEnabled(context: Context, enabled: Boolean) {
-        getPrefs(context).edit().putBoolean(KEY_PUNCTUATION_MODEL_ENABLED, enabled).apply()
     }
 
     // ---- 插件网络授权（per plugin per host） ----

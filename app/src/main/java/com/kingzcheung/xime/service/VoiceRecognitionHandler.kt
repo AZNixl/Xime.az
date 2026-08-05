@@ -5,12 +5,9 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.inputmethod.InputConnection
-import com.kingzcheung.xime.model.ModelRuntime
 import com.kingzcheung.xime.plugin.ExtensionManager
 import com.kingzcheung.xime.speech.RecognitionState
 import com.kingzcheung.xime.speech.SpeechRecognitionManager
-import com.kingzcheung.xime.speech.punctuation.PunctuationInference
-import com.kingzcheung.xime.speech.punctuation.PunctuationModelManager
 import com.kingzcheung.xime.settings.SettingsPreferences
 import com.kingzcheung.xime.util.FileLogger
 
@@ -27,7 +24,6 @@ class VoiceRecognitionHandler(
     }
 
     private lateinit var speechRecognitionManager: SpeechRecognitionManager
-    private var punctuationInitialized = false
 
     var textBeforeVoiceInput = ""
     var textLengthBeforeVoiceInput = 0
@@ -60,32 +56,6 @@ class VoiceRecognitionHandler(
         onStateChanged(getState().copy(voicePluginName = providerName))
         FileLogger.i(TAG, "STT provider: online")
         // ASR 插件按需加载：服务启动时不预加载，首次语音时由 startRecognition() 加载。
-    }
-    
-    private fun initPunctuationModel() {
-        if (punctuationInitialized) return
-        
-        val punctuationEnabled = SettingsPreferences.isPunctuationModelEnabled(context)
-        if (!punctuationEnabled) {
-            FileLogger.i(TAG, "Punctuation model not enabled in settings")
-            return
-        }
-        
-        val punctuationManager = PunctuationModelManager(context)
-        if (!punctuationManager.isModelDownloaded()) {
-            FileLogger.i(TAG, "Punctuation model not downloaded")
-            return
-        }
-        
-        val modelFile = punctuationManager.getModelFile()
-        val vocabFile = punctuationManager.getVocabFile()
-        if (PunctuationInference.initialize(context, modelFile.absolutePath, vocabFile.absolutePath)) {
-            ModelRuntime.keepWarm("punctuation")
-            punctuationInitialized = true
-            FileLogger.i(TAG, "Punctuation model initialized successfully")
-        } else {
-            FileLogger.e(TAG, "Failed to initialize punctuation model")
-        }
     }
 
     private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
@@ -123,15 +93,6 @@ class VoiceRecognitionHandler(
         val providerName = resolveProviderName()
         onStateChanged(getState().copy(voicePluginName = providerName))
 
-        // 标点模型按需加载，避免启动时预加载占内存
-        if (!punctuationInitialized) {
-            Thread {
-                try {
-                    initPunctuationModel()
-                } catch (_: Exception) { }
-            }.start()
-        }
-
         speechRecognitionManager.startRecognition()
     }
 
@@ -146,11 +107,6 @@ class VoiceRecognitionHandler(
     fun release() {
         if (::speechRecognitionManager.isInitialized) {
             speechRecognitionManager.release()
-        }
-        if (punctuationInitialized) {
-            ModelRuntime.releaseWarm("punctuation")
-            PunctuationInference.release()
-            punctuationInitialized = false
         }
     }
 
@@ -225,20 +181,9 @@ class VoiceRecognitionHandler(
         val cleanText = text.trim().replace(" ", "")
         if (cleanText.isEmpty()) return text
 
-        // 若文本末尾已带句末标点（如 funasr 等自带标点的后端），不再追加，避免"。。"
+        // 若文本末尾已带句末标点（如 funasr/volc 等自带标点的后端），不再追加，避免"。。"
         if (cleanText.last() in "。！？；：，、；：,.!?;:，") return cleanText
 
-        val punctuationEnabled = SettingsPreferences.isPunctuationModelEnabled(context)
-        if (punctuationEnabled && punctuationInitialized) {
-            try {
-                val result = PunctuationInference.predict(cleanText)
-                FileLogger.d(TAG, "Punctuation model result: '$cleanText' -> '$result'")
-                return result
-            } catch (e: Exception) {
-                FileLogger.e(TAG, "Punctuation model failed: ${e.message}")
-            }
-        }
-        
         return "$cleanText${heuristicPunctuation(cleanText)}"
     }
 
