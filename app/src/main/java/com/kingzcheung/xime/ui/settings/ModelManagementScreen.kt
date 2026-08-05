@@ -291,7 +291,6 @@ private fun categoryIcon(category: ModelCategory): ImageVector {
     return when (category) {
         ModelCategory.PREDICTION -> Icons.Default.AutoAwesome
         ModelCategory.ASR -> Icons.Default.GraphicEq
-        ModelCategory.PUNCTUATION -> Icons.Default.FormatQuote
         ModelCategory.HANDWRITING -> Icons.Outlined.Gesture
         ModelCategory.OTHER -> Icons.Default.Info
     }

@@ -3,7 +3,6 @@ package com.kingzcheung.xime.model
 enum class ModelCategory {
     PREDICTION,
     ASR,
-    PUNCTUATION,
     HANDWRITING,
     OTHER
 }

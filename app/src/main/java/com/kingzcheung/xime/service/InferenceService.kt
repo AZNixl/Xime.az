@@ -9,7 +9,6 @@ import android.util.Log
 import com.kingzcheung.xime.association.AssociationCandidate
 import com.kingzcheung.xime.association.NativeOnnxEngine
 import com.kingzcheung.xime.handwriting.HandwritingNativeEngine
-import com.kingzcheung.xime.speech.punctuation.PunctuationInference
 import org.json.JSONObject
 import java.io.File
 
@@ -18,7 +17,6 @@ class InferenceService : Service() {
     companion object {
         private const val TAG = "InferenceService"
         private const val MODEL_PREDICTION = "predictive_text"
-        private const val MODEL_PUNCTUATION = "punctuation"
         private const val MODEL_HANDWRITING = "handwriting"
     }
 
@@ -32,7 +30,6 @@ class InferenceService : Service() {
             return try {
                 when (modelId) {
                     MODEL_PREDICTION -> loadPredictionModel(modelPath, extraPath)
-                    MODEL_PUNCTUATION -> loadPunctuationModel(modelPath, extraPath)
                     MODEL_HANDWRITING -> loadHandwritingModel(modelPath, extraPath)
                     else -> {
                         Log.e(TAG, "Unknown modelId: $modelId")
@@ -52,7 +49,6 @@ class InferenceService : Service() {
                         NativeOnnxEngine.release()
                         predictionVocab = null
                     }
-                    MODEL_PUNCTUATION -> PunctuationInference.release()
                     MODEL_HANDWRITING -> HandwritingNativeEngine.release()
                 }
             } catch (e: Exception) {
@@ -64,7 +60,6 @@ class InferenceService : Service() {
             return try {
                 when (modelId) {
                     MODEL_PREDICTION -> NativeOnnxEngine.isInitialized()
-                    MODEL_PUNCTUATION -> PunctuationInference.isInitialized()
                     MODEL_HANDWRITING -> HandwritingNativeEngine.isInitialized()
                     else -> false
                 }
@@ -86,14 +81,6 @@ class InferenceService : Service() {
 
         override fun recognizeHandwriting(modelId: String, strokeData: FloatArray, mask: ByteArray, topK: Int): MutableList<String> {
             return mutableListOf()
-        }
-
-        override fun restorePunctuation(modelId: String, text: String): String {
-            return try {
-                PunctuationInference.predict(text)
-            } catch (e: Exception) {
-                text
-            }
         }
 
         override fun processAudioBytes(input: ByteArray, sampleRate: Int): ByteArray {
@@ -176,11 +163,6 @@ class InferenceService : Service() {
         NativeOnnxEngine.initVocab(vocab)
         Log.i(TAG, "Prediction model loaded: ${vocab.size} vocab")
         return true
-    }
-
-    private fun loadPunctuationModel(modelPath: String, vocabPath: String): Boolean {
-        if (!loadOnnxLibs()) return false
-        return PunctuationInference.initialize(this, modelPath, vocabPath)
     }
 
     private fun loadHandwritingModel(modelPath: String, charIndexPath: String): Boolean {

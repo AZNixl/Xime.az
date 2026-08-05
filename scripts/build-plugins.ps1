@@ -11,6 +11,38 @@
 
 $ErrorActionPreference = "Stop"
 
+# Compress-Archive / ZipFile.CreateFromDirectory 在 Windows 上会生成反斜杠
+# 路径分隔符，而 Android 侧 ZipFile 按 "/" 解析，导致 resources/ 资源错乱。
+# 这里手工构造 zip，条目名统一用 "/"。
+function Write-Xipk {
+    param(
+        [Parameter(Mandatory = $true)][string]$SourceDir,
+        [Parameter(Mandatory = $true)][string]$DestFile
+    )
+    Add-Type -AssemblyName System.IO.Compression
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $fs = [System.IO.File]::Open($DestFile, [System.IO.FileMode]::CreateNew)
+    $archive = New-Object System.IO.Compression.ZipArchive($fs, [System.IO.Compression.ZipArchiveMode]::Create)
+    try {
+        $base = (Resolve-Path $SourceDir).Path.TrimEnd('\')
+        Get-ChildItem -Path $SourceDir -Recurse -File -Force | ForEach-Object {
+            if ($_.Name.StartsWith('.') -or $_.FullName.Substring($base.Length + 1).StartsWith('.')) { return }
+            $rel = $_.FullName.Substring($base.Length + 1).Replace('\', '/')
+            $entry = $archive.CreateEntry($rel, [System.IO.Compression.CompressionLevel]::Optimal)
+            $entryStream = $entry.Open()
+            try {
+                $bytes = [System.IO.File]::ReadAllBytes($_.FullName)
+                $entryStream.Write($bytes, 0, $bytes.Length)
+            } finally {
+                $entryStream.Dispose()
+            }
+        }
+    } finally {
+        $archive.Dispose()
+        $fs.Dispose()
+    }
+}
+
 $PROJECT_DIR = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $OUTPUT_DIR = Join-Path $PROJECT_DIR "build\plugin-release"
 $PLUGINS_DIR = Join-Path $PROJECT_DIR "plugins"
@@ -40,14 +72,12 @@ foreach ($pluginDir in Get-ChildItem -Path $PLUGINS_DIR -Directory) {
     $out = Join-Path $OUTPUT_DIR "$name-$version.xipk"
     Remove-Item -Path $out -Force -ErrorAction SilentlyContinue
 
-    $items = Get-ChildItem -Path $pluginDir.FullName -Force |
-        Where-Object { -not $_.Name.StartsWith('.') }
-    if (-not $items) { continue }
+    $hasEntries = Get-ChildItem -Path $pluginDir.FullName -Force |
+        Where-Object { -not $_.Name.StartsWith('.') } |
+        Select-Object -First 1
+    if (-not $hasEntries) { continue }
 
-    $zip = Join-Path $OUTPUT_DIR "$name-$version.zip"
-    Remove-Item -Path $zip -Force -ErrorAction SilentlyContinue
-    Compress-Archive -Path $items.FullName -DestinationPath $zip -CompressionLevel Optimal
-    Rename-Item -Path $zip -NewName "$name-$version.xipk"
+    Write-Xipk -SourceDir $pluginDir.FullName -DestFile $out
     Write-Host "Lua : $name-$version.xipk"
 }
 
