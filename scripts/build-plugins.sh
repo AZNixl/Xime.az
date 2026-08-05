@@ -1,33 +1,49 @@
 #!/bin/bash
-# 构建所有插件的 release 包（.xipk）
+# 构建所有 Lua 插件 xipk 包
 #
 # 使用方式：
 #   bash scripts/build-plugins.sh
 #
-# 产物输出到 build/plugin-release/*.xipk
+# Lua 脚本插件 = 纯文件目录（plugins/<name>/ 含 manifest.yaml），无需 gradle，
+# 直接 zip 打包到 build/plugin-release/*.xipk
 
 set -e
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 OUTPUT_DIR="$PROJECT_DIR/build/plugin-release"
-PLUGIN_MODULES=(
-  ":plugins:funasr-asr"
-  ":plugins:kaomoji"
-  ":plugins:meme-bunny"
-)
 
-echo "=== 构建插件 release 包 ==="
+echo "=== 构建 Lua 插件 xipk 包 ==="
 echo "输出目录: $OUTPUT_DIR"
 
 mkdir -p "$OUTPUT_DIR"
 
-# 构建所有插件 release 变体
-"$PROJECT_DIR/gradlew" "${PLUGIN_MODULES[@]/%/:assembleRelease}" --quiet
+for plugin_dir in "$PROJECT_DIR"/plugins/*/; do
+  manifest="$plugin_dir/manifest.yaml"
+  if [ ! -f "$manifest" ]; then
+    continue
+  fi
 
-# 收集 xipk 产物
-find "$PROJECT_DIR/plugins" -path "*/outputs/apk/release/*.xipk" -exec cp {} "$OUTPUT_DIR/" \;
+  name=$(basename "$plugin_dir")
+  version=$(python3 -c "import yaml; print(yaml.safe_load(open('$manifest')).get('version','0.0.0'))" 2>/dev/null || echo "0.0.0")
+  out="$OUTPUT_DIR/${name}-${version}.xipk"
+  rm -f "$out"
+
+  python3 - "$plugin_dir" "$out" <<'PYEOF'
+import sys, os, zipfile
+src, out = sys.argv[1], sys.argv[2]
+with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
+    for root, dirs, files in os.walk(src):
+        dirs[:] = [d for d in dirs if not d.startswith('.')]
+        for f in files:
+            if f.startswith('.'):
+                continue
+            full = os.path.join(root, f)
+            rel = os.path.relpath(full, src)
+            z.write(full, rel)
+PYEOF
+  echo "Lua : $name-$version.xipk"
+done
 
 echo ""
 echo "=== 完成 ==="
-echo "插件包列表:"
 ls -lh "$OUTPUT_DIR"/*.xipk

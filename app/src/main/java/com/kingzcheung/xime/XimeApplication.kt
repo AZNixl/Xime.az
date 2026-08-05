@@ -41,7 +41,6 @@ class XimeApplication : Application(), ImageLoaderFactory {
     
     companion object {
         private const val TAG = "XimeApplication"
-        const val HOST_PROVIDER_AUTHORITY = "com.kingzcheung.xime.plugin.proxy"
     }
     
     private val applicationScope = CoroutineScope(Dispatchers.IO)
@@ -66,7 +65,10 @@ class XimeApplication : Application(), ImageLoaderFactory {
             PluginManager.PluginConfigStoreFactory { app, pluginId ->
                 PluginConfigStoreImpl(app, pluginId)
             }
-        PluginManager.initialize(this, HOST_PROVIDER_AUTHORITY) {
+        PluginManager.wsHostApiFactory = { pluginId ->
+            com.kingzcheung.xime.plugin.ws.WsHostApiImpl(this, pluginId)
+        }
+        PluginManager.initialize(this) {
             if (isDebug) {
                 PluginManager.installPluginsFromAssetsForDebug("plugins")
             }

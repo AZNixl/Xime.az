@@ -503,6 +503,14 @@ private fun ExtensionItem(
                         )
                     }
 
+                    if (extension.declaredHosts.isNotEmpty()) {
+                        NetworkAccessSection(
+                            pluginId = extension.id,
+                            pluginName = extension.name,
+                            hosts = extension.declaredHosts
+                        )
+                    }
+
                     if (!hostCompatible) {
                         Text(
                             text = "该插件不支持当前主应用版本，已跳过加载" +
@@ -699,6 +707,84 @@ private fun ExtensionItem(
                     showTrustConfirm = false
                     trustConfirmAction = null
                 }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+}
+
+// 插件网络访问授权：展示声明域名，未授权可授权，已授权可撤销
+@Composable
+private fun NetworkAccessSection(
+    pluginId: String,
+    pluginName: String,
+    hosts: List<String>
+) {
+    val context = LocalContext.current
+    var authorized by remember(pluginId) {
+        mutableStateOf(SettingsPreferences.getPluginAuthorizedHosts(context, pluginId))
+    }
+    var pendingHost by remember { mutableStateOf<String?>(null) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            text = "网络访问",
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold
+        )
+        hosts.forEach { host ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = host,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f)
+                )
+                if (host in authorized) {
+                    Text(
+                        text = "已授权",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    TextButton(onClick = {
+                        SettingsPreferences.revokePluginHost(context, pluginId, host)
+                        authorized = authorized - host
+                    }) {
+                        Text("撤销", style = MaterialTheme.typography.bodySmall)
+                    }
+                } else {
+                    TextButton(onClick = { pendingHost = host }) {
+                        Text(
+                            text = "授权",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    pendingHost?.let { host ->
+        AlertDialog(
+            onDismissRequest = { pendingHost = null },
+            title = { Text("授权网络访问") },
+            text = { Text("允许插件「$pluginName」连接 $host 并发送数据？\n\n数据将发送到该域名，请确认信任此插件。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    SettingsPreferences.authorizePluginHost(context, pluginId, host)
+                    authorized = authorized + host
+                    pendingHost = null
+                }) {
+                    Text("允许", color = MaterialTheme.colorScheme.primary)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingHost = null }) {
                     Text("取消")
                 }
             }

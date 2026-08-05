@@ -1,18 +1,19 @@
 package com.kingzcheung.xime.plugin.core.runtime.lifecycle
 
 import android.app.Application
-import android.os.Build
 import android.util.Log
 import com.kingzcheung.xime.plugin.core.api.IPluginEntryClass
+import com.kingzcheung.xime.plugin.core.lua.LuaAsrPluginAdapter
+import com.kingzcheung.xime.plugin.core.lua.LuaEmojiPluginAdapter
+import com.kingzcheung.xime.plugin.core.lua.LuaPluginAdapter
+import com.kingzcheung.xime.plugin.core.lua.LuaScriptRuntime
+import com.kingzcheung.xime.plugin.core.model.PluginCategory
 import com.kingzcheung.xime.plugin.core.model.PluginContext
 import com.kingzcheung.xime.plugin.core.model.PluginInfo
 import com.kingzcheung.xime.plugin.core.runtime.PluginManager
 import com.kingzcheung.xime.plugin.core.runtime.installer.InstallerManager
 import com.kingzcheung.xime.plugin.core.runtime.installer.XmlManager
-import com.kingzcheung.xime.plugin.core.runtime.loader.DependencyManager
 import com.kingzcheung.xime.plugin.core.runtime.loader.LoadedPluginInfo
-import com.kingzcheung.xime.plugin.core.runtime.loader.PluginClassLoader
-import com.kingzcheung.xime.plugin.core.runtime.proxy.ProxyManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -22,9 +23,6 @@ class PluginLifecycleManager(
     private val application: Application,
     private val xmlManager: XmlManager,
     private val installerManager: InstallerManager,
-    private val dependencyManager: DependencyManager,
-    private val proxyManager: ProxyManager,
-    private val classIndex: ConcurrentHashMap<String, String>,
     private val loadedPlugins: ConcurrentHashMap<String, LoadedPluginInfo>,
     private val pluginInstances: ConcurrentHashMap<String, IPluginEntryClass>
 ) {
@@ -36,7 +34,7 @@ class PluginLifecycleManager(
     suspend fun launchPlugin(pluginId: String): Boolean = withContext(Dispatchers.IO) {
         try {
             if (loadedPlugins.containsKey(pluginId)) {
-                return@withContext reloadPluginWithDependents(pluginId)
+                return@withContext reloadPlugin(pluginId)
             }
             launchSinglePlugin(pluginId)
         } catch (e: Throwable) {
@@ -58,12 +56,8 @@ class PluginLifecycleManager(
             }
         }
 
-        proxyManager.unregisterProviders(pluginId)
-
         loadedPlugins.remove(pluginId)
         pluginInstances.remove(pluginId)
-        dependencyManager.clearDependenciesFor(pluginId)
-        removePluginFromIndex(pluginId)
     }
 
     suspend fun loadEnabledPlugins(): Int = withContext(Dispatchers.IO) {
@@ -115,16 +109,11 @@ class PluginLifecycleManager(
             Log.w(TAG, "Plugin $pluginId 不兼容当前主应用版本，拒绝加载")
             return false
         }
-        Log.d(TAG, "Plugin info: path=${pluginInfo.path}, entryClass=${pluginInfo.entryClass}")
-        Log.d(TAG, "Plugin providers: ${pluginInfo.providers.map { it.className + ":" + it.authorities }}")
-
-        proxyManager.registerProviders(pluginId, pluginInfo.providers)
-        Log.d(TAG, "Providers registered for $pluginId")
+        Log.d(TAG, "Plugin info: path=${pluginInfo.path}, entryScript=${pluginInfo.entryScript}")
 
         val loadedPlugin = loadPlugin(pluginInfo)
         if (loadedPlugin == null) {
-            Log.w(TAG, "Failed to load plugin APK: $pluginId")
-            proxyManager.unregisterProviders(pluginId)
+            Log.w(TAG, "Failed to load plugin: $pluginId")
             return false
         }
         loadedPlugins[pluginId] = loadedPlugin
@@ -137,131 +126,71 @@ class PluginLifecycleManager(
             return false
         }
         pluginInstances[pluginId] = instance
-        Log.d(TAG, "Plugin instance created: $pluginId, instance type: ${instance::class.simpleName}")
+        Log.d(TAG, "Plugin instance created: $pluginId")
 
         return true
     }
 
-    private suspend fun reloadPluginWithDependents(pluginId: String): Boolean {
-        val dependents = dependencyManager.findDependentsRecursive(pluginId)
-        val pluginsToReloadIds = listOf(pluginId) + dependents
-
-        pluginsToReloadIds.reversed().forEach { id ->
-            if (loadedPlugins.containsKey(id)) {
-                unloadPlugin(id)
-            }
-        }
-
-        val pluginInfosToReload = pluginsToReloadIds.mapNotNull { xmlManager.getPluginById(it) }
-        if (pluginInfosToReload.size != pluginsToReloadIds.size) {
-            return false
-        }
-
-        var allSuccess = true
-        for (pluginInfo in pluginInfosToReload) {
-            if (!launchSinglePlugin(pluginInfo.id)) {
-                allSuccess = false
-                break
-            }
-        }
-        return allSuccess
+    private suspend fun reloadPlugin(pluginId: String): Boolean {
+        unloadPlugin(pluginId)
+        return launchSinglePlugin(pluginId)
     }
 
     private fun loadPlugin(plugin: PluginInfo): LoadedPluginInfo? {
         return try {
             Log.d(TAG, "loadPlugin: ${plugin.id}, path=${plugin.path}")
-            val pluginApkFile = File(plugin.path)
-            if (!pluginApkFile.exists()) {
-                Log.w(TAG, "Plugin APK not found: ${plugin.path}")
+            val entryFile = File(plugin.path)
+            if (!entryFile.exists()) {
+                Log.w(TAG, "Plugin entry script not found: ${plugin.path}")
                 return null
             }
-            Log.d(TAG, "Plugin APK exists: ${pluginApkFile.absolutePath}")
-
-            loadClassIndexForPlugin(plugin)
-
-            val nativeLibPath = plugin.nativeLibPath ?: 
-                determineNativeLibPath(plugin.id)
-            val optimizedDirectory = installerManager.getOptimizedDirectory(plugin.id)?.absolutePath
-            
-            Log.d(TAG, "Creating ClassLoader for ${plugin.id}: nativeLibPath=$nativeLibPath")
-
-            val classLoader = PluginClassLoader(
+            val pluginDir = entryFile.parentFile ?: File(plugin.path).parentFile
+            val runtime = LuaScriptRuntime(
                 pluginId = plugin.id,
-                pluginFile = pluginApkFile,
-                parent = application.classLoader,
-                optimizedDirectory = optimizedDirectory,
-                librarySearchPath = nativeLibPath,
-                pluginFinder = dependencyManager
+                pluginDir = pluginDir,
+                entryScript = plugin.entryScript ?: "main.lua",
+                configStore = PluginManager.configStoreFactory.create(application, plugin.id),
+                wsHostApi = PluginManager.wsHostApiFactory?.invoke(plugin.id)
             )
-            
-            Log.d(TAG, "ClassLoader created for ${plugin.id}")
-
-            LoadedPluginInfo(pluginInfo = plugin, classLoader = classLoader)
+            LoadedPluginInfo(pluginInfo = plugin, script = runtime)
         } catch (e: Exception) {
             Log.e(TAG, "loadPlugin failed for ${plugin.id}", e)
             null
         }
     }
 
-    private fun determineNativeLibPath(pluginId: String): String? {
-        val pluginDir = installerManager.getPluginDirectory(pluginId)
-        val abi = Build.SUPPORTED_ABIS[0]
-        val nativeLibDir = File(pluginDir, "lib/$abi")
-        return if (nativeLibDir.exists()) nativeLibDir.absolutePath else null
-    }
-
     private fun instantiatePlugin(loadedPlugin: LoadedPluginInfo): IPluginEntryClass? {
         val plugin = loadedPlugin.pluginInfo
-        Log.d(TAG, "Instantiating plugin: ${plugin.id}, entryClass: ${plugin.entryClass}")
+        Log.d(TAG, "Instantiating Lua plugin: ${plugin.id}")
         return try {
-            val instance = loadedPlugin.classLoader.getInterface(
-                IPluginEntryClass::class.java,
-                plugin.entryClass
+            val pluginContext = PluginContext(
+                application = application,
+                pluginInfo = plugin,
+                configStore = PluginManager.configStoreFactory.create(application, plugin.id)
             )
-            Log.d(TAG, "Instance result: ${instance?.let { it::class.simpleName } ?: "null"}")
-            
-            if (instance != null) {
-                val pluginContext = PluginContext(
-                    application = application,
-                    pluginInfo = plugin,
-                    configStore = PluginManager.configStoreFactory.create(application, plugin.id)
-                )
-                instance.onLoad(pluginContext)
-                Log.d(TAG, "Plugin ${plugin.id} onLoad called successfully")
-                instance
-            } else {
-                Log.w(TAG, "Failed to instantiate plugin ${plugin.id} - instance is null")
-                null
+            val adapter: LuaPluginAdapter = when (plugin.category) {
+                PluginCategory.ASR ->
+                    LuaAsrPluginAdapter(
+                        runtime = loadedPlugin.script ?: return null,
+                        pluginContext = pluginContext
+                    )
+                PluginCategory.EMOJI ->
+                    LuaEmojiPluginAdapter(
+                        runtime = loadedPlugin.script ?: return null,
+                        pluginContext = pluginContext
+                    )
+                else ->
+                    LuaPluginAdapter(
+                        runtime = loadedPlugin.script ?: return null,
+                        pluginContext = pluginContext
+                    )
             }
+            adapter.onLoad(pluginContext)
+            Log.d(TAG, "Lua plugin ${plugin.id} onLoad called successfully")
+            adapter
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to instantiate plugin ${plugin.id}", e)
+            Log.e(TAG, "Failed to instantiate Lua plugin ${plugin.id}", e)
             null
-        }
-    }
-
-    private fun loadClassIndexForPlugin(plugin: PluginInfo) {
-        val pluginDir = installerManager.getPluginDirectory(plugin.id)
-        val indexFile = File(pluginDir, "class_index")
-
-        if (!indexFile.exists()) return
-
-        try {
-            indexFile.forEachLine { className ->
-                if (className.isNotBlank()) {
-                    classIndex[className] = plugin.id
-                }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    private fun removePluginFromIndex(pluginId: String) {
-        val iterator = classIndex.entries.iterator()
-        while (iterator.hasNext()) {
-            if (iterator.next().value == pluginId) {
-                iterator.remove()
-            }
         }
     }
 }

@@ -3,7 +3,6 @@ package com.kingzcheung.xime.plugin.core.runtime.installer
 import android.app.Application
 import com.kingzcheung.xime.plugin.core.model.PluginInfo
 import com.kingzcheung.xime.plugin.core.model.PluginSource
-import com.kingzcheung.xime.plugin.core.model.ProviderInfo
 import java.io.File
 
 class XmlManager(private val context: Application) {
@@ -50,14 +49,10 @@ class XmlManager(private val context: Application) {
                     writer.write("    <versionCode>${plugin.versionCode}</versionCode>\n")
                     writer.write("    <versionName>${escapeXml(plugin.versionName)}</versionName>\n")
                     writer.write("    <path>${escapeXml(plugin.path)}</path>\n")
-                    writer.write("    <entryClass>${escapeXml(plugin.entryClass)}</entryClass>\n")
                     writer.write("    <type>${escapeXml(plugin.type)}</type>\n")
                     writer.write("    <enabled>${plugin.enabled}</enabled>\n")
                     writer.write("    <installTime>${plugin.installTime}</installTime>\n")
                     writer.write("    <source>${plugin.source.name}</source>\n")
-                    if (plugin.nativeLibPath != null) {
-                        writer.write("    <nativeLibPath>${escapeXml(plugin.nativeLibPath)}</nativeLibPath>\n")
-                    }
                     writer.write("    <iconResId>${plugin.iconResId}</iconResId>\n")
                     writer.write("    <trustLevel>${plugin.trustLevel.name}</trustLevel>\n")
                     if (plugin.minHostVersion != null) {
@@ -66,17 +61,11 @@ class XmlManager(private val context: Application) {
                     if (plugin.maxHostVersion != null) {
                         writer.write("    <maxHostVersion>${escapeXml(plugin.maxHostVersion)}</maxHostVersion>\n")
                     }
-                    if (plugin.providers.isNotEmpty()) {
-                        writer.write("    <providers>\n")
-                        for (provider in plugin.providers) {
-                            writer.write("      <provider>\n")
-                            writer.write("        <className>${escapeXml(provider.className)}</className>\n")
-                            writer.write("        <authorities>${escapeXml(provider.authorities.joinToString(";"))}</authorities>\n")
-                            writer.write("        <exported>${provider.exported}</exported>\n")
-                            writer.write("        <enabled>${provider.enabled}</enabled>\n")
-                            writer.write("      </provider>\n")
-                        }
-                        writer.write("    </providers>\n")
+                    if (plugin.entryScript != null) {
+                        writer.write("    <entryScript>${escapeXml(plugin.entryScript)}</entryScript>\n")
+                    }
+                    if (plugin.declaredHosts.isNotEmpty()) {
+                        writer.write("    <networkHosts>${escapeXml(plugin.declaredHosts.joinToString(","))}</networkHosts>\n")
                     }
                     writer.write("  </plugin>\n")
                 }
@@ -110,24 +99,26 @@ class XmlManager(private val context: Application) {
             val versionCode = extractTag(pluginContent, "versionCode")?.toLongOrNull() ?: 0
             val versionName = extractTag(pluginContent, "versionName") ?: ""
             val path = extractTag(pluginContent, "path")
-            val entryClass = extractTag(pluginContent, "entryClass")
             val type = extractTag(pluginContent, "type") ?: "unknown"
             val enabled = extractTag(pluginContent, "enabled")?.toBoolean() ?: true
             val installTime = extractTag(pluginContent, "installTime")?.toLongOrNull() ?: System.currentTimeMillis()
             val source = extractTag(pluginContent, "source")
                 ?.let { runCatching { PluginSource.valueOf(it) }.getOrNull() }
                 ?: PluginSource.SYSTEM
-            val nativeLibPath = extractTag(pluginContent, "nativeLibPath")
             val iconResId = extractTag(pluginContent, "iconResId")?.toIntOrNull() ?: 0
             val minHostVersion = extractTag(pluginContent, "minHostVersion")?.takeIf { it.isNotBlank() }
             val maxHostVersion = extractTag(pluginContent, "maxHostVersion")?.takeIf { it.isNotBlank() }
+            val entryScript = extractTag(pluginContent, "entryScript")?.takeIf { it.isNotBlank() }
+            val networkHosts = extractTag(pluginContent, "networkHosts")
+                ?.split(",")
+                ?.map { it.trim() }
+                ?.filter { it.isNotBlank() }
+                ?: emptyList()
             val trustLevel = extractTag(pluginContent, "trustLevel")
                 ?.let { runCatching { com.kingzcheung.xime.plugin.core.model.TrustLevel.valueOf(it) }.getOrNull() }
                 ?: com.kingzcheung.xime.plugin.core.model.TrustLevel.UNKNOWN
-            
-            val providers = parseProviders(pluginContent)
 
-            if (id != null && path != null && entryClass != null) {
+            if (id != null && path != null) {
                 plugins[id] = PluginInfo(
                     id = id,
                     name = name ?: "",
@@ -136,46 +127,18 @@ class XmlManager(private val context: Application) {
                     versionCode = versionCode,
                     versionName = versionName,
                     path = path,
-                    entryClass = entryClass,
                     type = type,
                     enabled = enabled,
                     installTime = installTime,
-                    nativeLibPath = nativeLibPath,
-                    providers = providers,
                     source = source,
                     minHostVersion = minHostVersion,
                     maxHostVersion = maxHostVersion,
-                    trustLevel = trustLevel
+                    trustLevel = trustLevel,
+                    entryScript = entryScript,
+                    declaredHosts = networkHosts
                 )
             }
         }
-    }
-    
-    private fun parseProviders(pluginContent: String): List<ProviderInfo> {
-        val providersRegex = Regex("<providers>(.*?)</providers>", RegexOption.DOT_MATCHES_ALL)
-        val providersMatch = providersRegex.find(pluginContent)
-        
-        if (providersMatch == null) return emptyList()
-        
-        val providersContent = providersMatch.groupValues[1]
-        val providerRegex = Regex("<provider>(.*?)</provider>", RegexOption.DOT_MATCHES_ALL)
-        val providerMatches = providerRegex.findAll(providersContent)
-        
-        return providerMatches.map { providerMatch ->
-            val providerContent = providerMatch.groupValues[1]
-            val className = extractTag(providerContent, "className") ?: ""
-            val authoritiesStr = extractTag(providerContent, "authorities") ?: ""
-            val authorities = authoritiesStr.split(";").filter { it.isNotBlank() }
-            val exported = extractTag(providerContent, "exported")?.toBoolean() ?: false
-            val enabled = extractTag(providerContent, "enabled")?.toBoolean() ?: true
-            
-            ProviderInfo(
-                className = className,
-                authorities = authorities,
-                exported = exported,
-                enabled = enabled
-            )
-        }.toList()
     }
 
     private fun extractTag(content: String, tagName: String): String? {

@@ -10,7 +10,6 @@ import com.kingzcheung.xime.plugin.core.model.PluginFrameworkContext
 import com.kingzcheung.xime.plugin.core.model.PluginInfo
 import com.kingzcheung.xime.plugin.core.model.PluginSource
 import com.kingzcheung.xime.plugin.core.runtime.loader.LoadedPluginInfo
-import com.kingzcheung.xime.plugin.core.runtime.proxy.ProxyManager
 import com.kingzcheung.xime.plugin.core.security.crash.PluginCrashHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -33,6 +32,13 @@ object PluginManager {
     var configStoreFactory: PluginConfigStoreFactory =
         PluginConfigStoreFactory { _, _ -> NoopPluginConfigStore }
 
+    /**
+     * 宿主 WebSocket 白名单 API 提供者（app 层注入，按插件创建以便做域名/授权校验）。
+     * 工厂参数为插件 id，宿主据此查询插件声明的域名与用户授权。
+     */
+    @Volatile
+    var wsHostApiFactory: ((pluginId: String) -> com.kingzcheung.xime.plugin.core.lua.ws.WsHostApi)? = null
+
     private var frameworkContext: PluginFrameworkContext? = null
     private val _loadedPluginsFlow = MutableStateFlow<Map<String, LoadedPluginInfo>>(emptyMap())
     private val _pluginInstancesFlow = MutableStateFlow<Map<String, IPluginEntryClass>>(emptyMap())
@@ -52,14 +58,6 @@ object PluginManager {
     val installerManager: com.kingzcheung.xime.plugin.core.runtime.installer.InstallerManager
         get() = requireContext().installerManager
 
-    val resourcesManager: com.kingzcheung.xime.plugin.core.runtime.resource.PluginResourcesManager
-        get() = requireContext().resourcesManager
-
-    val proxyManager: ProxyManager
-        get() = requireContext().proxyManager
-
-    internal fun getClassIndex(): Map<String, String> = requireContext().classIndex
-
     private val managerScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     private fun requireContext(): PluginFrameworkContext {
@@ -70,7 +68,6 @@ object PluginManager {
     @Synchronized
     fun initialize(
         context: Application,
-        hostProviderAuthority: String? = null,
         onSetup: (suspend () -> Unit)? = null
     ) {
         if (frameworkContext != null && frameworkContext?.initState?.value != InitState.NOT_INITIALIZED) {
@@ -81,10 +78,6 @@ object PluginManager {
         Log.d(TAG, "Starting initialization...")
         PluginCrashHandler.initialize(context)
         frameworkContext = PluginFrameworkContext(context)
-        
-        hostProviderAuthority?.let {
-            requireContext().proxyManager.setHostProviderAuthority(it)
-        }
         
         requireContext().initState.value = InitState.INITIALIZING
 
@@ -135,20 +128,6 @@ object PluginManager {
         return result
     }
 
-    fun <T : Any> getInterface(interfaceClass: Class<T>, className: String): T? {
-        try {
-            val targetPluginId = requireContext().classIndex[className]
-            if (targetPluginId == null) return null
-
-            val loadedPlugin = requireContext().loadedPlugins[targetPluginId]
-            if (loadedPlugin == null) return null
-
-            return loadedPlugin.classLoader.getInterface(interfaceClass, className)
-        } catch (e: Exception) {
-            return null
-        }
-    }
-
     fun getPluginInstance(pluginId: String): IPluginEntryClass? {
         return requireContext().pluginInstances[pluginId]
     }
@@ -173,14 +152,6 @@ object PluginManager {
         )
     }
 
-    fun getPluginDependentsChain(pluginId: String): List<String> {
-        return requireContext().dependencyManager.findDependentsRecursive(pluginId)
-    }
-
-    fun getPluginDependenciesChain(pluginId: String): List<String> {
-        return requireContext().dependencyManager.findDependenciesRecursive(pluginId)
-    }
-
     suspend fun setPluginEnabled(pluginId: String, enabled: Boolean): Boolean {
         return try {
             val pluginInfo = requireContext().xmlManager.getPluginById(pluginId) ?: return false
@@ -198,7 +169,7 @@ object PluginManager {
         Log.d(TAG, "installPluginFromAssets: $assetsPath")
         return try {
             val context = requireContext().application
-            val pluginFile = File(context.cacheDir, "temp_plugin.apk")
+            val pluginFile = File(context.cacheDir, "temp_plugin.xipk")
             context.assets.open(assetsPath).use { input ->
                 pluginFile.outputStream().use { output ->
                     input.copyTo(output)

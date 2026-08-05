@@ -23,7 +23,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.util.zip.ZipFile
 
 object ExtensionManager {
     private const val TAG = "ExtensionManager"
@@ -73,22 +72,15 @@ object ExtensionManager {
         if (!iconDir.exists()) iconDir.mkdirs()
         
         val iconFile = File(iconDir, "${pluginId}_$assetName")
-        
+
         if (!iconFile.exists()) {
-            val apkPath = pluginInfo?.path
-            if (apkPath != null) {
+            // Lua 插件资源在 resources/ 目录（path 指向入口脚本，其父目录为插件目录）
+            val resourceFile = pluginInfo?.path
+                ?.let { File(it).parentFile }
+                ?.let { File(it, "resources/$assetName") }
+            if (resourceFile != null && resourceFile.exists()) {
                 try {
-                    ZipFile(File(apkPath)).use { zip ->
-                        val entry = zip.entries().asSequence()
-                            .firstOrNull { it.name == "assets/$assetName" }
-                        if (entry != null) {
-                            zip.getInputStream(entry).use { input ->
-                                iconFile.outputStream().use { output ->
-                                    input.copyTo(output)
-                                }
-                            }
-                        }
-                    }
+                    resourceFile.copyTo(iconFile, overwrite = true)
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to extract icon for $pluginId", e)
                 }
@@ -177,10 +169,9 @@ object ExtensionManager {
     
     fun getEmojiPlugins(): List<EmojiPlugin> {
         val all = PluginManager.getAllPluginInstances()
-        val emoji = all.values.mapNotNull { instance ->
+        return all.values.mapNotNull { instance ->
             if (instance is EmojiPlugin) instance else null
         }
-        return emoji
     }
     
     fun getEnabledEmojiPlugins(context: Context): List<Pair<String, EmojiPlugin>> {

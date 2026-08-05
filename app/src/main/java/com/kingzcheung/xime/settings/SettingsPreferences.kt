@@ -26,8 +26,7 @@ object SettingsPreferences {
     const val KEY_STT_ENABLED = "stt_enabled"
     const val KEY_STT_ONLINE_PLUGIN_ID = "stt_online_plugin_id"
     
-    private const val KEY_PUNCTUATION_MODEL_ENABLED = "punctuation_model_enabled"
-    
+    private const val KEY_PUNCTUATION_MODEL_ENABLED = "punctuation_model_enabled"    
     /** 默认主题 ID，可从 xime.yaml 的 style.color_scheme 初始化。 */
     @JvmStatic
     var defaultKeyboardTheme: String = "lavender_purple"
@@ -358,6 +357,30 @@ object SettingsPreferences {
     
     fun setPunctuationModelEnabled(context: Context, enabled: Boolean) {
         getPrefs(context).edit().putBoolean(KEY_PUNCTUATION_MODEL_ENABLED, enabled).apply()
+    }
+
+    // ---- 插件网络授权（per plugin per host） ----
+
+    /** 插件已获用户授权的域名集合。 */
+    fun getPluginAuthorizedHosts(context: Context, pluginId: String): Set<String> {
+        val raw = getPrefs(context).getString("plugin_net_auth_$pluginId", "") ?: ""
+        return raw.split(",").map { it.trim() }.filter { it.isNotBlank() }.toSet()
+    }
+
+    /** 授权插件访问指定域名。 */
+    fun authorizePluginHost(context: Context, pluginId: String, host: String) {
+        val hosts = getPluginAuthorizedHosts(context, pluginId) + host
+        getPrefs(context).edit()
+            .putString("plugin_net_auth_$pluginId", hosts.joinToString(","))
+            .apply()
+    }
+
+    /** 撤销插件对指定域名的授权。 */
+    fun revokePluginHost(context: Context, pluginId: String, host: String) {
+        val hosts = getPluginAuthorizedHosts(context, pluginId) - host
+        getPrefs(context).edit()
+            .putString("plugin_net_auth_$pluginId", hosts.joinToString(","))
+            .apply()
     }
     
     fun isSwipeUpHintsEnabled(context: Context): Boolean {

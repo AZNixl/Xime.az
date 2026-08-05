@@ -27,6 +27,10 @@ android {
         compose = true
     }
 
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
+
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.15"
     }
@@ -50,7 +54,10 @@ dependencies {
     api(libs.androidx.compose.ui.graphics)
     api(libs.androidx.lifecycle.runtime.compose)
 
-    api("com.android.tools.smali:smali-dexlib2:3.0.8")
+    // Lua 脚本插件运行时（沙箱执行 main.lua，替代 DEX 加载）
+    api("org.luaj:luaj-jse:3.0.1")
+    // manifest.yaml 解析（Lua 模式插件元数据）
+    api("org.yaml:snakeyaml:2.2")
     
     testImplementation("junit:junit:4.13.2")
 }
