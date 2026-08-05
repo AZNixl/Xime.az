@@ -107,7 +107,7 @@ class InstallerManager(
                 source = source,
                 minHostVersion = pluginConfig.minHostVersion,
                 maxHostVersion = pluginConfig.maxHostVersion,
-                trustLevel = com.kingzcheung.xime.plugin.core.util.PluginSignatureUtil.classifyLuaPlugin(pluginDir),
+                trustLevel = com.kingzcheung.xime.plugin.core.util.PluginSignatureUtil.classifyLuaPlugin(source),
                 entryScript = entryScript,
                 declaredHosts = pluginConfig.declaredHosts
             )

@@ -31,6 +31,12 @@ foreach ($pluginDir in Get-ChildItem -Path $PLUGINS_DIR -Directory) {
         ForEach-Object { ($_ -replace '^\s*version:\s*', '').Trim('"', "'") }
     if (-not $version) { $version = "0.0.0" }
 
+    # 清理该插件旧版本产物，避免残留（版本升级后旧 xipk 不再保留）
+    Get-ChildItem -Path $OUTPUT_DIR -Filter "$name-*.xipk" -File -ErrorAction SilentlyContinue |
+        Remove-Item -Force
+    Get-ChildItem -Path $OUTPUT_DIR -Filter "$name-*.zip" -File -ErrorAction SilentlyContinue |
+        Remove-Item -Force
+
     $out = Join-Path $OUTPUT_DIR "$name-$version.xipk"
     Remove-Item -Path $out -Force -ErrorAction SilentlyContinue
 
