@@ -174,10 +174,10 @@ jobs:
             --title "Nightly Build (${{ steps.info.outputs.DATE }})" \
             --notes "## Nightly Build
 
-- 日期: ${{ steps.info.outputs.DATE }}
-- Commit: \`${{ steps.info.outputs.COMMIT }}\`
-- 构建时间: $(date -u +'%Y-%m-%d %H:%M:%S UTC')
+          - 日期: ${{ steps.info.outputs.DATE }}
+          - Commit: \`${{ steps.info.outputs.COMMIT }}\`
+          - 构建时间: $(date -u +'%Y-%m-%d %H:%M:%S UTC')
 
-:warning: 自动每日构建，非稳定版本。" \
+          :warning: 自动每日构建，非稳定版本。" \
             --prerelease \
             $APKS $PLUGIN_XIPKS
