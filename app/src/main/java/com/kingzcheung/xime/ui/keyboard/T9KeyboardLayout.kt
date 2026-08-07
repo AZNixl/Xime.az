@@ -477,8 +477,7 @@ private fun T9KeyboardContent(
 
     Row(
         modifier = Modifier
-            .fillMaxSize()
-            .padding(start = if (compactMode) 0.dp else 4.dp, end = if (compactMode) 0.dp else 4.dp),
+            .fillMaxSize(),
         horizontalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         // ── 第1列：左侧候选区（拼音候选项） ──

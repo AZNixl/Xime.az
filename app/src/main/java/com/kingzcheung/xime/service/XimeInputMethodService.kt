@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
@@ -99,6 +100,8 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 import com.kingzcheung.xime.settings.KeysConfigHelper
 import com.kingzcheung.xime.ui.theme.XimeTheme
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import com.kingzcheung.xime.util.FileLogger
 import com.kingzcheung.xime.util.PreeditMergeHelper
 import com.kingzcheung.xime.BuildConfig
@@ -121,7 +124,9 @@ import android.os.Bundle
 import android.view.inputmethod.InlineSuggestion
 import android.view.inputmethod.InlineSuggestionsRequest
 import android.view.inputmethod.InlineSuggestionsResponse
+import android.view.Window
 import androidx.annotation.RequiresApi
+import androidx.core.view.updateLayoutParams
 import java.io.File
 import java.io.FileInputStream
 
@@ -213,6 +218,8 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     private var currentEffectiveKeyboardHeight: Int = 0
     private var currentFloatingCardHeightDp: Int = 0
     private var previousSchemaId: String = ""
+    /** 键盘内容 Box 顶部在窗口中的 y 坐标（px），由 onGloballyPositioned 实测更新 */
+    private var keyboardContentTopPx: Int = -1
     
     private val calculatorEngine = com.kingzcheung.xime.calculator.CalculatorEngine()
 
@@ -376,10 +383,11 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     }
 
     private fun extractBottomInset(
-        insets: android.view.WindowInsets,
-        threshold: Int
+        insets: android.view.WindowInsets
     ): Int {
         // navigationBars 为 0 但仍有底部区域：检查 systemBars / tappableElement 等
+        // 手势导航下 navigationBars 通常为 0，但 mandatorySystemGestures / systemGestures
+        // 会返回手势条高度（约 20~32dp），阈值不能过滤掉它们，否则底部手势条区域会露出窗口背景。
         val sys = insets.getInsets(android.view.WindowInsets.Type.systemBars()).bottom
         if (sys > 0) return sys
         val nav = insets.getInsets(android.view.WindowInsets.Type.navigationBars()).bottom
@@ -387,9 +395,9 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         val tappable = insets.getInsets(android.view.WindowInsets.Type.tappableElement()).bottom
         if (tappable > 0) return tappable
         val mandatory = insets.getInsets(android.view.WindowInsets.Type.mandatorySystemGestures()).bottom
-        if (mandatory > threshold) return mandatory
+        if (mandatory > 0) return mandatory
         val gestures = insets.getInsets(android.view.WindowInsets.Type.systemGestures()).bottom
-        if (gestures > threshold) return gestures
+        if (gestures > 0) return gestures
         return 0
     }
 
@@ -398,8 +406,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         return try {
             val decorView = window.window?.decorView ?: return 0
             val insets = decorView.rootWindowInsets ?: return 0
-            val threshold = (resources.displayMetrics.density * 40).toInt()
-            extractBottomInset(insets, threshold)
+            extractBottomInset(insets)
         } catch (e: Exception) { 0 }
     }
 
@@ -409,10 +416,11 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             when (key) {
                 "dark_mode", "keyboard_theme", "show_bottom_buttons", "keyboard_height_dp", "keyboard_bottom_padding_dp" -> {
                     loadDarkModePreference()
+                    applyWindowBackground()
                 }
                 "floating_mode", "floating_mode_landscape" -> {
                     loadDarkModePreference()
-                    applyFloatingWindowBackground()
+                    applyWindowBackground()
                 }
                 "stt_enabled" -> {
                     uiState.value = uiState.value.copy(isSttEnabled = SettingsPreferences.isSttEnabled(this@XimeInputMethodService))
@@ -746,12 +754,9 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         )
         
         bottomInsetPxState.value = getActiveBottomInsetPx()
-        val threshold = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            (resources.displayMetrics.density * 40).toInt()
-        } else 0
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             keyboardContainer.setOnApplyWindowInsetsListener { v, insets ->
-                val px = extractBottomInset(insets, threshold)
+                val px = extractBottomInset(insets)
                 if (px != bottomInsetPxState.value) {
                     bottomInsetPxState.value = px
                 }
@@ -815,30 +820,28 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                 val rawDp = if (activeBottomPx > 0) {
                     with(density) { activeBottomPx.toDp().value.toInt() }
                 } else 0
-                // 保证底部最小留白（替换原来键盘内部 10dp 的作用）
+                // 保证底部最小留白（替换原来键盘内部 10dp 的作用）。
+                // 手势导航下 navigationBars/systemBars 可能全为 0，此时也必须兜底，
+                // 否则键盘背景画不到屏幕底部，手势条区域会露出白色窗口背景。
                 val minBottomDp = 26
-                val activeBottomDp = if (rawDp > 0 && rawDp < minBottomDp) minBottomDp else rawDp
+                val activeBottomDp = if (rawDp < minBottomDp) minBottomDp else rawDp
                 val navBarDp = activeBottomDp.dp
                 val hasNavBar = navBarDp > 0.dp
 
                 val quickSendFormExtra = if (state.showQuickSendForm) 200 else 0
 
                 XimeTheme(darkTheme = isDarkTheme, themeId = state.themeId) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(
-                                if (state.isCompact || state.isFloatingMode) effectiveScreenH.dp
-                                else if (state.showKeyboardResize) ((screenHeightDp * 7) / 10 + 100).dp
-                                else (keyboardHeight + state.keyboardBottomPaddingDp + quickSendFormExtra).dp + (if (hasNavBar) navBarDp else 0.dp)
-                            )
-                    ) {
+                    Box(modifier = Modifier.fillMaxSize()) {
                         // Sync FrameLayout height with Compose content height
                         val contentHeight = if (state.showKeyboardResize) state.resizePreviewHeightDp else floatingCardContentHeight + quickSendFormExtra
                         val totalDp = if (state.isCompact || state.isFloatingMode) effectiveScreenH
                             else contentHeight + state.keyboardBottomPaddingDp + activeBottomDp
                         SideEffect {
-                            keyboardContainer.updateHeight(totalDp)
+                            // 非浮动模式（含键盘调节）容器保持 MATCH_PARENT（setInputView 已设置），
+                            // 键盘内容在 Compose 内贴底，由 onComputeInsets 报告键盘内容顶部。
+                            if (state.isCompact || state.isFloatingMode) {
+                                keyboardContainer.updateHeight(totalDp)
+                            }
                             currentEffectiveKeyboardHeight = if (state.isFloatingMode) keyboardHeight + floatingDragBarHeight + 50 + state.keyboardBottomPaddingDp
                                 else if (state.isCompact) HARDWARE_CANDIDATE_BAR_HEIGHT
                                 else effectiveKeyboardHeight + quickSendFormExtra
@@ -850,6 +853,8 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                         val candidateTextCol = com.kingzcheung.xime.ui.theme.KeyboardThemes.getCandidateTextColorOverride(state.themeId, isDark)
                             ?: if (isDark) longToColor(kbColors.candidateTextColorDark) else longToColor(kbColors.candidateTextColor)
                         val accentCol = com.kingzcheung.xime.ui.theme.KeyboardThemes.getAccentColor(state.themeId, isDark)
+                        val keyboardBgColor = cardBg
+                        val rootTheme = com.kingzcheung.xime.ui.theme.KeyboardThemes.getThemeById(state.themeId)
                         if (state.isCompact && (cand.candidates.isNotEmpty() || cand.isShowingRecentClipboard || cand.inputText.isNotEmpty())) {
                             HardwareKeyboardCandidateBar(
                                 inputText = cand.inputText,
@@ -868,19 +873,30 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                         } else if (state.isCompact) {
                             Box(modifier = Modifier.fillMaxSize())
                         } else {
-                        val keyboardBgColor = cardBg
-                        val rootTheme = com.kingzcheung.xime.ui.theme.KeyboardThemes.getThemeById(state.themeId)
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .then(if (!state.isFloatingMode) Modifier.keyboardBackground(rootTheme.keyboardBackground, isDark, keyboardBgColor) else Modifier)
-                    ) {
+                        // 非浮动：背景与键盘内容同区域，贴底覆盖键盘内容高度 + 底部导航栏留白，
+                        // 键盘内容通过 offset 上移 activeBottomDp 留出导航栏空间（对齐参考实现 bottomPaddingSpace）。
+                        // 浮动模式：卡片由 KeyboardView 内部 FloatingKeyboardContainer 自绘背景与定位，此处不做背景/偏移。
+                        if (!state.isFloatingMode) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(if (state.showKeyboardResize) (state.resizePreviewHeightDp + state.keyboardBottomPaddingDp + activeBottomDp).dp else (floatingCardContentHeight + state.keyboardBottomPaddingDp + quickSendFormExtra + activeBottomDp).dp)
+                                    .align(androidx.compose.ui.Alignment.BottomCenter)
+                                    .keyboardBackground(rootTheme.keyboardBackground, isDark, keyboardBgColor)
+                            )
+                        }
                         Box(
                             modifier = Modifier
 
                                 .fillMaxWidth()
                                 .height(if (state.showKeyboardResize) (state.resizePreviewHeightDp + state.keyboardBottomPaddingDp).dp else (floatingCardContentHeight + state.keyboardBottomPaddingDp + quickSendFormExtra).dp)
-                                .align(if (state.isFloatingMode) androidx.compose.ui.Alignment.BottomCenter else androidx.compose.ui.Alignment.TopStart)
+                                .align(androidx.compose.ui.Alignment.BottomCenter)
+                                .then(if (state.isFloatingMode) Modifier else Modifier.offset(y = (-activeBottomDp).dp))
+                                .onGloballyPositioned {
+                                    if (!state.isFloatingMode && !state.isCompact) {
+                                        keyboardContentTopPx = it.positionInWindow().y.toInt()
+                                    }
+                                }
                         ) {
                         CompositionLocalProvider(LocalStretchFactor provides state.stretchFactor) {
                             val kbState = KeyboardUiState(
@@ -1296,15 +1312,34 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                 Spacer(modifier = Modifier.fillMaxWidth().height(navBarDp))
                             }
                        }
-                       }
-                     }
-                }
-            }
-        }
+                      }
+                 }
+             }
+         }
         
         keyboardContainer.addView(composeView)
 
+        applyWindowBackground()
+
         return keyboardContainer
+    }
+
+    override fun onConfigureWindow(win: Window, isFullscreen: Boolean, isCandidatesOnly: Boolean) {
+        win.setLayout(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT)
+    }
+
+    override fun setInputView(view: View) {
+        super.setInputView(view)
+        try {
+            window.window?.decorView
+                ?.findViewById<FrameLayout>(android.R.id.inputArea)
+                ?.updateLayoutParams<android.view.ViewGroup.LayoutParams> {
+                    height = android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                }
+            view.updateLayoutParams<android.view.ViewGroup.LayoutParams> {
+                height = android.view.ViewGroup.LayoutParams.MATCH_PARENT
+            }
+        } catch (_: Exception) {}
     }
     
     // ── ActionExecutor 实现 ──
@@ -1578,6 +1613,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         info?.let { updateEnterKeyText(it) }
         hasHardwareKeyboard = resources.configuration.keyboard != android.content.res.Configuration.KEYBOARD_NOKEYS
         applyCompactMode()
+        applyWindowBackground()
         if (hasHardwareKeyboard) {
             currentInputConnection?.requestCursorUpdates(
                 InputConnection.CURSOR_UPDATE_MONITOR or InputConnection.CURSOR_UPDATE_IMMEDIATE
@@ -1633,7 +1669,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         super.onConfigurationChanged(newConfig)
         applyCompactMode()
         loadDarkModePreference()
-        applyFloatingWindowBackground()
+        applyWindowBackground()
         if (hasHardwareKeyboard) {
             currentInputConnection?.requestCursorUpdates(
                 InputConnection.CURSOR_UPDATE_MONITOR or InputConnection.CURSOR_UPDATE_IMMEDIATE
@@ -1641,15 +1677,63 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         }
     }
 
-    private fun applyFloatingWindowBackground() {
-        if (!uiState.value.isFloatingMode) return
+    private fun applyWindowBackground() {
+        val state = uiState.value
+        val isDark = isDarkTheme()
         try {
+            val theme = com.kingzcheung.xime.ui.theme.KeyboardThemes.getThemeById(state.themeId)
+            // 图片背景无法映射到 window 层，用主题主色作为导航栏/窗口兜底色；
+            // solid / gradient 用解析出的键盘背景兜底色。
+            val bgColor = if (theme.keyboardBackground?.type == "image") {
+                com.kingzcheung.xime.ui.theme.KeyboardThemes.getPrimaryColor(state.themeId, isDark)
+            } else {
+                com.kingzcheung.xime.ui.theme.KeyboardThemes.getKeyboardBackgroundColor(state.themeId, isDark)
+            }
+            val argb = (bgColor.alpha * 255).toInt() shl 24 or
+                (bgColor.red * 255).toInt() shl 16 or
+                (bgColor.green * 255).toInt() shl 8 or
+                (bgColor.blue * 255).toInt()
             window.window?.let { win ->
-                win.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
-                win.setDimAmount(0f)
+                if (state.isCompact) {
+                    // 硬件键盘候选栏模式：窗口透明
+                    win.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+                    win.setDimAmount(0f)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                        win.setNavigationBarColor(android.graphics.Color.TRANSPARENT)
+                    }
+                } else if (state.isFloatingMode) {
+                    win.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+                    win.setDimAmount(0f)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                        win.setNavigationBarColor(android.graphics.Color.TRANSPARENT)
+                    }
+                } else {
+                    // 非浮动模式：参考成熟输入法（fcitx5/trime/yuyan）的 FULL 方案。
+                    // 1) edge-to-edge：窗口绘制到系统导航栏后面，键盘背景（渐变/图片）可延伸到底部；
+                    // 2) 窗口背景透明：键盘内容由 Compose 绘制，键盘上方露出应用内容而不是白色/主题色块；
+                    // 3) 导航栏透明 + 关闭强制对比度：底部导航栏区域由键盘背景覆盖，不会露出系统白色。
+                    androidx.core.view.WindowCompat.setDecorFitsSystemWindows(win, false)
+                    win.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+                    win.setDimAmount(0f)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        win.isNavigationBarContrastEnforced = false
+                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                        win.setNavigationBarColor(android.graphics.Color.TRANSPARENT)
+                    }
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    win.decorView?.let { decor ->
+                        val controller = androidx.core.view.WindowInsetsControllerCompat(win, decor)
+                        controller.isAppearanceLightNavigationBars = !isDark
+                    }
+                }
+                // setDecorFitsSystemWindows(false) 后必须重新分发 insets，
+                // 否则 onApplyWindowInsets 不会触发、底部导航栏高度检测不到。
+                win.decorView?.requestApplyInsets()
             }
         } catch (e: Exception) {
-            Log.e(TAG, "applyFloatingWindowBackground failed", e)
+            Log.e(TAG, "applyWindowBackground failed", e)
         }
     }
 
@@ -3232,15 +3316,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         if (enabled) {
             currentEffectiveKeyboardHeight = cappedKbH + 18 + 50 + uiState.value.keyboardBottomPaddingDp
         }
-        window.window?.let { win ->
-            if (enabled) {
-                win.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
-                win.setDimAmount(0f)
-            } else {
-                win.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.WHITE))
-                win.setDimAmount(0.2f)
-            }
-        }
+        applyWindowBackground()
     }
 
     override fun onCreateInlineSuggestionsRequest(uiExtras: Bundle): InlineSuggestionsRequest? {
@@ -3332,7 +3408,16 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                 )
             }
         } else {
-            super.onComputeInsets(outInsets)
+            // 非浮动模式：窗口全屏，键盘内容贴底。
+            // contentTopInsets 直接使用 Compose 实测的键盘内容顶部位置（px），
+            // 避免 window 全屏后 super 误判键盘占满全屏导致布局下沉。
+            if (keyboardContentTopPx > 0) {
+                outInsets.contentTopInsets = keyboardContentTopPx
+                outInsets.visibleTopInsets = keyboardContentTopPx
+                outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_VISIBLE
+            } else {
+                super.onComputeInsets(outInsets)
+            }
         }
     }
 

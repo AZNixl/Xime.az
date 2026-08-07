@@ -249,8 +249,7 @@ private fun NumberRows(
     val symbols = listOf("+", "-", "*", "/")
     Row(
         modifier = Modifier
-            .fillMaxSize()
-            .padding(start = if (compactMode) 0.dp else 4.dp, end = if (compactMode) 0.dp else 4.dp),
+            .fillMaxSize(),
         horizontalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         Column(
