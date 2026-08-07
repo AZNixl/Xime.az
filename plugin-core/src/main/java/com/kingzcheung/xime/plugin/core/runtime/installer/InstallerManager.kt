@@ -3,12 +3,52 @@ package com.kingzcheung.xime.plugin.core.runtime.installer
 import android.app.Application
 import android.net.Uri
 import android.util.Log
+import com.charleskorn.kaml.Yaml
+import com.charleskorn.kaml.YamlConfiguration
 import com.kingzcheung.xime.plugin.core.model.PluginInfo
 import com.kingzcheung.xime.plugin.core.model.PluginSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
 import java.io.File
 import java.util.zip.ZipFile
+
+/** manifest.yaml 解析结果。 */
+internal sealed class PluginParseResult {
+    data class Success(val config: PluginConfig) : PluginParseResult()
+    data class Failure(val reason: String) : PluginParseResult()
+}
+
+internal data class PluginConfig(
+    val id: String,
+    val name: String,
+    val version: String,
+    val description: String,
+    val type: String,
+    val minHostVersion: String?,
+    val maxHostVersion: String?,
+    val entryScript: String?,
+    val declaredHosts: List<String> = emptyList()
+)
+
+/** manifest.yaml 的类型化模型，与宿主一起用 kaml 解析。 */
+@Serializable
+internal data class PluginManifest(
+    val id: String,
+    val name: String? = null,
+    val type: String = "unknown",
+    val entry: String = "main.lua",
+    val version: String = "0.0.0",
+    val description: String? = null,
+    val minHostVersion: String? = null,
+    val maxHostVersion: String? = null,
+    val network: NetworkConfig? = null
+)
+
+@Serializable
+internal data class NetworkConfig(
+    val hosts: List<String> = emptyList()
+)
 
 /**
  * 插件安装器（Lua 脚本插件）。
@@ -28,6 +68,44 @@ class InstallerManager(
     companion object {
         private const val PLUGINS_DIR = "plugins"
         private const val MANIFEST_YAML = "manifest.yaml"
+
+        private val manifestYaml: Yaml by lazy {
+            Yaml(configuration = YamlConfiguration(strictMode = false))
+        }
+
+        /** 解析 manifest.yaml 文本（kam 类型化解析），失败时携带可读的错误提示。 */
+        internal fun parseManifestContent(content: String): PluginParseResult = try {
+            val manifest = manifestYaml.decodeFromString(PluginManifest.serializer(), content)
+            val declaredHosts = manifest.network?.hosts.orEmpty()
+                .filter { it.isNotBlank() }
+
+            PluginParseResult.Success(
+                PluginConfig(
+                    id = manifest.id,
+                    name = manifest.name ?: manifest.id,
+                    version = manifest.version,
+                    description = manifest.description ?: "",
+                    type = manifest.type,
+                    minHostVersion = manifest.minHostVersion?.takeIf { it.isNotBlank() },
+                    maxHostVersion = manifest.maxHostVersion?.takeIf { it.isNotBlank() },
+                    entryScript = manifest.entry,
+                    declaredHosts = declaredHosts
+                )
+            )
+        } catch (e: Exception) {
+            Log.e("InstallerManager", "parsePluginConfig yaml failed", e)
+            PluginParseResult.Failure(manifestError(e))
+        }
+
+        /** 把 manifest 解析异常整理成可读的提示（kaml 消息含行号/字段）。 */
+        private fun manifestError(e: Exception): String {
+            val detail = e.message
+                ?.lineSequence()
+                ?.firstOrNull { it.isNotBlank() }
+                ?.trim()
+                ?: e.javaClass.simpleName
+            return "manifest.yaml 解析失败：$detail"
+        }
     }
 
     sealed class InstallResult {
@@ -48,8 +126,10 @@ class InstallerManager(
             return@withContext InstallResult.Failure("插件文件不存在")
         }
 
-        val pluginConfig = parsePluginConfig(pluginFile)
-            ?: return@withContext InstallResult.Failure("插件配置解析失败（缺少 manifest.yaml）")
+        val pluginConfig = when (val parsed = parsePluginConfig(pluginFile)) {
+            is PluginParseResult.Failure -> return@withContext InstallResult.Failure(parsed.reason)
+            is PluginParseResult.Success -> parsed.config
+        }
         val pluginId = pluginConfig.id
         val pluginDir = getPluginDirectory(pluginId)
 
@@ -179,56 +259,18 @@ class InstallerManager(
         }
     }
 
-    private data class PluginConfig(
-        val id: String,
-        val name: String,
-        val version: String,
-        val description: String,
-        val type: String,
-        val minHostVersion: String?,
-        val maxHostVersion: String?,
-        val entryScript: String?,
-        val declaredHosts: List<String> = emptyList()
-    )
-
-    private fun parsePluginConfig(pluginFile: File): PluginConfig? {
+    private fun parsePluginConfig(pluginFile: File): PluginParseResult {
         val content = try {
             ZipFile(pluginFile).use { zip ->
-                val entry = zip.getEntry(MANIFEST_YAML) ?: return null
+                val entry = zip.getEntry(MANIFEST_YAML)
+                    ?: return PluginParseResult.Failure("插件配置解析失败（缺少 manifest.yaml）")
                 zip.getInputStream(entry).readBytes().toString(Charsets.UTF_8)
             }
         } catch (e: Exception) {
             Log.e("InstallerManager", "parsePluginConfig failed", e)
-            return null
+            return PluginParseResult.Failure("插件配置解析失败：${e.message}")
         }
 
-        return try {
-            val yaml = org.yaml.snakeyaml.Yaml().load<Map<String, Any>>(content) ?: return null
-            val id = yaml["id"] as? String ?: return null
-            val name = yaml["name"] as? String ?: id
-            val type = yaml["type"] as? String ?: "unknown"
-            val entry = yaml["entry"] as? String ?: "main.lua"
-            val version = yaml["version"] as? String ?: "0.0.0"
-            val minHostVersion = (yaml["minHostVersion"] as? String)?.takeIf { it.isNotBlank() }
-            val maxHostVersion = (yaml["maxHostVersion"] as? String)?.takeIf { it.isNotBlank() }
-            val hostsRaw = (yaml["network"] as? Map<*, *>)?.get("hosts")
-            val declaredHosts = (hostsRaw as? List<*>)?.mapNotNull { it as? String }
-                ?.filter { it.isNotBlank() } ?: emptyList()
-
-            PluginConfig(
-                id = id,
-                name = name,
-                version = version,
-                description = yaml["description"] as? String ?: "",
-                type = type,
-                minHostVersion = minHostVersion,
-                maxHostVersion = maxHostVersion,
-                entryScript = entry,
-                declaredHosts = declaredHosts
-            )
-        } catch (e: Exception) {
-            Log.e("InstallerManager", "parsePluginConfig yaml failed", e)
-            null
-        }
+        return parseManifestContent(content)
     }
 }
