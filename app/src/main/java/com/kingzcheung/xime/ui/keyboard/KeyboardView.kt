@@ -51,7 +51,6 @@ import com.kingzcheung.xime.keyboard.PanelType
 import com.kingzcheung.xime.keyboard.ToolbarAction
 import com.kingzcheung.xime.keyboard.ToolbarButton
 import com.kingzcheung.xime.rime.T9InputController
-import com.kingzcheung.xime.rime.filterCandidatesBySelectionHistory
 import com.kingzcheung.xime.settings.KeysConfigHelper
 import com.kingzcheung.xime.settings.SettingsPreferences
 import com.kingzcheung.xime.ui.menubar.ClipboardView
@@ -96,7 +95,10 @@ fun KeyboardView(
 
     val t9Controller = remember {
         T9InputController(
-            onCompositionRefresh = { callbacks.onT9RefreshComposition?.invoke() }
+            onCompositionRefresh = { composition ->
+                callbacks.onT9RefreshComposition?.invoke(composition)
+            },
+            onRightCommitUndone = callbacks.onT9RightCommitUndone,
         )
     }
 
@@ -115,15 +117,19 @@ fun KeyboardView(
 
     SideEffect {
         callbacks.onT9RightCandidateWillBeSelected = { pinyin, textLength ->
-            t9Controller.onRightCandidateSelected(pinyin, textLength)
+            // 返回 C++ T9RightCommitHandler 的 full_commit 权威标志，
+            // 不依赖 RIME 引擎 input（full_commit 后引擎 input 可能残留，判断会失真）
+            if (pinyin.isNullOrBlank()) {
+                t9Controller.onRightCandidateSelectedByDirectCommit()
+            } else {
+                t9Controller.onRightCandidateSelected(pinyin, textLength)
+            }
         }
         callbacks.onT9ForceSendToRime = {
             t9Controller.forceSendToRime()
         }
         callbacks.onFilterT9Candidates = { candidates, comments ->
-            // 按左侧选择历史过滤/重排候选词（FULL 在前、PREFIX 在后、NONE 排除），
-            // 对齐 main 分支的 filterCandidatesBySelectionHistory。
-            filterCandidatesBySelectionHistory(candidates, comments, t9Controller.selectionHistory)
+            Pair(candidates, comments)  // no-op: t9_processor handles filtering
         }
     }
 

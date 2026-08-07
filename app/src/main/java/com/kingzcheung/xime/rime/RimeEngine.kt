@@ -1,6 +1,7 @@
 package com.kingzcheung.xime.rime
 
 import android.util.Log
+import java.io.File
 
 data class RimeCandidate(
     val text: String,
@@ -54,7 +55,17 @@ data class RimeProcessResult(
     val candidates: Array<RimeCandidate>,
     val isAsciiMode: Boolean,
     val hasNextPage: Boolean,
-    val hasPrevPage: Boolean
+    val hasPrevPage: Boolean,
+    /**
+     * T9 左侧面板状态（格式 STATE;PINYIN;DIGIT_LEN;SEL_DIGITS;PANEL_DIGITS;LEFT_LOCKED）。
+     * 由 JNI 在 T9 会话活跃时填充，非 T9 场景为空字符串。
+     */
+    val t9PanelState: String = "",
+    /**
+     * T9 首音节候选（"pinyin|digitLength" 逗号分隔，如 "ji|2,li|2,j|1"）。
+     * 由 JNI 一次计算，避免 Kotlin 侧重复取数。
+     */
+    val t9SyllableOptions: String = "",
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -66,7 +77,9 @@ data class RimeProcessResult(
                 candidates.contentEquals(other.candidates) &&
                 isAsciiMode == other.isAsciiMode &&
                 hasNextPage == other.hasNextPage &&
-                hasPrevPage == other.hasPrevPage
+                hasPrevPage == other.hasPrevPage &&
+                t9PanelState == other.t9PanelState &&
+                t9SyllableOptions == other.t9SyllableOptions
     }
 
     override fun hashCode(): Int {
@@ -78,6 +91,8 @@ data class RimeProcessResult(
         result = 31 * result + isAsciiMode.hashCode()
         result = 31 * result + hasNextPage.hashCode()
         result = 31 * result + hasPrevPage.hashCode()
+        result = 31 * result + t9PanelState.hashCode()
+        result = 31 * result + t9SyllableOptions.hashCode()
         return result
     }
 }
@@ -133,6 +148,8 @@ class RimeEngine {
 
     private var isInitialized = false
     private val initLock = Any()
+    @Volatile
+    private var userDataDir: String = ""
 
     private fun notifyDeploymentStatus(isDeploying: Boolean, message: String) {
         deploymentCallback?.invoke(isDeploying, message)
@@ -143,9 +160,15 @@ class RimeEngine {
             synchronized(initLock) {
                 if (!isInitialized) {
                     try {
+                        this.userDataDir = userDataDir
                         notifyDeploymentStatus(true, "正在加载输入法引擎...")
                         nativeInitialize(userDataDir, sharedDataDir)
                         isInitialized = true
+
+                        // 部署后主动触发：为已部署目录中所有 T9 方案打九键特有补丁
+                        // （t9 四要素 + 个人词库 packs 兜底），保证第三方九键方案
+                        // 首次使用前 custom.yaml 健康、用户词典生效。
+                        ensureT9SchemaPatchesForDeployedSchemas(userDataDir)
 
                         // 参考 trime: startup 只初始化引擎，不创建 session
                         // session 在第一次使用时延迟创建（ensureSession）
@@ -227,7 +250,12 @@ class RimeEngine {
 
     fun getProcessResult(processed: Boolean): RimeProcessResult {
         if (!isInitialized) return RimeProcessResult(false, "", "", "", emptyArray(), false, false, false)
-        return nativeGetProcessResult(processed)
+        // 必须持 rimeLock：nativeGetProcessResult 内部 RimeGetContext → Menu::Prepare
+        // 会惰性生成候选页（遍历 translations），与 t9FlushRimeInput（set_input → Reset，
+        // 释放旧 translations）并发会导致悬空 → ScriptTranslation::Peek 空指针崩溃。
+        synchronized(rimeLock) {
+            return nativeGetProcessResult(processed)
+        }
     }
 
     fun getCandidates(): Array<String> {
@@ -366,6 +394,10 @@ class RimeEngine {
     fun switchSchema(schemaId: String): Boolean {
         synchronized(rimeLock) {
             if (!nativeHasSession()) return false
+            // 在切换方案前，确保 T9 方案的 schema 补丁已注入
+            // 这会在 user_data_dir 中创建 {schemaId}.custom.yaml 文件，
+            // RIME 引擎加载方案时会自动应用 custom.yaml 中的 patch 补丁
+            nativeEnsureT9SchemaPatches(schemaId)
             return nativeSwitchSchema(schemaId)
         }
     }
@@ -380,6 +412,10 @@ class RimeEngine {
     fun deploy(): Boolean {
         if (!isInitialized) return false
         synchronized(rimeLock) {
+            // 部署前确保 T9 补丁（含个人词库 packs 确定性名）已写入，
+            // 部署时 librime 才会编译对应的 user_<schemaId>.table.bin。
+            // 幂等：补丁已就位时 native 侧直接 skip，开销极小。
+            ensureT9SchemaPatchesForDeployedSchemas(userDataDir)
             return nativeDeploy()
         }
     }
@@ -410,11 +446,11 @@ class RimeEngine {
 
     /** 读取方案自带 translator.packs 中声明的个人词库名。 */
     fun getSchemaPacks(schemaId: String): List<String> =
-        getSchemaList(schemaId, "translator.packs")
+        getSchemaList(schemaId, "translator/packs")
 
     /** 读取方案 translator.dictionary 主词典名。 */
     fun getSchemaDictionary(schemaId: String): String? =
-        getSchemaString(schemaId, "translator.dictionary")
+        getSchemaString(schemaId, "translator/dictionary")
 
     /** 读取方案 engine/translators 翻译器列表。 */
     fun getSchemaTranslators(schemaId: String): List<String> =
@@ -422,7 +458,7 @@ class RimeEngine {
 
     /** 方案是否有 speller.algebra（固定音节表/自动造词规则）。 */
     fun hasSpellerAlgebra(schemaId: String): Boolean =
-        getSchemaList(schemaId, "speller.algebra").isNotEmpty()
+        getSchemaList(schemaId, "speller/algebra").isNotEmpty()
 
     /** 读取方案 custom_phrase.user_dict（自定义短语词典名）。 */
     fun getCustomPhraseDictName(schemaId: String): String? =
@@ -475,38 +511,16 @@ class RimeEngine {
     // ═══════════════════════════════════════════════════════════
 
     /**
-     * 左选拼音：选择第 candidateIndex 个候选词的第一音节。
-     * t9_processor 会将对应数字替换为拼音并重新触发引擎处理。
+     * 右选候选：根据候选拼音注释和文本长度执行右侧选词。
+     * 委托给 T9RightCommitHandler 三层消费算法，判断 full/partial commit。
+     * @param pinyin 候选词的拼音注释（如 "ji"）
+     * @param textLength 候选词字数（如 "计划" 为 2）
      */
-    fun t9SelectSyllable(candidateIndex: Int): Boolean {
+    fun t9SelectCandidate(pinyin: String, textLength: Int): Boolean {
         if (!isInitialized) return false
         synchronized(rimeLock) {
             if (!nativeHasSession() && !nativeCreateSession()) return false
-            return nativeT9SelectSyllable(candidateIndex)
-        }
-    }
-
-    /**
-     * 右选候选：选择第 candidateIndex 个候选词。
-     * t9_processor 内部判断 full/partial commit 并做相应处理。
-     */
-    fun t9SelectCandidate(candidateIndex: Int): Boolean {
-        if (!isInitialized) return false
-        synchronized(rimeLock) {
-            if (!nativeHasSession() && !nativeCreateSession()) return false
-            return nativeT9SelectCandidate(candidateIndex)
-        }
-    }
-
-    /**
-     * 获取左侧候选区拼音列表。
-     * 从当前 RIME 候选的 comment 中提取唯一首音节。
-     */
-    fun t9GetSyllableCandidates(): Array<String> {
-        if (!isInitialized) return emptyArray()
-        synchronized(rimeLock) {
-            if (!nativeHasSession()) return emptyArray()
-            return nativeT9GetSyllableCandidates() ?: emptyArray()
+            return nativeT9SelectCandidate(pinyin, textLength)
         }
     }
 
@@ -537,6 +551,30 @@ class RimeEngine {
     private external fun nativeSetOption(option: String, value: Boolean)
     private external fun nativeGetOption(option: String): Boolean
     private external fun nativeSwitchSchema(schemaId: String): Boolean
+    private external fun nativeEnsureT9SchemaPatches(schemaId: String): Boolean
+
+    /**
+     * 部署后主动触发：遍历已部署 schema 目录，对每个方案调用 nativeEnsureT9SchemaPatches。
+     * native 内部 Phase 1 会判定并跳过非 T9 方案（幂等无害）；
+     * 未启用方案仅写 custom.yaml 无副作用（后续切换到它时即生效）。
+     *
+     * 注意：此处【不】触发部署。历史上曾根据 native 返回值（词库未编译）在此调用
+     * nativeDeploy，导致 initialize 的 initLock 内同步执行大部署，与引擎初始化/
+     * 首次部署时序冲突引发 SIGSEGV（新装引导页场景）。词库编译统一由
+     * 引导页/设置页的部署流程（build 缺失或用户显式部署）负责。
+     */
+    private fun ensureT9SchemaPatchesForDeployedSchemas(userDataDir: String) {
+        val schemas = File(userDataDir).listFiles { f ->
+            f.isFile && f.name.endsWith(".schema.yaml")
+        }?.map { it.name.removeSuffix(".schema.yaml") } ?: return
+        for (schemaId in schemas) {
+            try {
+                nativeEnsureT9SchemaPatches(schemaId)
+            } catch (_: Throwable) {
+                // 单个方案补丁失败不阻断引擎初始化
+            }
+        }
+    }
     private external fun nativeStartMaintenance(full: Boolean): Boolean
     private external fun nativeDeploy(): Boolean
     private external fun nativeDeploySchema(schemaId: String): Boolean
@@ -552,13 +590,14 @@ class RimeEngine {
     private external fun nativeUpdateLastBuildTime()
     private external fun nativeSetPageSize(schemaId: String, pageSize: Int)
     private external fun nativeDestroy()
-    private external fun nativeT9SelectSyllable(candidateIndex: Int): Boolean
-    private external fun nativeT9SelectCandidate(candidateIndex: Int): Boolean
+    private external fun nativeT9SelectCandidate(pinyin: String, textLength: Int): Boolean
     private external fun nativeT9SelectPinyinDirect(pinyin: String, digitLength: Int): Boolean
-    private external fun nativeT9GetSyllableCandidates(): Array<String>?
+    private external fun nativeT9GetLeftPanelState(): String?
+    private external fun nativeT9ClearComposition(mode: Int)
+    private external fun nativeT9FlushRimeInput()
+    private external fun nativeT9GetAndConsumeUndoneRightCommitCount(): Int
     private external fun nativeT9GetRemainingDigits(): String?
-    private external fun nativeT9IsDisplayOriginalPreedit(): Boolean
-    private external fun nativeT9WasCommitUndone(): Boolean
+    private external fun nativeT9GetFirstSyllableOptions(digits: String, maxResults: Int): String?
 
     /**
      * 直接选择拼音：传入拼音和对应数字长度，t9_processor 替换 buffer。
@@ -582,26 +621,67 @@ class RimeEngine {
     }
 
     /**
-     * 获取 t9/isDisplayOriginalPreedit 配置。
-     * true  → preedit 显示 rime 原始数字串；
-     * false → 前端根据候选 comment 将 preedit 重建为拼音。
+     * 获取左侧面板状态字符串（格式：STATE;PINYIN;DIGIT_LEN;SEL_DIGITS;PANEL_DIGITS;LEFT_LOCKED）。
+     * 用于 Kotlin 侧同步 C++ 的选中拼音和面板数字。
      */
-    fun t9IsDisplayOriginalPreedit(): Boolean {
-        if (!isInitialized) return false
+    fun t9GetLeftPanelState(): String {
+        if (!isInitialized) return "IDLE;;;;;0"
         synchronized(rimeLock) {
-            return nativeT9IsDisplayOriginalPreedit()
+            return nativeT9GetLeftPanelState() ?: "IDLE;;;;;0"
         }
     }
 
     /**
-     * 查询并清除"最近一次退格撤销了 partial commit"标记。
-     * 返回 true 表示刚发生的退格先回退了半提交（上屏文字回到预编辑），
-     * 前端需据此清除累积的半提交文本，而不是当作普通删除未上屏拼音。
+     * 获取并消费 P1 撤销 RightCommit 的计数。
+     * 每次 P1 撤销自增 1，每次查询后自减，避免重复消费。
      */
-    fun t9WasCommitUndone(): Boolean {
-        if (!isInitialized) return false
+    fun t9GetAndConsumeUndoneRightCommitCount(): Int {
+        if (!isInitialized) return 0
         synchronized(rimeLock) {
-            return nativeT9WasCommitUndone()
+            return nativeT9GetAndConsumeUndoneRightCommitCount()
+        }
+    }
+
+    /**
+     * 获取首音节候选列表（P3 方案 A：替代 Kotlin T9PinyinMap.firstSyllableOptions）。
+     * 返回格式 "pinyin|digitLength" 逗号分隔，如 "ji|2,li|2,j|1,k|1,l|1"。
+     */
+    fun t9GetFirstSyllableOptions(digits: String, maxResults: Int = 20): List<Pair<String, Int>> {
+        if (!isInitialized || digits.isEmpty()) return emptyList()
+        synchronized(rimeLock) {
+            val raw = nativeT9GetFirstSyllableOptions(digits, maxResults) ?: return emptyList()
+            if (raw.isEmpty()) return emptyList()
+            return raw.split(",").mapNotNull { entry ->
+                val parts = entry.split("|")
+                if (parts.size == 2) {
+                    Pair(parts[0], parts[1].toIntOrNull() ?: 1)
+                } else null
+            }
+        }
+    }
+
+    /**
+     * 清空 T9Processor 全部状态（buffer + undo + state machine）+ RIME composition。
+     * @param mode 0=仅清 composition（保留 local state），1=全清（clearAll 场景）
+     */
+    fun t9ClearComposition(mode: Int) {
+        if (!isInitialized) return
+        synchronized(rimeLock) {
+            nativeT9ClearComposition(mode)
+        }
+    }
+
+    /**
+     * 执行 T9Processor 累积的待发送引擎动作（set_input → compose / clear 等）。
+     *
+     * 异步 flush 模型：T9 处理器在 processKey 内只标记待发送内容（SendToRime），
+     * 真正触发引擎 compose 的调用延迟到此处执行。必须由调用方保证在
+     * processKey 之后的**后台线程**调用，避免引擎 compose（2-23ms）阻塞 UI 线程。
+     */
+    fun t9FlushRimeInput() {
+        if (!isInitialized) return
+        synchronized(rimeLock) {
+            nativeT9FlushRimeInput()
         }
     }
 

@@ -112,18 +112,19 @@ fun T9KeyboardLayout(
     val isLandscape = !isFloatingMode && configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     fun handleDelete() {
-        when (val result = controller.onDeleted()) {
-            T9InputController.DeleteResult.UNDO_COMMIT -> {
-                // 半提交回退：清除累积的半提交文本（及输入框中已上屏的文字），
-                // 控制器已在 onDeleted() 中重新同步 RIME 预编辑（恢复为拼音并删除末尾拼音）。
-                callbacks.onT9RightCommitUndone?.invoke()
-            }
+        // onDeleted 在后台队列中处理（flush 不阻塞 UI），结果通过回调返回（Main 线程）。
+        controller.onDeleted { result ->
+            when (result) {
+                T9InputController.DeleteResult.UNDO_COMMIT -> {
+                    controller.clearRimeAndResend()
+                }
 
-            T9InputController.DeleteResult.NOT_CONSUMED -> {
-                onKeyPress("delete")
-            }
+                T9InputController.DeleteResult.NOT_CONSUMED -> {
+                    onKeyPress("delete")
+                }
 
-            T9InputController.DeleteResult.DELETED, T9InputController.DeleteResult.UNDO_CHOICE -> {
+                T9InputController.DeleteResult.DELETED, T9InputController.DeleteResult.UNDO_CHOICE -> {
+                }
             }
         }
     }
@@ -785,7 +786,12 @@ private fun T9KeyboardContent(
                 shadowShapeRadius = shadowShapeRadius,
             )
             ResetKey(
-                onClick = { controller.clearAll() },
+                onClick = {
+                    controller.clearAll()
+                    // 与上滑清空手势一致：全清（含输入框已上屏文本，可撤销），
+                    // 由服务层 onKeyPress("clear_all") 处理 calculator/输入框文本。
+                    onKeyPress("clear_all")
+                },
                 onPress = { onKeyPressDown?.invoke("clear") },
                 backgroundColor = specialKeyBackgroundColor,
                 textColor = specialKeyTextColor,
