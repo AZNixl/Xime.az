@@ -339,7 +339,7 @@ bool T9UndoModel::AbbrevBackspace() {
                         T9SegmentOp op = *it;
                         ops_.erase((it + 1).base());
                         // 撤销的是 LC：防连击 flag 保持
-                        T9LOG("[UndoModel] AbbrevBackspace: undo LC segIdx=%d", i);
+                        T9LOG("[UndoModel] AbbrevBackspace: undo LC segIdx=%zu", i);
                         return UndoOp(op);
                     }
                 }
