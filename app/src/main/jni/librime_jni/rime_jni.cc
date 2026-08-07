@@ -1483,14 +1483,12 @@ static jboolean DoEnsureT9SchemaPatches(
     if (!packs_name.empty()) {
         switch (rime::t9_patch_utils::EvaluatePacksState(existing_content, &actual_pack_name)) {
           case rime::t9_patch_utils::PacksState::kKeep:
-            // 已有合法补丁。若名字不是确定性 user_<schemaId>（如 main 版 viaRime 派生的
-            // user_rime_ice_merged），强制定权收敛为确定性名，避免词库名抖动导致
-            // 词库表不被编译/词条分裂。main 版在引擎初始化后 viaRime 会读到收敛名
-            // 并沿用，不会循环改写。
-            if (actual_pack_name != packs_name) {
-                existing_content = rime::t9_patch_utils::StripPacksLines(existing_content);
-                need_packs_patch = true;
-            }
+            // 已有合法补丁 → 尊重，不干预（与上方针 1 注释语义一致）。
+            // 历史实现曾强制收敛为确定性 user_<schemaId>，但 PersonalDictManager
+            // 每次冷启动（引擎未初始化）都会按 user_<dictionary> 重写同一行，
+            // 两边互相覆盖 → custom.yaml 字节每轮必变 → deployment hash 抖动 →
+            // 每启动全量部署持 rimeLock → 呼出键盘 ANR（2026-08-07 实证）。
+            // 尊重已有合法名后，PDM 写入与补丁判定幂等，hash 稳定。
             break;
           case rime::t9_patch_utils::PacksState::kRepair:
             // 畸形行 → 先剔除，随后写入合法补丁
@@ -1498,7 +1496,11 @@ static jboolean DoEnsureT9SchemaPatches(
             need_packs_patch = true;
             break;
           case rime::t9_patch_utils::PacksState::kMissing:
-            need_packs_patch = true;
+            // 缺失 → 不补写。packs 统一由 PersonalDictManager 治理（启用方案
+            // ensureSchemaPacks 必然写入合法名）；此处若补写 user_<schemaId>，
+            // 会与 PDM 冷启动写入的 user_<dictionary> 在多线程交错覆盖，
+            // 文件字节每轮必变 → deployment hash 抖动 → 全量部署持 rimeLock
+            // → 呼出键盘 ANR（2026-08-07 实证）。仅 kRepair 保留畸形兜底。
             break;
         }
     }
