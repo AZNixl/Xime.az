@@ -124,11 +124,9 @@ jobs:
         run: |
           DATE=$(date +'%Y%m%d')
           COMMIT=$(git rev-parse --short HEAD)
-          BASE_VERSION=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts)
-          echo "Base version: $BASE_VERSION"
           ./gradlew assembleRelease \
             -PversionCode=$DATE \
-            -PversionName="${BASE_VERSION}-nightly-$DATE-$COMMIT" \
+            -PversionName="nightly-$DATE-$COMMIT" \
             --no-daemon
 
       - name: Build Plugin XIPKs (Unsigned)
