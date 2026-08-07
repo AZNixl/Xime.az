@@ -2,6 +2,7 @@ plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
@@ -56,8 +57,10 @@ dependencies {
 
     // Lua 脚本插件运行时（沙箱执行 main.lua，替代 DEX 加载）
     api("org.luaj:luaj-jse:3.0.1")
-    // manifest.yaml 解析（Lua 模式插件元数据）
-    api("org.yaml:snakeyaml:2.2")
+    // manifest.yaml 解析（Lua 模式插件元数据），与 app 统一使用 kaml 类型化解析，
+    // 避免引入 org.yaml:snakeyaml（其 java.beans 反射在 Android 上不可用）
+    implementation(libs.kaml)
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-core:1.11.0")
     
     testImplementation("junit:junit:4.13.2")
 }
