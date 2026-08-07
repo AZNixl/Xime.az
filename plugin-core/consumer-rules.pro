@@ -12,8 +12,8 @@
 -keep class com.kingzcheung.xime.plugin.core.runtime.** { *; }
 
 # Keep Kotlin metadata
--keep class kotlin.Metadata { *; }
--keep @kotlin.Metadata class * { <methods>; }
+#-keep class kotlin.Metadata { *; }
+#-keep @kotlin.Metadata class * { <methods>; }
 
 # Keep suspend function signatures
 -keepclassmembers class * {

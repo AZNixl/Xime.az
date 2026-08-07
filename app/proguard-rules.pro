@@ -19,7 +19,7 @@
 # Keep Kotlin stdlib classes used by plugins via parent classloader
 # Plugins use compileOnly(plugin-core), so Kotlin stdlib resolves from host app.
 # R8 strips unused stdlib methods — these rules ensure plugins can call them.
--keep class kotlin.** { *; }
+-keep class kotlin.Metadata { *; }
 
 -keep class com.kingzcheung.xime.plugin.** { *; }
 -keepclassmembers class com.kingzcheung.xime.plugin.** { *; }
