@@ -5,6 +5,7 @@
 #include <rime/setup.h>
 #include <rime/dict/reverse_lookup_dictionary.h>
 #include "t9_processor.h"
+#include "t9_patch_utils.h"
 #include <jni.h>
 #include <android/log.h>
 #include <memory>
@@ -58,6 +59,10 @@ struct ProcessResult {
     bool isAsciiMode = false;
     bool hasNextPage = false;
     bool hasPrevPage = false;
+    // T9 快照（仅 T9 会话活跃时填充）：左侧面板状态 + 首音节候选（"pinyin|len,..."）。
+    // 合并进 getProcessResult 一次返回，避免 Kotlin 侧重复 JNI 取数（每键 5→3 次）。
+    std::string t9PanelState;
+    std::string t9SyllableOptions;
 };
 
 struct CompositionResult {
@@ -245,6 +250,40 @@ public:
         if (rime->get_status(session_id_, &status)) {
             result.isAsciiMode = status.is_ascii_mode;
             rime->free_status(&status);
+        }
+
+        // ── T9 快照（一次 JNI 返回左栏状态 + 首音节候选）──
+        // 仅在 T9 处理器活跃时填充；非 T9 场景保持空字符串，Kotlin 侧用默认值兜底。
+        rime::T9Processor* t9proc = rime::T9ProcessorRequire();
+        if (t9proc) {
+            result.t9PanelState = t9proc->GetLeftPanelState();
+            // 从面板状态解析当前数字段（第 5 段，已内含分词键锁定/unassigned/选择回退），
+            // 为空时回退到 input 中的纯数字（无分隔符的常规输入）。
+            std::string panelDigits;
+            {
+                const std::string& s = result.t9PanelState;
+                size_t p = 0;
+                for (int i = 0; i < 4 && p != std::string::npos; ++i) {
+                    p = s.find(';', p + 1);
+                }
+                if (p != std::string::npos) {
+                    size_t end = s.find(';', p + 1);
+                    panelDigits = s.substr(p + 1, end - p - 1);
+                }
+            }
+            if (panelDigits.empty()) {
+                for (char c : result.inputText) {
+                    if (c >= '0' && c <= '9') panelDigits += c;
+                }
+            }
+            std::vector<std::string> options;
+            t9proc->GetFirstSyllableOptions(panelDigits, 20, options);
+            std::string joined;
+            for (size_t i = 0; i < options.size(); ++i) {
+                if (i > 0) joined += ",";
+                joined += options[i];
+            }
+            result.t9SyllableOptions = joined;
         }
     }
 
@@ -824,6 +863,10 @@ public:
         return result;
     }
 
+    // 数据目录访问器（供 T9 schema 补丁注入等 JNI 逻辑读取 schema/custom.yaml）
+    const std::string& get_user_data_dir() const { return user_data_dir_; }
+    const std::string& get_shared_data_dir() const { return shared_data_dir_; }
+
 private:
     RimeApi* rime;
     RimeSessionId session_id_ = 0;
@@ -853,7 +896,7 @@ static void ensureJniCache(JNIEnv* env) {
         jclass cls = env->FindClass("com/kingzcheung/xime/rime/RimeProcessResult");
         gRimeProcessResultClass = (jclass)env->NewGlobalRef(cls);
         gRimeProcessResultCtor = env->GetMethodID(gRimeProcessResultClass, "<init>",
-            "(ZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;[Lcom/kingzcheung/xime/rime/RimeCandidate;ZZZ)V");
+            "(ZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;[Lcom/kingzcheung/xime/rime/RimeCandidate;ZZZLjava/lang/String;Ljava/lang/String;)V");
         env->DeleteLocalRef(cls);
     }
     if (!gRimeCompositionClass) {
@@ -974,6 +1017,8 @@ Java_com_kingzcheung_xime_rime_RimeEngine_nativeProcessKeyAndGetResult(
     jstring jCommitted = env->NewStringUTF(result.committedText.c_str());
     jstring jInput = env->NewStringUTF(result.inputText.c_str());
     jstring jPreedit = env->NewStringUTF(result.preeditText.c_str());
+    jstring jT9Panel = env->NewStringUTF(result.t9PanelState.c_str());
+    jstring jT9Options = env->NewStringUTF(result.t9SyllableOptions.c_str());
 
     jobject jResult = env->NewObject(gRimeProcessResultClass, gRimeProcessResultCtor,
         result.processed ? JNI_TRUE : JNI_FALSE,
@@ -983,11 +1028,15 @@ Java_com_kingzcheung_xime_rime_RimeEngine_nativeProcessKeyAndGetResult(
         candidateArray,
         result.isAsciiMode ? JNI_TRUE : JNI_FALSE,
         result.hasNextPage ? JNI_TRUE : JNI_FALSE,
-        result.hasPrevPage ? JNI_TRUE : JNI_FALSE);
+        result.hasPrevPage ? JNI_TRUE : JNI_FALSE,
+        jT9Panel,
+        jT9Options);
 
     env->DeleteLocalRef(jCommitted);
     env->DeleteLocalRef(jInput);
     env->DeleteLocalRef(jPreedit);
+    env->DeleteLocalRef(jT9Panel);
+    env->DeleteLocalRef(jT9Options);
     env->DeleteLocalRef(candidateArray);
 
     return jResult;
@@ -1019,6 +1068,8 @@ Java_com_kingzcheung_xime_rime_RimeEngine_nativeGetProcessResult(
     jstring jCommitted = env->NewStringUTF(result.committedText.c_str());
     jstring jInput = env->NewStringUTF(result.inputText.c_str());
     jstring jPreedit = env->NewStringUTF(result.preeditText.c_str());
+    jstring jT9Panel = env->NewStringUTF(result.t9PanelState.c_str());
+    jstring jT9Options = env->NewStringUTF(result.t9SyllableOptions.c_str());
 
     jobject jResult = env->NewObject(gRimeProcessResultClass, gRimeProcessResultCtor,
         result.processed ? JNI_TRUE : JNI_FALSE,
@@ -1028,11 +1079,15 @@ Java_com_kingzcheung_xime_rime_RimeEngine_nativeGetProcessResult(
         candidateArray,
         result.isAsciiMode ? JNI_TRUE : JNI_FALSE,
         result.hasNextPage ? JNI_TRUE : JNI_FALSE,
-        result.hasPrevPage ? JNI_TRUE : JNI_FALSE);
+        result.hasPrevPage ? JNI_TRUE : JNI_FALSE,
+        jT9Panel,
+        jT9Options);
 
     env->DeleteLocalRef(jCommitted);
     env->DeleteLocalRef(jInput);
     env->DeleteLocalRef(jPreedit);
+    env->DeleteLocalRef(jT9Panel);
+    env->DeleteLocalRef(jT9Options);
     env->DeleteLocalRef(candidateArray);
 
     return jResult;
@@ -1253,6 +1308,295 @@ Java_com_kingzcheung_xime_rime_RimeEngine_nativeSwitchSchema(
     bool result = Rime::Instance().switchSchema(schema);
     env->ReleaseStringUTFChars(schema_id, schema);
     return result ? JNI_TRUE : JNI_FALSE;
+}
+
+// 确保个人词库源文件存在（pack_name 形如 user_t9 → user_t9.dict.yaml）。
+// 与 Kotlin PersonalDictManager.DEFAULT_HEADER 的 dict 头保持一致，
+// 供 librime 编译 translator/packs 引用的用户词典。
+static void EnsureT9PackDictFile(const std::string& user_data_dir,
+                                 const std::string& pack_name) {
+    if (pack_name.empty()) return;
+    std::string path = user_data_dir + "/" + pack_name + ".dict.yaml";
+    FILE* f = fopen(path.c_str(), "r");
+    if (f) {
+        fclose(f);
+        return;
+    }
+    f = fopen(path.c_str(), "w");
+    if (!f) {
+        LOGE("T9Patches: failed to create pack dict file '%s'", path.c_str());
+        return;
+    }
+    const std::string header =
+        "# Rime dict\n"
+        "---\n"
+        "name: " + pack_name + "\n"
+        "version: '1.0'\n"
+        "sort: original\n"
+        "use_preset_vocabulary: false\n"
+        "...\n";
+    fwrite(header.c_str(), 1, header.size(), f);
+    fclose(f);
+    LOGI("T9Patches: created pack dict file '%s'", path.c_str());
+}
+
+// 判断个人词库是否尚未编译（build/<pack_name>.table.bin 缺失）。
+// 用于「补丁写入后词库未编译 → 需要部署」的幂等判定：
+// 编译完成后 table.bin 存在，后续不再触发部署。
+static bool T9PackTableBinMissing(const std::string& user_data_dir,
+                                  const std::string& pack_name) {
+    if (pack_name.empty()) return false;
+    std::string path = user_data_dir + "/build/" + pack_name + ".table.bin";
+    FILE* f = fopen(path.c_str(), "r");
+    if (f) {
+        fclose(f);
+        return false;
+    }
+    return true;
+}
+
+// 确保 T9 方案的 schema 补丁已注入（核心实现，接受显式路径）。
+// 供两个 JNI 入口使用：
+//   - nativeEnsureT9SchemaPatches：引擎已初始化，路径取自 Rime::Instance()
+//   - nativeEnsureT9SchemaPatchesWithDir：启动早期（引擎未初始化）由 Kotlin 传入路径，
+//     保证 T9 补丁先于 deployment hash 计算就位，避免 main 版 PersonalDictManager
+//     在引擎未初始化时写入畸形 packs（如 user_""）导致 custom.yaml 每启动被改写 →
+//     deployment hash 抖动 → 每次启动全量部署 → rimeLock 长阻塞 → 呼出键盘 ANR
+//     （2026-08-07 日志实证）。
+//
+// Phase 1: 判断是否 T9 方案
+//   依据：JNI schema_id 含 "t9"，或 schema.yaml 中 schema_id 字段含 "t9"
+// Phase 2: 检查 T9 三要素（t9_processor, t9_filter, t9/isDisplayOriginalPreedit）
+//   缺什么补什么。注意 isDisplayOriginalPreedit 只看是否存在，不关心 true/false，
+//   避免覆盖第三方方案（如万象拼音使用 true）的配置。
+// Phase 3: 检查 custom.yaml 已有补丁，避免重复写入
+// Phase 4: 计算缺失 → 末尾追加到 custom.yaml（不破坏已有条目）
+static jboolean DoEnsureT9SchemaPatches(
+    JNIEnv* env,
+    const char* schema,
+    const std::string& user_data_dir,
+    const std::string& shared_data_dir) {
+    // ====== Phase 1 + 2: 读 schema.yaml，判断 T9 方案 + 检查三要素 ======
+    bool is_t9_schema = false;
+    bool has_t9_processor = false;
+    bool has_t9_filter = false;
+    bool has_display_setting = false;
+    bool has_t9_date = false;
+
+    {
+        // Phase 1 第一步：JNI schema_id 含 "t9" 直接判定为 T9
+        std::string sid(schema);
+        for (auto& c : sid) c = static_cast<char>(tolower(c));
+        if (sid.find("t9") != std::string::npos) {
+            is_t9_schema = true;
+        }
+
+        // 读取 schema.yaml（同时服务 Phase 1 的 schema_id 校验 和 Phase 2 的三要素检查）
+        std::string udd(user_data_dir);
+        std::string sdd(shared_data_dir);
+        std::string schema_content;
+        for (const auto& ext : {".schema.yaml", ".yaml"}) {
+            std::string path = udd + "/" + schema + ext;
+            FILE* f = fopen(path.c_str(), "r");
+            if (!f) { path = sdd + "/" + schema + ext; f = fopen(path.c_str(), "r"); }
+            if (f) {
+                char buf[8192];
+                size_t n;
+                while ((n = fread(buf, 1, sizeof(buf), f)) > 0) {
+                    schema_content.append(buf, n);
+                }
+                fclose(f);
+                LOGI("T9Patches: read schema file '%s'", path.c_str());
+                break;
+            }
+        }
+
+        // Phase 1 第二步：JNI id 不含 "t9" 时，从文件 schema_id 字段确认
+        if (!is_t9_schema && !schema_content.empty()) {
+            auto pos = schema_content.find("schema_id:");
+            if (pos != std::string::npos) {
+                auto line_end = schema_content.find('\n', pos);
+                auto line = schema_content.substr(pos, line_end - pos);
+                std::string lower(line);
+                for (auto& c : lower) c = static_cast<char>(tolower(c));
+                if (lower.find("t9") != std::string::npos) {
+                    is_t9_schema = true;
+                }
+            }
+        }
+
+        if (!is_t9_schema) {
+            LOGI("T9Patches: '%s' is not a T9 schema, skip", schema);
+            return JNI_FALSE;
+        }
+
+        // Phase 2: 从已读内容中提取 T9 三要素
+        if (!schema_content.empty()) {
+            if (schema_content.find("t9_processor") != std::string::npos) has_t9_processor = true;
+            if (schema_content.find("t9_filter") != std::string::npos) has_t9_filter = true;
+            if (schema_content.find("isDisplayOriginalPreedit") != std::string::npos) {
+                has_display_setting = true;
+            }
+            if (schema_content.find("t9_date_translator") != std::string::npos) has_t9_date = true;
+        }
+
+        LOGI("T9Patches: schema='%s' is_t9=1 (proc=%d,filter=%d,disp=%d,date=%d)",
+             schema,
+             has_t9_processor ? 1 : 0, has_t9_filter ? 1 : 0,
+             has_display_setting ? 1 : 0, has_t9_date ? 1 : 0);
+
+        // Guard: 未找到 schema 文件 → 方案可能已卸载，不写补丁
+        // 仅靠 JNI id 含 "t9" 不足以确认方案仍在磁盘上（如 t9_pinyin 被卸载后）
+        if (schema_content.empty()) {
+            LOGI("T9Patches: schema file for '%s' not found on disk, skip (uninstalled?)", schema);
+            return JNI_FALSE;
+        }
+    }
+
+    // ====== Phase 3: 检查 custom.yaml 已有补丁 ======
+    std::string custom_path = user_data_dir + "/" + schema + ".custom.yaml";
+    std::string existing_content;
+    {
+        FILE* f = fopen(custom_path.c_str(), "r");
+        if (f) {
+            char buf[8192];
+            size_t n;
+            while ((n = fread(buf, 1, sizeof(buf), f)) > 0) {
+                existing_content.append(buf, n);
+            }
+            fclose(f);
+        }
+    }
+
+    bool has_patch_processor = existing_content.find("t9_processor") != std::string::npos;
+    bool has_patch_filter = existing_content.find("t9_filter") != std::string::npos;
+    bool has_patch_t9 = existing_content.find("isDisplayOriginalPreedit") != std::string::npos;
+    bool has_patch_date = existing_content.find("t9_date_translator") != std::string::npos;
+
+    // packs 个人词库补丁状态：合法保留 / 畸形修复 / 缺失补充。
+    // PersonalDictManager 写入的合法补丁（如 user_pinyin_simp）一律尊重，不干预；
+    // 只有畸形（旧跨块正则产物 user_"" 等）或无补丁时才由本管线兜底，
+    // 包名确定性派生自 schemaId（SanitizePackName 仅保留 [A-Za-z0-9_]）。
+    const std::string packs_name = "user_" + rime::t9_patch_utils::SanitizePackName(schema);
+    bool need_packs_patch = false;
+    std::string actual_pack_name;  // 本方案实际生效的个人词库名（用于词库编译判定）
+    if (!packs_name.empty()) {
+        switch (rime::t9_patch_utils::EvaluatePacksState(existing_content, &actual_pack_name)) {
+          case rime::t9_patch_utils::PacksState::kKeep:
+            // 已有合法补丁 → 尊重，不干预（与上方针 1 注释语义一致）。
+            // 历史实现曾强制收敛为确定性 user_<schemaId>，但 PersonalDictManager
+            // 每次冷启动（引擎未初始化）都会按 user_<dictionary> 重写同一行，
+            // 两边互相覆盖 → custom.yaml 字节每轮必变 → deployment hash 抖动 →
+            // 每启动全量部署持 rimeLock → 呼出键盘 ANR（2026-08-07 实证）。
+            // 尊重已有合法名后，PDM 写入与补丁判定幂等，hash 稳定。
+            break;
+          case rime::t9_patch_utils::PacksState::kRepair:
+            // 畸形行 → 先剔除，随后写入合法补丁
+            existing_content = rime::t9_patch_utils::StripPacksLines(existing_content);
+            need_packs_patch = true;
+            break;
+          case rime::t9_patch_utils::PacksState::kMissing:
+            // 缺失 → 不补写。packs 统一由 PersonalDictManager 治理（启用方案
+            // ensureSchemaPacks 必然写入合法名）；此处若补写 user_<schemaId>，
+            // 会与 PDM 冷启动写入的 user_<dictionary> 在多线程交错覆盖，
+            // 文件字节每轮必变 → deployment hash 抖动 → 全量部署持 rimeLock
+            // → 呼出键盘 ANR（2026-08-07 实证）。仅 kRepair 保留畸形兜底。
+            break;
+        }
+    }
+    LOGI("T9Patches: packs state for '%s' (name=%s, need_write=%d)",
+         schema, packs_name.c_str(), need_packs_patch ? 1 : 0);
+
+    // ====== Phase 4: 计算补丁 → 末尾追加到 custom.yaml ======
+    bool need_processor = !has_t9_processor && !has_patch_processor;
+    bool need_filter = !has_t9_filter && !has_patch_filter;
+    bool need_t9 = !has_display_setting && !has_patch_t9;
+    bool need_date = !has_t9_date && !has_patch_date;
+
+    if (need_processor || need_filter || need_t9 || need_date || need_packs_patch) {
+        std::string patch_content;
+        if (need_processor) patch_content += "  \"engine/processors/@before 0\": t9_processor\n";
+        if (need_filter) patch_content += "  \"engine/filters/@before 0\": t9_filter\n";
+        if (need_t9) patch_content += "  \"t9/isDisplayOriginalPreedit\": false\n";
+        if (need_date) {
+            patch_content += "  \"engine/translators/@before 0\": t9_date_translator\n";
+            patch_content += "  \"t9/enable_date_translator\": true\n";
+        }
+        if (need_packs_patch) patch_content += "  \"translator/packs\": [\"" + packs_name + "\"]\n";
+
+        // 剥离末尾 ... 标记及空白（否则追加内容会被 RIME 忽略）
+        std::string base = existing_content;
+        while (!base.empty() && (base.back() == '\n' || base.back() == '\r' || base.back() == ' ')) {
+            base.pop_back();
+        }
+        if (base.size() >= 3 && base.substr(base.size() - 3) == "...") {
+            base.resize(base.size() - 3);
+            while (!base.empty() && (base.back() == '\n' || base.back() == '\r' || base.back() == ' ')) {
+                base.pop_back();
+            }
+        }
+
+        std::string new_content;
+        bool has_patch = base.find("\npatch:") != std::string::npos ||
+                         base.find("patch:") == 0;
+        if (base.empty()) {
+            new_content = "patch:\n" + patch_content;
+        } else if (has_patch) {
+            new_content = base;
+            if (!new_content.empty() && new_content.back() != '\n') new_content += '\n';
+            new_content += patch_content;
+        } else {
+            new_content = base;
+            if (!new_content.empty() && new_content.back() != '\n') new_content += '\n';
+            new_content += "\n\npatch:\n" + patch_content;
+        }
+
+        FILE* f = fopen(custom_path.c_str(), "w");
+        bool ok = false;
+        if (f) {
+            fwrite(new_content.c_str(), 1, new_content.size(), f);
+            fclose(f);
+            ok = true;
+            // 写入合法 packs 补丁后，确保对应个人词库文件存在（librime 编译时引用，
+            // 否则 pack 源缺失导致用户词典不生效）
+            if (need_packs_patch) {
+                EnsureT9PackDictFile(user_data_dir, packs_name);
+                actual_pack_name = packs_name;
+            }
+        }
+
+        LOGI("T9Patches: %s for '%s' (has:[p%d,f%d,d%d,dt%d] patch:[p%d,f%d,t%d,dt%d] need:[p%d,f%d,t%d,dt%d])",
+             ok ? "applied" : "FAILED", schema,
+             has_t9_processor ? 1 : 0, has_t9_filter ? 1 : 0, has_display_setting ? 1 : 0, has_t9_date ? 1 : 0,
+             has_patch_processor ? 1 : 0, has_patch_filter ? 1 : 0, has_patch_t9 ? 1 : 0, has_patch_date ? 1 : 0,
+             need_processor ? 1 : 0, need_filter ? 1 : 0, need_t9 ? 1 : 0, need_date ? 1 : 0);
+
+        // 返回值语义：该 T9 方案个人词库已就位（写入成功）但尚未编译 → 需要部署，
+        // 由调用方触发一次部署编译词库表。
+        const bool need_deploy = ok && T9PackTableBinMissing(user_data_dir, actual_pack_name);
+        return need_deploy ? JNI_TRUE : JNI_FALSE;
+    }
+
+    // 四要素与 packs 均已就位（无新写入）。若个人词库仍未编译 → 需要部署。
+    const bool need_deploy = T9PackTableBinMissing(user_data_dir, actual_pack_name);
+    LOGI("T9Patches: all components present, skip for '%s' (need_deploy=%d)",
+         schema, need_deploy ? 1 : 0);
+    return need_deploy ? JNI_TRUE : JNI_FALSE;
+}
+
+// 引擎已初始化路径：目录取自 Rime::Instance()
+JNIEXPORT jboolean JNICALL
+Java_com_kingzcheung_xime_rime_RimeEngine_nativeEnsureT9SchemaPatches(
+    JNIEnv* env,
+    jobject thiz,
+    jstring schema_id
+) {
+    const char* schema = env->GetStringUTFChars(schema_id, nullptr);
+    jboolean result = DoEnsureT9SchemaPatches(env, schema,
+        Rime::Instance().get_user_data_dir(),
+        Rime::Instance().get_shared_data_dir());
+    env->ReleaseStringUTFChars(schema_id, schema);
+    return result;
 }
 
 // 获取可用方案列表
@@ -1545,35 +1889,27 @@ Java_com_kingzcheung_xime_rime_RimeEngine_nativeIsModuleRegistered(
 // T9 Processor JNI 接口
 // ═══════════════════════════════════════════════════════════
 
-// 左选拼音：选择第 candidateIndex 个候选词的第一个音节
-JNIEXPORT jboolean JNICALL
-Java_com_kingzcheung_xime_rime_RimeEngine_nativeT9SelectSyllable(
-    JNIEnv* env,
-    jobject thiz,
-    jint candidate_index
-) {
-    rime::T9Processor* proc = rime::T9ProcessorRequire();
-    if (!proc) {
-        LOGE("nativeT9SelectSyllable: no active T9Processor");
-        return JNI_FALSE;
-    }
-    proc->SelectSyllable(candidate_index);
-    return JNI_TRUE;
-}
-
-// 右选候选：选择第 candidateIndex 个候选词（处理 full/partial commit）
+// 右选候选：根据候选拼音和文本长度执行右侧选词。
+// 委托给 T9RightCommitHandler 三层消费算法（设计稿 §6.2）。
+// 注：传入候选拼音注释（comment）和候选词字数，而非索引，
+// 避免翻页后索引错位导致消费计算错误。
 JNIEXPORT jboolean JNICALL
 Java_com_kingzcheung_xime_rime_RimeEngine_nativeT9SelectCandidate(
     JNIEnv* env,
     jobject thiz,
-    jint candidate_index
+    jstring pinyin,
+    jint text_length
 ) {
     rime::T9Processor* proc = rime::T9ProcessorRequire();
     if (!proc) {
         LOGE("nativeT9SelectCandidate: no active T9Processor");
-        return JNI_TRUE;
+        return JNI_FALSE;
     }
-    return proc->SelectCandidate(candidate_index) ? JNI_TRUE : JNI_FALSE;
+    const char* p = env->GetStringUTFChars(pinyin, nullptr);
+    if (!p) return JNI_FALSE;
+    bool result = proc->SelectCandidate(std::string(p), text_length);
+    env->ReleaseStringUTFChars(pinyin, p);
+    return result ? JNI_TRUE : JNI_FALSE;
 }
 
 // 直接选择拼音（替代 SelectSyllable 的候选索引方式）
@@ -1593,30 +1929,44 @@ Java_com_kingzcheung_xime_rime_RimeEngine_nativeT9SelectPinyinDirect(
     return JNI_TRUE;
 }
 
-// 获取左侧候选区拼音列表（从候选评论中提取唯一首音节）
-JNIEXPORT jobjectArray JNICALL
-Java_com_kingzcheung_xime_rime_RimeEngine_nativeT9GetSyllableCandidates(
+// 清空 T9Processor 全部状态（buffer + undo + state machine）+ RIME composition。
+// mode=0: 仅清 RIME composition（保留 local state）
+// mode=1: 清 composition + 重置 local state（clearAll 场景）
+JNIEXPORT void JNICALL
+Java_com_kingzcheung_xime_rime_RimeEngine_nativeT9ClearComposition(
+    JNIEnv* env,
+    jobject thiz,
+    jint mode
+) {
+    rime::T9Processor* proc = rime::T9ProcessorRequire();
+    if (!proc) return;
+    proc->ClearComposition(mode);
+}
+
+// 执行 T9Processor 累积的待发送引擎动作（set_input → compose / clear 等）。
+// 异步 flush 模型：T9 处理器在 processKey 内只标记 pending（SendToRime），
+// 真正触发引擎的调用延迟到此处执行，由应用层在 processKey 之后的
+// 后台线程调用，避免引擎 compose 阻塞 UI 线程。
+JNIEXPORT void JNICALL
+Java_com_kingzcheung_xime_rime_RimeEngine_nativeT9FlushRimeInput(
     JNIEnv* env,
     jobject thiz
 ) {
     rime::T9Processor* proc = rime::T9ProcessorRequire();
-    if (!proc) {
-        return env->NewObjectArray(0, env->FindClass("java/lang/String"), nullptr);
-    }
+    if (!proc) return;
+    proc->FlushRimeInput();
+}
 
-    std::vector<std::string> syllables;
-    proc->GetSyllableCandidates(syllables);
-
-    jclass stringClass = env->FindClass("java/lang/String");
-    jobjectArray result = env->NewObjectArray(syllables.size(), stringClass, nullptr);
-
-    for (size_t i = 0; i < syllables.size(); ++i) {
-        jstring str = env->NewStringUTF(syllables[i].c_str());
-        env->SetObjectArrayElement(result, i, str);
-        env->DeleteLocalRef(str);
-    }
-
-    return result;
+// 获取并消费 P1 撤销 RightCommit 的计数。
+// 每次 P1 撤销自增 1，Kotlin 层每次查询后自减，避免重复消费。
+JNIEXPORT jint JNICALL
+Java_com_kingzcheung_xime_rime_RimeEngine_nativeT9GetAndConsumeUndoneRightCommitCount(
+    JNIEnv* env,
+    jobject thiz
+) {
+    rime::T9Processor* proc = rime::T9ProcessorRequire();
+    if (!proc) return 0;
+    return proc->GetAndConsumeUndoneRightCommitCount();
 }
 
 // 获取 t9_processor 中的剩余数字（partial commit 后重新发送到 RIME）
@@ -1631,26 +1981,47 @@ Java_com_kingzcheung_xime_rime_RimeEngine_nativeT9GetRemainingDigits(
     return env->NewStringUTF(digits.c_str());
 }
 
-// 获取 t9/isDisplayOriginalPreedit 配置，供前端决定 preedit 显示方式。
-JNIEXPORT jboolean JNICALL
-Java_com_kingzcheung_xime_rime_RimeEngine_nativeT9IsDisplayOriginalPreedit(
+// 获取左侧面板状态（格式：STATE;PINYIN;DIGIT_LEN;SEL_DIGITS;PANEL_DIGITS;LEFT_LOCKED）
+JNIEXPORT jstring JNICALL
+Java_com_kingzcheung_xime_rime_RimeEngine_nativeT9GetLeftPanelState(
     JNIEnv* env,
     jobject thiz
 ) {
     rime::T9Processor* proc = rime::T9ProcessorRequire();
-    if (!proc) return JNI_FALSE;
-    return proc->IsDisplayOriginalPreedit() ? JNI_TRUE : JNI_FALSE;
+    if (!proc) return env->NewStringUTF("IDLE;;;;;0");
+    std::string state = proc->GetLeftPanelState();
+    return env->NewStringUTF(state.c_str());
 }
 
-// 查询并清除"最近一次退格撤销了 partial commit"标记。
-JNIEXPORT jboolean JNICALL
-Java_com_kingzcheung_xime_rime_RimeEngine_nativeT9WasCommitUndone(
+// 获取首音节候选列表（P3 方案 A：替代 Kotlin T9PinyinMap.firstSyllableOptions）
+// 返回格式 "pinyin|digitLength" 逗号分隔，如 "ji|2,li|2,j|1,k|1,l|1"
+JNIEXPORT jstring JNICALL
+Java_com_kingzcheung_xime_rime_RimeEngine_nativeT9GetFirstSyllableOptions(
     JNIEnv* env,
-    jobject thiz
+    jobject thiz,
+    jstring j_digits,
+    jint j_max_results
 ) {
+    const char* digits = env->GetStringUTFChars(j_digits, nullptr);
+    if (!digits) return env->NewStringUTF("");
+
     rime::T9Processor* proc = rime::T9ProcessorRequire();
-    if (!proc) return JNI_FALSE;
-    return proc->WasCommitUndone() ? JNI_TRUE : JNI_FALSE;
+    if (!proc) {
+        env->ReleaseStringUTFChars(j_digits, digits);
+        return env->NewStringUTF("");
+    }
+
+    std::vector<std::string> options;
+    proc->GetFirstSyllableOptions(digits, j_max_results, options);
+    env->ReleaseStringUTFChars(j_digits, digits);
+
+    // 序列化为 "pinyin|digitLength,pinyin|digitLength,..."
+    std::string result;
+    for (size_t i = 0; i < options.size(); i++) {
+        if (i > 0) result += ",";
+        result += options[i];
+    }
+    return env->NewStringUTF(result.c_str());
 }
 
 } // extern "C"

@@ -1,6 +1,7 @@
 package com.kingzcheung.xime.ui.keyboard
 
 import com.kingzcheung.xime.keyboard.GestureAction
+import com.kingzcheung.xime.rime.RimeComposition
 import com.kingzcheung.xime.viewmodel.SchemaSwitchUiState
 
 data class KeyboardCallbacks(
@@ -39,9 +40,9 @@ data class KeyboardCallbacks(
     val onT9ReplaceFullPinyin: ((String) -> Unit)? = null,
     /**
      * 回退最近一次 T9 半提交：清除累积的半提交文本（及输入框中已上屏的文字）。
-     * 服务层根据 t9PartialCommitTexts 计算需回删的文本长度。
+     * @param count 需回删的文本长度（由 C++ T9UndoManager 计算并消费）
      */
-    val onT9RightCommitUndone: (() -> Unit)? = null,
+    val onT9RightCommitUndone: ((Int) -> Unit)? = null,
     /**
      * 右侧候选词即将被 RIME select 前同步通知 T9 控制器。
      * 返回 true 表示控制器判断输入序列已被该候选词完整消费。
@@ -69,9 +70,9 @@ data class KeyboardCallbacks(
     var onFilterT9Candidates: ((List<String>, List<String>) -> Pair<List<String>, List<String>>)? = null,
     /**
      * T9 键盘状态变更后通知服务层刷新 UI（候选区、preedit 等）。
-     * 服务层读取 rimeEngine.getComposition() 并应用。
+     * 携带 flush 后一次取回的 composition，服务层直接应用，避免内部重复 getComposition。
      */
-    var onT9RefreshComposition: (() -> Unit)? = null,
+    var onT9RefreshComposition: ((RimeComposition) -> Unit)? = null,
     val onShowQuickSendForm: (() -> Unit)? = null,
     val onHideQuickSendForm: (() -> Unit)? = null,
     val onQuickSendEditItem: ((Long, String) -> Unit)? = null,

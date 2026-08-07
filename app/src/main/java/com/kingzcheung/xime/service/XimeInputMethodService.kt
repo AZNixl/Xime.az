@@ -1,4 +1,4 @@
-﻿package com.kingzcheung.xime.service
+package com.kingzcheung.xime.service
 
 import android.content.Intent
 import android.inputmethodservice.InputMethodService
@@ -85,7 +85,6 @@ import com.kingzcheung.xime.speech.RecognitionState
 import com.kingzcheung.xime.rime.RimeConfigHelper
 import com.kingzcheung.xime.rime.RimeEngine
 import com.kingzcheung.xime.rime.T9InputController
-import com.kingzcheung.xime.rime.convertT9PreeditToPinyin
 import com.kingzcheung.xime.rime.buildT9DisplayState
 import com.kingzcheung.xime.rime.resolveRimeCandidateIndex
 
@@ -209,9 +208,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     private var lastClearedText: String = ""
     /** 累积的 partial commit 文本列表（多段选词场景下逐段追加） */
     private val t9PartialCommitTexts = mutableListOf<String>()
-    /** t9/isDisplayOriginalPreedit 缓存。schema 切换时刷新。
-     *  true  → preedit 显示原始数字；false → preedit 转拼音。 */
-    private var t9DisplayOriginalPreedit = false
     /** 键盘回调引用，用于在 RIME selectCandidate 前同步通知 T9 控制器 */
     private var keyboardCallbacks: KeyboardCallbacks? = null
     private var isChineseMode = true
@@ -1164,20 +1160,20 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                             }
                                         }
                                     },
-                                    onT9RightCommitUndone = {
+                                    onT9RightCommitUndone = { count ->
                                         // 半提交文本在 composing 区域时无法用 deleteSurroundingText 删除，
                                         // 需通过 endComposingInputBox 清空，交由后续 applyComposition 重建。
-                                        val len = t9PartialCommitTexts.lastOrNull()?.length ?: 0
                                         if (SettingsPreferences.getInputTextLocation(this@XimeInputMethodService)
                                             == SettingsPreferences.INPUT_TEXT_INPUT_BOX) {
                                             endComposingInputBox()
-                                        } else if (len > 0) {
-                                            currentInputConnection?.deleteSurroundingText(len, 0)
+                                        } else {
+                                            currentInputConnection?.deleteSurroundingText(count, 0)
                                         }
                                         t9PartialCommitTexts.removeLastOrNull()
                                     },
-                                    onT9RefreshComposition = {
-                                        val composition = rimeEngine.getComposition()
+                                    onT9RefreshComposition = { composition ->
+                                        // composition 由 T9 控制器在 flush 后一次取回并传入，
+                                        // 避免在此再次 getComposition 造成重复 JNI 往返。
                                         mainHandler.post { applyComposition(composition) }
                                     },
                                     onT9SwitchAway = {
@@ -1468,6 +1464,10 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         loadDarkModePreference()
 
         predictionManager.clearCommittedText()
+        // 新输入会话清空 partial commit 累积：外部 UI（如设置页输入框"清除"按钮仅清 Compose
+        // state）会触发 restartInput → 此处重建 T9，若残留累积会被 buildT9DisplayState 拼进
+        // preedit 回灌输入框（2026-08-07 日志实证：清除后 testText 从 '' 回灌为 '几乎'）。
+        t9PartialCommitTexts.clear()
         debugLog("onStartInput: cleared lastCommittedText")
 
         // 跨进程同步文件日志开关（开关在主进程设置页切换）
@@ -1888,11 +1888,9 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         val isComposing: Boolean
         if (isT9Schema) {
             val rawPreedit = if (preeditText.isNotEmpty()) preeditText else inputText
-            val firstComment = candidatesWithComments.firstOrNull()?.comment ?: ""
-            val convertedPreedit = if (t9DisplayOriginalPreedit) rawPreedit
-                else convertT9PreeditToPinyin(rawPreedit, firstComment)
+            // preedit 转换由 C++ t9_filter 完成，Kotlin 侧直接使用引擎输出的 preedit
             val display = buildT9DisplayState(
-                t9PartialCommitTexts, convertedPreedit, inputText, t9FilteredTexts, t9FilteredComments
+                t9PartialCommitTexts, rawPreedit, inputText, t9FilteredTexts, t9FilteredComments
             )
             displayText = display.displayText
             displayCandidates = display.displayCandidates
@@ -1982,11 +1980,9 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         val isComposing: Boolean
         if (isT9Schema) {
             val rawPreedit = if (result.preeditText.isNotEmpty()) result.preeditText else result.inputText
-            val firstComment = candidatesWithComments.firstOrNull()?.comment ?: ""
-            val convertedPreedit = if (t9DisplayOriginalPreedit) rawPreedit
-                else convertT9PreeditToPinyin(rawPreedit, firstComment)
+            // preedit 转换由 C++ t9_filter 完成，Kotlin 侧直接使用引擎输出的 preedit
             val display = buildT9DisplayState(
-                t9PartialCommitTexts, convertedPreedit, result.inputText, t9FilteredTexts, t9FilteredComments
+                t9PartialCommitTexts, rawPreedit, result.inputText, t9FilteredTexts, t9FilteredComments
             )
             displayText = display.displayText
             displayCandidates = display.displayCandidates
@@ -2364,6 +2360,9 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                 "clear_composition" -> {
                     calculatorEngine.clear()
                     updateCalculatorCandidates()
+                    // 清空 partial commit 累积（与 clear_all 一致）：残留的已选词会在下一轮输入
+                    // 被 buildT9DisplayState 拼进 preedit。
+                    t9PartialCommitTexts.clear()
                     rimeEngine.clearComposition()
                     candidateState.value = candidateState.value.copy(
                         candidates = emptyList(),
@@ -2377,11 +2376,20 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                 "clear_all" -> {
                     calculatorEngine.clear()
                     updateCalculatorCandidates()
-                    // 记录当前输入框中的文本以便撤回
+                    // 撤回内容记录（供 undo_clear 恢复）：
+                    // 显示在输入框模式：getTextBeforeCursor 返回的 inputFieldText 已包含全部 preedit
+                    //（composing 区），candState.inputText 与它是同一份内容，再拼接会重复
+                    //（如 "ji hua"+"ji hua"="ji huaji hua"）；候选栏模式输入框只有已上屏文本，
+                    // 才需补上候选栏中的编码 candState.inputText。
+                    val codeInInputBox = SettingsPreferences.getInputTextLocation(this@XimeInputMethodService) ==
+                        SettingsPreferences.INPUT_TEXT_INPUT_BOX
                     val inputFieldText = withContext(Dispatchers.Main) {
                         currentInputConnection?.getTextBeforeCursor(SAFE_TEXT_LIMIT, 0)?.toString() ?: ""
                     }
-                    lastClearedText = inputFieldText + candState.inputText
+                    lastClearedText = if (codeInInputBox) inputFieldText else inputFieldText + candState.inputText
+                    // 清空 partial commit 累积：否则残留的已选词（如右选"几乎"）会在下一轮输入
+                    // 被 buildT9DisplayState 拼进 preedit（"几乎ji hua"）。
+                    t9PartialCommitTexts.clear()
                     rimeEngine.clearComposition()
                     candidateState.value = candidateState.value.copy(
                         candidates = emptyList(),
@@ -3225,11 +3233,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             rimeEngine.switchSchema(schemaId)
             if (!rimeEngine.isAsciiMode()) {
                 rimeEngine.setOption("ascii_punct", false)
-            }
-            t9DisplayOriginalPreedit = if (isT9Schema(schemaId)) {
-                rimeEngine.t9IsDisplayOriginalPreedit()
-            } else {
-                false
             }
             updateSchemaName()
             updateUI()
