@@ -141,11 +141,12 @@ fun MenuBar(
             MenuItem(emojiIcon, "表情", callbacks.onEmoji),
         ) + switchItems + listOf(
             MenuItem(customizeIcon, "定制工具栏", callbacks.onToolbarCustomize),
-            MenuItem(keyboardResizeIcon, "键盘调节", callbacks.onKeyboardResize),
+            // 悬浮模式下键盘内容为缩放的浮动卡片，高度不可调节，隐藏该入口
+            if (!state.isFloatingMode) MenuItem(keyboardResizeIcon, "键盘调节", callbacks.onKeyboardResize) else null,
             MenuItem(darkModeIcon, darkModeLabel, callbacks.onToggleDarkMode),
             MenuItem(floatingIcon, floatingLabel, floatingAction),
             MenuItem(deployIcon, "部署方案", callbacks.onReloadConfig),
-        )
+        ).filterNotNull()
     }
     Column(
         modifier = modifier
