@@ -65,7 +65,8 @@ import com.kingzcheung.xime.viewmodel.SmartPredictionSettingsViewModel
 @Composable
 fun SmartPredictionSettingsContent(
     onBack: () -> Unit,
-    onNavigateToModelManagement: () -> Unit = {}
+    onNavigateToModelManagement: () -> Unit = {},
+    onNavigateToModelDetail: (String) -> Unit = {},
 ) {
     val context = LocalContext.current
     val viewModel: SmartPredictionSettingsViewModel = viewModel()
@@ -197,7 +198,8 @@ fun SmartPredictionSettingsContent(
                                 onSelect = {
                                     selectedModelId = model.id
                                     SettingsPreferences.setPredictionSelectedModel(context, model.id)
-                                }
+                                },
+                                onOpenInStore = { onNavigateToModelDetail(model.id) }
                             )
                             if (model != predictionModels.last()) {
                                 HorizontalDivider(
@@ -280,7 +282,7 @@ fun SmartPredictionSettingsContent(
                 SettingsSection(title = "模型管理", content = {
                     SettingsItem(
                         icon = Icons.Default.Build,
-                        title = "下载/删除模型",
+                        title = "模型管理",
                         subtitle = "管理所有已下载的 AI 模型",
                         onClick = onNavigateToModelManagement,
                         showArrow = true
@@ -295,7 +297,8 @@ fun SmartPredictionSettingsContent(
 private fun PredictionModelCard(
     modelInfo: com.kingzcheung.xime.model.ModelInfo,
     isSelected: Boolean,
-    onSelect: () -> Unit
+    onSelect: () -> Unit,
+    onOpenInStore: () -> Unit
 ) {
     val context = LocalContext.current
     val isDownloaded = remember { ModelManager.isModelDownloaded(context, modelInfo.id) }
@@ -380,6 +383,20 @@ private fun PredictionModelCard(
                     Spacer(Modifier.width(4.dp))
                 }
                 Text(if (isSelected) "使用中" else "使用")
+            }
+        } else {
+            Spacer(modifier = Modifier.width(8.dp))
+            OutlinedButton(
+                onClick = onOpenInStore,
+                shape = RoundedCornerShape(50)
+            ) {
+                Icon(
+                    Icons.Default.CloudDownload,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(Modifier.width(4.dp))
+                Text("去商店")
             }
         }
     }

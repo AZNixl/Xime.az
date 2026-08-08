@@ -29,9 +29,9 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudDownload
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.SentimentSatisfiedAlt
@@ -61,6 +61,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -76,6 +77,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kingzcheung.xime.model.ModelCategory
@@ -85,6 +89,7 @@ import com.kingzcheung.xime.model.ModelVersion
 import com.kingzcheung.xime.settings.MarketScheme
 import com.kingzcheung.xime.settings.MarketSchemeItem
 import com.kingzcheung.xime.settings.MarketPluginItem
+import com.kingzcheung.xime.settings.PluginVersion
 import com.kingzcheung.xime.settings.SchemeVersion
 import com.kingzcheung.xime.viewmodel.ModelManagementUiState
 import com.kingzcheung.xime.viewmodel.ModelManagementViewModel
@@ -105,7 +110,9 @@ fun MarketHubContent(
     onBack: () -> Unit,
     onNavigateToDetail: (String) -> Unit = {},
     onNavigateToModelDetail: (String) -> Unit = {},
+    onNavigateToPluginDetail: (String) -> Unit = {},
     onNavigateToLocal: () -> Unit = {},
+    onNavigateToModelLocal: () -> Unit = {},
     initialTab: Int = 0,
 ) {
     var tabIndex by remember { mutableIntStateOf(initialTab) }
@@ -120,8 +127,10 @@ fun MarketHubContent(
                     }
                 },
                 actions = {
-                    if (tabIndex == 0) {
-                        TextButton(onClick = onNavigateToLocal) {
+                    if (tabIndex == 0 || tabIndex == 1) {
+                        TextButton(
+                            onClick = if (tabIndex == 0) onNavigateToLocal else onNavigateToModelLocal,
+                        ) {
                             Text("本地管理", style = MaterialTheme.typography.labelMedium)
                         }
                     }
@@ -162,7 +171,9 @@ fun MarketHubContent(
                 1 -> ModelsMarketTab(
                     onNavigateToDetail = onNavigateToModelDetail,
                 )
-                2 -> PluginsMarketTab()
+                2 -> PluginsMarketTab(
+                    onNavigateToDetail = onNavigateToPluginDetail,
+                )
             }
         }
     }
@@ -397,6 +408,18 @@ private fun ModelsMarketTab(
     var isRefreshing by remember { mutableStateOf(false) }
     val pullRefreshState = rememberPullToRefreshState()
 
+    // 从本地模型管理页删除后返回时，重新检查本地下载状态
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshDownloadedState()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     LaunchedEffect(uiState.toastMessage) {
         uiState.toastMessage?.let { message ->
             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
@@ -493,7 +516,6 @@ private fun ModelsMarketTab(
                                     ModelTrailingButton(
                                         item = item,
                                         onDownload = { viewModel.downloadModel(item.model.id) },
-                                        onDelete = { viewModel.deleteModel(item.model.id) },
                                     )
                                 },
                             )
@@ -518,7 +540,6 @@ private fun ModelsMarketTab(
 private fun ModelTrailingButton(
     item: ModelItemState,
     onDownload: () -> Unit,
-    onDelete: () -> Unit,
 ) {
     val downloadState = item.downloadState
     when {
@@ -565,31 +586,18 @@ private fun ModelTrailingButton(
                     Text("更新")
                 }
                 Text(
-                    item.installedVersion?.let { "v$it" }.orEmpty(),
+                    item.installedVersion.orEmpty(),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.outline,
                     modifier = Modifier.padding(top = 4.dp),
                 )
             }
         }
-        item.isDownloaded -> {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "已安装",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.outline,
-                    modifier = Modifier.padding(end = 4.dp),
-                )
-                IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
-                    Icon(
-                        Icons.Default.Delete,
-                        contentDescription = "删除",
-                        modifier = Modifier.size(16.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
+        item.isDownloaded -> Text(
+            "已安装",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.outline,
+        )
         else -> Button(
             onClick = onDownload,
             shape = RoundedCornerShape(50),
@@ -610,7 +618,9 @@ private fun ModelTrailingButton(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PluginsMarketTab() {
+private fun PluginsMarketTab(
+    onNavigateToDetail: (String) -> Unit,
+) {
     val context = LocalContext.current
     val viewModel: PluginMarketViewModel = viewModel()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -717,7 +727,7 @@ private fun PluginsMarketTab() {
                                 selectedVersion = uiState.selectedVersions[item.plugin.id]
                                     ?: item.plugin.currentVersion,
                                 onSelectVersion = { viewModel.selectVersion(item.plugin.id, it) },
-                                onCardClick = {},
+                                onCardClick = { onNavigateToDetail(item.plugin.id) },
                                 trailing = {
                                     PluginTrailingButton(
                                         item = item,
@@ -797,7 +807,7 @@ private fun PluginTrailingButton(
                 )
                 item.installedVersion?.let { version ->
                     Text(
-                        "v$version",
+                        "$version",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.outline,
                     )
@@ -937,7 +947,7 @@ private fun MarketVersionSelector(
 ) {
     if (versions.size <= 1) {
         Text(
-            "v${versions.firstOrNull().orEmpty()}",
+            "${versions.firstOrNull().orEmpty()}",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.outline,
         )
@@ -971,7 +981,7 @@ private fun MarketVersionSelector(
                     text = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                "v$v",
+                                "$v",
                                 style = MaterialTheme.typography.bodyMedium,
                                 modifier = Modifier.weight(1f),
                             )
@@ -1375,7 +1385,7 @@ private fun SchemeVersionCard(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "v${version.version}",
+                    "${version.version}",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                     color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
@@ -1548,6 +1558,31 @@ private fun ModelDetailBody(
             }
         }
 
+        item {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.Default.Info,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "使用本地模型是有代价的，它可能会占用内存和 CPU，导致手机发热，请斟酌使用。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                    )
+                }
+            }
+        }
+
         if (selectedVersionObj != null && selectedVersionObj.size.isNotEmpty()) {
             item {
                 DetailMetaRow("大小", selectedVersionObj.size)
@@ -1673,7 +1708,7 @@ private fun ModelVersionCard(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "v${version.version}",
+                    "${version.version}",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                     color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
@@ -1777,17 +1812,347 @@ private fun pluginCategoryLabel(pluginType: String): String = when (pluginType) 
     else -> "其他"
 }
 
-private fun modelCategoryLabel(category: ModelCategory): String = when (category) {
+internal fun modelCategoryLabel(category: ModelCategory): String = when (category) {
     ModelCategory.PREDICTION -> "联想"
     ModelCategory.ASR -> "语音"
     ModelCategory.HANDWRITING -> "手写"
     ModelCategory.OTHER -> "其他"
 }
 
-private fun modelFormatSize(bytes: Long): String {
+internal fun modelFormatSize(bytes: Long): String {
     return when {
         bytes < 1024 -> "$bytes B"
         bytes < 1024 * 1024 -> "${bytes / 1024} KB"
         else -> "${"%.1f".format(bytes.toDouble() / (1024 * 1024))} MB"
+    }
+}
+
+/* ---------------------------- 插件详情页 ---------------------------- */
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PluginMarketDetailContent(
+    pluginId: String,
+    onBack: () -> Unit,
+) {
+    val context = LocalContext.current
+    val viewModel: PluginMarketViewModel = viewModel()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    LaunchedEffect(uiState.toastMessage) {
+        uiState.toastMessage?.let { message ->
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+            viewModel.clearToast()
+        }
+    }
+
+    val item = uiState.plugins.firstOrNull { it.plugin.id == pluginId }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("插件详情") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface,
+                ),
+            )
+        },
+    ) { padding ->
+        when {
+            uiState.isLoading && item == null -> MarketCenterBox {
+                CircularProgressIndicator()
+            }
+
+            item == null -> MarketCenterBox {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        "未找到该插件",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Button(onClick = { viewModel.loadPlugins() }) { Text("重新加载") }
+                }
+            }
+
+            else -> PluginDetailBody(
+                item = item,
+                uiState = uiState,
+                viewModel = viewModel,
+                modifier = Modifier.padding(padding),
+            )
+        }
+    }
+}
+
+@Composable
+private fun PluginDetailBody(
+    item: MarketPluginItem,
+    uiState: PluginMarketUiState,
+    viewModel: PluginMarketViewModel,
+    modifier: Modifier = Modifier,
+) {
+    val plugin = item.plugin
+    val (iconContainer, iconContent) = pluginCategoryColors(plugin.pluginType)
+    val selectedVersion = uiState.selectedVersions[plugin.id]
+        ?: plugin.resolvedVersion()?.version.orEmpty()
+
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(64.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(iconContainer),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        pluginCategoryIcon(plugin.pluginType),
+                        contentDescription = null,
+                        tint = iconContent,
+                        modifier = Modifier.size(36.dp),
+                    )
+                }
+                Spacer(Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        plugin.name.ifEmpty { plugin.id },
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        pluginCategoryLabel(plugin.pluginType).ifEmpty { "插件" },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+
+        if (plugin.description.isNotEmpty()) {
+            item {
+                Text(
+                    plugin.description,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        if (plugin.author.isNotEmpty()) {
+            item {
+                DetailMetaRow("作者", plugin.author)
+            }
+        }
+
+        val typeLabel = pluginCategoryLabel(plugin.pluginType)
+        if (typeLabel.isNotEmpty()) {
+            item {
+                DetailMetaRow("类型", typeLabel)
+            }
+        }
+
+        if (plugin.warning.isNotEmpty()) {
+            item {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f),
+                ) {
+                    Text(
+                        plugin.warning,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    )
+                }
+            }
+        }
+
+        if (plugin.tags.isNotEmpty()) {
+            item {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    plugin.tags.forEach { tag -> MarketTag(tag) }
+                }
+            }
+        }
+
+        item {
+            Text(
+                "版本历史",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+
+        if (plugin.versions.isEmpty()) {
+            item {
+                Text(
+                    "暂无版本信息",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline,
+                )
+            }
+        } else {
+            items(plugin.versions, key = { it.version }) { v ->
+                PluginVersionCard(
+                    version = v,
+                    selected = v.version == selectedVersion,
+                    onClick = { viewModel.selectVersion(plugin.id, v.version) },
+                    trailing = {
+                        PluginVersionDownloadButton(
+                            item = item,
+                            uiState = uiState,
+                            version = v,
+                            onDownload = { viewModel.downloadPlugin(plugin.id, v.version) },
+                        )
+                    },
+                )
+            }
+        }
+
+        item {
+            Spacer(Modifier.height(8.dp))
+        }
+    }
+}
+
+/** 插件版本卡片内嵌下载按钮（对齐模型版本卡）。 */
+@Composable
+private fun PluginVersionDownloadButton(
+    item: MarketPluginItem,
+    uiState: PluginMarketUiState,
+    version: PluginVersion,
+    onDownload: () -> Unit,
+) {
+    when {
+        uiState.downloadingId == item.plugin.id -> {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    "${(uiState.downloadProgress * 100).toInt()}%",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+
+        !item.compatible -> Text(
+            "需 App ≥ ${item.minAppVersion}",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.outline,
+        )
+
+        item.installed && item.hasUpdate -> Button(
+            onClick = onDownload,
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+            ),
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
+        ) {
+            Text("更新", style = MaterialTheme.typography.labelSmall)
+        }
+
+        item.installed -> Text(
+            "已安装",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.outline,
+        )
+
+        else -> Button(
+            onClick = onDownload,
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+            ),
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
+        ) {
+            Text("下载", style = MaterialTheme.typography.labelSmall)
+        }
+    }
+}
+
+@Composable
+private fun PluginVersionCard(
+    version: PluginVersion,
+    selected: Boolean,
+    onClick: () -> Unit,
+    trailing: @Composable () -> Unit = {},
+) {
+    val containerColor = if (selected) {
+        MaterialTheme.colorScheme.primaryContainer
+    } else {
+        MaterialTheme.colorScheme.surfaceContainerLow
+    }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onClick() }
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "${version.version}",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+                    else MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f),
+                )
+                if (selected) {
+                    Icon(
+                        Icons.Default.Check,
+                        contentDescription = "当前版本",
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                trailing()
+            }
+            if (version.date.isNotEmpty()) {
+                Text(
+                    version.date,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (version.changelog.isNotEmpty()) {
+                Text(
+                    version.changelog,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (version.size.isNotEmpty()) {
+                Text(
+                    version.size,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.outline,
+                )
+            }
+        }
     }
 }

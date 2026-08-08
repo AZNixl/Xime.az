@@ -63,11 +63,20 @@ fun SettingsScreen(
                 onNavigateToModelDetail = { modelId ->
                     navController.navigate("model_market_detail/$modelId")
                 },
+                onNavigateToPluginDetail = { pluginId ->
+                    navController.navigate("plugin_market_detail/$pluginId")
+                },
                 onNavigateToLocal = { navController.navigate(SettingsRoutes.SchemaLocal) },
+                onNavigateToModelLocal = { navController.navigate(SettingsRoutes.ModelLocal) },
             )
         }
         composable(SettingsRoutes.SchemaLocal) {
             SchemaLocalContent(
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable(SettingsRoutes.ModelLocal) {
+            ModelLocalContent(
                 onBack = { navController.popBackStack() },
             )
         }
@@ -88,6 +97,16 @@ fun SettingsScreen(
             val modelId = backStackEntry.arguments?.getString("modelId") ?: return@composable
             MarketModelDetailContent(
                 modelId = modelId,
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable(
+            route = SettingsRoutes.PluginMarketDetail,
+            arguments = listOf(navArgument("pluginId") { type = NavType.StringType }),
+        ) { backStackEntry ->
+            val pluginId = backStackEntry.arguments?.getString("pluginId") ?: return@composable
+            PluginMarketDetailContent(
+                pluginId = pluginId,
                 onBack = { navController.popBackStack() },
             )
         }
@@ -129,7 +148,10 @@ fun SettingsScreen(
         composable(SettingsRoutes.SmartPrediction) {
             SmartPredictionSettingsContent(
                 onBack = { navController.popBackStack() },
-                onNavigateToModelManagement = { navController.navigate(SettingsRoutes.MarketModel) }
+                onNavigateToModelManagement = { navController.navigate(SettingsRoutes.ModelLocal) },
+                onNavigateToModelDetail = { modelId ->
+                    navController.navigate("model_market_detail/$modelId")
+                }
             )
         }
         composable(SettingsRoutes.SpeechToText) {
@@ -178,7 +200,11 @@ fun SettingsScreen(
                 onNavigateToModelDetail = { modelId ->
                     navController.navigate("model_market_detail/$modelId")
                 },
+                onNavigateToPluginDetail = { pluginId ->
+                    navController.navigate("plugin_market_detail/$pluginId")
+                },
                 onNavigateToLocal = { navController.navigate(SettingsRoutes.SchemaLocal) },
+                onNavigateToModelLocal = { navController.navigate(SettingsRoutes.ModelLocal) },
                 initialTab = 1,
             )
         }
