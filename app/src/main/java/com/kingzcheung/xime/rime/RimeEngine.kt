@@ -2,6 +2,7 @@ package com.kingzcheung.xime.rime
 
 import android.util.Log
 import java.io.File
+import java.util.concurrent.locks.ReentrantLock
 
 data class RimeCandidate(
     val text: String,
@@ -118,7 +119,7 @@ class RimeEngine {
         private var deploymentCallback: ((Boolean, String) -> Unit)? = null
 
         /** 全局 Rime 引擎锁 — 所有 native 调用必须通过此锁同步 */
-        val rimeLock = Any()
+        val rimeLock = ReentrantLock()
 
         init {
             System.loadLibrary("rime_jni")
@@ -150,6 +151,33 @@ class RimeEngine {
     private val initLock = Any()
     @Volatile
     private var userDataDir: String = ""
+
+    /**
+     * 管理路径（初始化/部署/会话创建/方案切换等）：阻塞等待锁。
+     * 这类调用在后台线程执行，等待部署/编译完成是预期行为。
+     */
+    private inline fun <T> locked(block: () -> T): T {
+        rimeLock.lock()
+        try {
+            return block()
+        } finally {
+            rimeLock.unlock()
+        }
+    }
+
+    /**
+     * 输入/查询路径：非阻塞获取锁。拿不到锁（如全量部署持锁中）立即返回
+     * [defaultValue] 而不等待，避免主线程 UI（updateUI → getComposition 等）
+     * 被 20+ 秒的部署阻塞导致 ANR。拿不到锁时不进入 native，并发安全。
+     */
+    private inline fun <T> tryLocked(defaultValue: T, block: () -> T): T {
+        if (!rimeLock.tryLock()) return defaultValue
+        try {
+            return block()
+        } finally {
+            rimeLock.unlock()
+        }
+    }
 
     private fun notifyDeploymentStatus(isDeploying: Boolean, message: String) {
         deploymentCallback?.invoke(isDeploying, message)
@@ -201,7 +229,7 @@ class RimeEngine {
             waited += 1000
         }
 
-        synchronized(rimeLock) {
+        locked {
             waited = 0L
             while (waited < timeoutMs) {
                 if (!nativeHasSession()) {
@@ -228,24 +256,26 @@ class RimeEngine {
 
     fun getCurrentSchema(): String {
         if (!nativeHasSession()) return ""
-        synchronized(rimeLock) {
-            return nativeGetCurrentSchema() ?: ""
+        return tryLocked("") {
+            nativeGetCurrentSchema() ?: ""
         }
     }
 
     fun processKey(keycode: Int, mask: Int): Boolean {
         if (!isInitialized) return false
-        synchronized(rimeLock) {
-            if (!nativeHasSession() && !nativeCreateSession()) return false
-            return nativeProcessKey(keycode, mask)
+        return tryLocked(false) {
+            if (!nativeHasSession() && !nativeCreateSession()) return@tryLocked false
+            nativeProcessKey(keycode, mask)
         }
     }
 
     fun processKeyAndGetResult(keycode: Int, mask: Int): RimeProcessResult {
         if (!isInitialized) return RimeProcessResult(false, "", "", "", emptyArray(), false, false, false)
-        if (!nativeHasSession() && !nativeCreateSession())
-            return RimeProcessResult(false, "", "", "", emptyArray(), false, false, false)
-        return nativeProcessKeyAndGetResult(keycode, mask)
+        return tryLocked(RimeProcessResult(false, "", "", "", emptyArray(), false, false, false)) {
+            if (!nativeHasSession() && !nativeCreateSession())
+                return@tryLocked RimeProcessResult(false, "", "", "", emptyArray(), false, false, false)
+            nativeProcessKeyAndGetResult(keycode, mask)
+        }
     }
 
     fun getProcessResult(processed: Boolean): RimeProcessResult {
@@ -253,23 +283,24 @@ class RimeEngine {
         // 必须持 rimeLock：nativeGetProcessResult 内部 RimeGetContext → Menu::Prepare
         // 会惰性生成候选页（遍历 translations），与 t9FlushRimeInput（set_input → Reset，
         // 释放旧 translations）并发会导致悬空 → ScriptTranslation::Peek 空指针崩溃。
-        synchronized(rimeLock) {
-            return nativeGetProcessResult(processed)
+        // 部署/编译持锁期间拿不到锁直接返回空结果（不进 native），避免阻塞调用线程。
+        return tryLocked(RimeProcessResult(false, "", "", "", emptyArray(), false, false, false)) {
+            nativeGetProcessResult(processed)
         }
     }
 
     fun getCandidates(): Array<String> {
-        synchronized(rimeLock) {
-            if (!nativeHasSession()) return emptyArray()
-            return nativeGetCandidates() ?: emptyArray()
+        return tryLocked(emptyArray()) {
+            if (!nativeHasSession()) return@tryLocked emptyArray()
+            nativeGetCandidates() ?: emptyArray()
         }
     }
 
     fun getCandidatesWithComments(): Array<RimeCandidate> {
-        synchronized(rimeLock) {
-            if (!nativeHasSession()) return emptyArray()
+        return tryLocked(emptyArray()) {
+            if (!nativeHasSession()) return@tryLocked emptyArray()
             val rawCandidates = nativeGetCandidatesWithComments() ?: emptyArray()
-            return rawCandidates.map { pair ->
+            rawCandidates.map { pair ->
                 RimeCandidate(
                     text = pair.getOrElse(0) { "" },
                     comment = pair.getOrElse(1) { "" }
@@ -279,8 +310,8 @@ class RimeEngine {
     }
 
     fun getInput(): String {
-        synchronized(rimeLock) {
-            return nativeGetInput() ?: ""
+        return tryLocked("") {
+            nativeGetInput() ?: ""
         }
     }
 
@@ -291,55 +322,55 @@ class RimeEngine {
      * 是 T9 路径 updateUI 的首选查询接口，可替代多次独立 JNI 调用。
      */
     fun getComposition(): RimeComposition {
-        synchronized(rimeLock) {
-            return nativeGetComposition()
+        return tryLocked(RimeComposition("", "", "", emptyArray(), false, false, false)) {
+            nativeGetComposition()
         }
     }
 
     fun selectCandidate(index: Int): Boolean {
-        synchronized(rimeLock) {
-            if (!nativeHasSession()) return false
-            return nativeSelectCandidate(index)
+        return tryLocked(false) {
+            if (!nativeHasSession()) return@tryLocked false
+            nativeSelectCandidate(index)
         }
     }
 
     fun pageDown(): Boolean {
-        synchronized(rimeLock) {
-            if (!nativeHasSession()) return false
-            return nativePageDown()
+        return tryLocked(false) {
+            if (!nativeHasSession()) return@tryLocked false
+            nativePageDown()
         }
     }
 
     fun pageUp(): Boolean {
-        synchronized(rimeLock) {
-            if (!nativeHasSession()) return false
-            return nativePageUp()
+        return tryLocked(false) {
+            if (!nativeHasSession()) return@tryLocked false
+            nativePageUp()
         }
     }
 
     fun hasNextPage(): Boolean {
-        synchronized(rimeLock) {
-            if (!nativeHasSession()) return false
-            return nativeHasNextPage()
+        return tryLocked(false) {
+            if (!nativeHasSession()) return@tryLocked false
+            nativeHasNextPage()
         }
     }
 
     fun hasPrevPage(): Boolean {
-        synchronized(rimeLock) {
-            if (!nativeHasSession()) return false
-            return nativeHasPrevPage()
+        return tryLocked(false) {
+            if (!nativeHasSession()) return@tryLocked false
+            nativeHasPrevPage()
         }
     }
 
     fun commit(): String {
-        synchronized(rimeLock) {
-            return nativeCommit() ?: ""
+        return tryLocked("") {
+            nativeCommit() ?: ""
         }
     }
 
     fun clearComposition() {
         if (!nativeHasSession()) return
-        synchronized(rimeLock) {
+        tryLocked(Unit) {
             nativeClearComposition()
         }
     }
@@ -356,23 +387,23 @@ class RimeEngine {
      */
     fun setInput(input: String): Boolean {
         if (!isInitialized) return false
-        synchronized(rimeLock) {
-            if (!nativeHasSession() && !nativeCreateSession()) return false
-            return nativeSetInput(input)
+        return tryLocked(false) {
+            if (!nativeHasSession() && !nativeCreateSession()) return@tryLocked false
+            nativeSetInput(input)
         }
     }
 
     fun toggleAsciiMode(): Boolean {
-        synchronized(rimeLock) {
-            if (!nativeHasSession()) return false
-            return nativeToggleAsciiMode()
+        return tryLocked(false) {
+            if (!nativeHasSession()) return@tryLocked false
+            nativeToggleAsciiMode()
         }
     }
 
     fun isAsciiMode(): Boolean {
-        synchronized(rimeLock) {
-            if (!nativeHasSession()) return false
-            return nativeIsAsciiMode()
+        return tryLocked(false) {
+            if (!nativeHasSession()) return@tryLocked false
+            nativeIsAsciiMode()
         }
     }
 
@@ -392,7 +423,7 @@ class RimeEngine {
     }
 
     fun switchSchema(schemaId: String): Boolean {
-        synchronized(rimeLock) {
+        locked {
             if (!nativeHasSession()) return false
             // 在切换方案前，确保 T9 方案的 schema 补丁已注入
             // 这会在 user_data_dir 中创建 {schemaId}.custom.yaml 文件，
@@ -404,14 +435,14 @@ class RimeEngine {
 
     fun startMaintenance(full: Boolean): Boolean {
         if (!isInitialized) return false
-        synchronized(rimeLock) {
+        locked {
             return nativeStartMaintenance(full)
         }
     }
 
     fun deploy(): Boolean {
         if (!isInitialized) return false
-        synchronized(rimeLock) {
+        locked {
             // 部署前确保 T9 补丁（含个人词库 packs 确定性名）已写入，
             // 部署时 librime 才会编译对应的 user_<schemaId>.table.bin。
             // 幂等：补丁已就位时 native 侧直接 skip，开销极小。
@@ -422,9 +453,9 @@ class RimeEngine {
 
     fun lookupText(text: String): String {
         if (!isInitialized || text.isEmpty()) return ""
-        synchronized(rimeLock) {
-            if (!nativeHasSession()) return ""
-            return nativeLookupText(text) ?: ""
+        return tryLocked("") {
+            if (!nativeHasSession()) return@tryLocked ""
+            nativeLookupText(text) ?: ""
         }
     }
 
@@ -492,14 +523,14 @@ class RimeEngine {
 
     /** 运行时切换 JNI verbose 日志（仅 Debug 构建生效，Release 为空操作）。 */
     fun setVerboseLogging(enabled: Boolean) {
-        synchronized(rimeLock) {
+        locked {
             nativeSetVerboseLogging(enabled)
         }
     }
 
     fun destroy() {
         if (isInitialized) {
-            synchronized(rimeLock) {
+            locked {
                 nativeDestroy()
                 isInitialized = false
             }
@@ -518,9 +549,9 @@ class RimeEngine {
      */
     fun t9SelectCandidate(pinyin: String, textLength: Int): Boolean {
         if (!isInitialized) return false
-        synchronized(rimeLock) {
-            if (!nativeHasSession() && !nativeCreateSession()) return false
-            return nativeT9SelectCandidate(pinyin, textLength)
+        return tryLocked(false) {
+            if (!nativeHasSession() && !nativeCreateSession()) return@tryLocked false
+            nativeT9SelectCandidate(pinyin, textLength)
         }
     }
 
@@ -604,9 +635,9 @@ class RimeEngine {
      */
     fun t9SelectPinyinDirect(pinyin: String, digitLength: Int): Boolean {
         if (!isInitialized) return false
-        synchronized(rimeLock) {
-            if (!nativeHasSession() && !nativeCreateSession()) return false
-            return nativeT9SelectPinyinDirect(pinyin, digitLength)
+        return tryLocked(false) {
+            if (!nativeHasSession() && !nativeCreateSession()) return@tryLocked false
+            nativeT9SelectPinyinDirect(pinyin, digitLength)
         }
     }
 
@@ -615,8 +646,8 @@ class RimeEngine {
      */
     fun t9GetRemainingDigits(): String {
         if (!isInitialized) return ""
-        synchronized(rimeLock) {
-            return nativeT9GetRemainingDigits() ?: ""
+        return tryLocked("") {
+            nativeT9GetRemainingDigits() ?: ""
         }
     }
 
@@ -626,8 +657,8 @@ class RimeEngine {
      */
     fun t9GetLeftPanelState(): String {
         if (!isInitialized) return "IDLE;;;;;0"
-        synchronized(rimeLock) {
-            return nativeT9GetLeftPanelState() ?: "IDLE;;;;;0"
+        return tryLocked("IDLE;;;;;0") {
+            nativeT9GetLeftPanelState() ?: "IDLE;;;;;0"
         }
     }
 
@@ -637,8 +668,8 @@ class RimeEngine {
      */
     fun t9GetAndConsumeUndoneRightCommitCount(): Int {
         if (!isInitialized) return 0
-        synchronized(rimeLock) {
-            return nativeT9GetAndConsumeUndoneRightCommitCount()
+        return tryLocked(0) {
+            nativeT9GetAndConsumeUndoneRightCommitCount()
         }
     }
 
@@ -648,10 +679,10 @@ class RimeEngine {
      */
     fun t9GetFirstSyllableOptions(digits: String, maxResults: Int = 20): List<Pair<String, Int>> {
         if (!isInitialized || digits.isEmpty()) return emptyList()
-        synchronized(rimeLock) {
-            val raw = nativeT9GetFirstSyllableOptions(digits, maxResults) ?: return emptyList()
-            if (raw.isEmpty()) return emptyList()
-            return raw.split(",").mapNotNull { entry ->
+        return tryLocked(emptyList()) {
+            val raw = nativeT9GetFirstSyllableOptions(digits, maxResults) ?: return@tryLocked emptyList()
+            if (raw.isEmpty()) return@tryLocked emptyList()
+            raw.split(",").mapNotNull { entry ->
                 val parts = entry.split("|")
                 if (parts.size == 2) {
                     Pair(parts[0], parts[1].toIntOrNull() ?: 1)
@@ -666,7 +697,7 @@ class RimeEngine {
      */
     fun t9ClearComposition(mode: Int) {
         if (!isInitialized) return
-        synchronized(rimeLock) {
+        tryLocked(Unit) {
             nativeT9ClearComposition(mode)
         }
     }
@@ -680,7 +711,7 @@ class RimeEngine {
      */
     fun t9FlushRimeInput() {
         if (!isInitialized) return
-        synchronized(rimeLock) {
+        tryLocked(Unit) {
             nativeT9FlushRimeInput()
         }
     }

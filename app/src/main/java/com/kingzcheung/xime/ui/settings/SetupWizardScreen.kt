@@ -383,6 +383,8 @@ private suspend fun doCompile(
             // 2. 部署 = 编译词库 + 创建 session（一步完成）
             onProgress("正在编译词库...")
             engine.deploy()
+            RimeConfigHelper.storeDeploymentHash(context)
+            SettingsPreferences.setDeploymentDone(context, true)
 
             onDone()
         } catch (e: Exception) {

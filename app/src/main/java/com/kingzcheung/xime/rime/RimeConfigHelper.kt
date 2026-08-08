@@ -2,6 +2,7 @@ package com.kingzcheung.xime.rime
 
 import android.content.Context
 import android.util.Log
+import com.kingzcheung.xime.BuildConfig
 import com.kingzcheung.xime.settings.PersonalDictManager
 import com.kingzcheung.xime.settings.SchemaConfigHelper
 import com.kingzcheung.xime.settings.SchemaManifestManager
@@ -17,6 +18,9 @@ import java.io.IOException
 object RimeConfigHelper {
     private const val TAG = "RimeConfigHelper"
     private const val ASSETS_RIME_DIR = "rime"
+
+    /** 部署互斥：Application 预初始化与输入法服务初始化可能并发触发部署，串行化避免重复/并发全量编译。 */
+    private val deploymentLock = Any()
     
     suspend fun initializeRimeDataAsync(context: Context): Pair<String, String> {
         val rimeDir = File(context.filesDir, "rime")
@@ -37,14 +41,40 @@ object RimeConfigHelper {
         // 为所有启用方案打个人词库补丁
         PersonalDictManager.ensureSchemaPacks(context)
         invalidateBuildIfConfigChanged(context)
-        // 配置文件有改动时重新部署，确保 build 目录最新
-        if (!File(rimeDir, "build").exists() || File(rimeDir, "build").list()?.isEmpty() == true) {
-            Log.i(TAG, "Build directory missing or empty, triggering deploy")
-            RimeEngine.getInstance().deploy()
-            storeDeploymentHash(context)
-        }
+        // 部署统一由 ensureDeployment() 在 engine 初始化后执行（本方法不持有 rimeLock）。
         
         return Pair(rimeDir.absolutePath, rimeDir.absolutePath)
+    }
+
+    /**
+     * 统一部署入口（进程内互斥）：
+     * - 部署 hash 一致 → build 已是最新，对齐 deploymentDone 标记，跳过编译；
+     * - hash 缺失/不一致 → 清空 build 全量编译，成功后统一记录 hash 与 deploymentDone。
+     *
+     * 必须由调用方保证 engine 已 initialize（deploy() 未初始化时返回 false）。
+     * 该入口被 Application 预初始化与输入法服务共享，配合 deploymentLock
+     * 避免两者并发触发两次 24 秒级别的全量编译。
+     */
+    fun ensureDeployment(context: Context): Boolean {
+        synchronized(deploymentLock) {
+            val currentHash = computeDeploymentHash(context)
+            if (currentHash.isNotEmpty() && currentHash == SettingsPreferences.getDeploymentHash(context)) {
+                SettingsPreferences.setDeploymentDone(context, true)
+                return true
+            }
+            Log.i(TAG, "Deployment hash mismatch or missing, clearing build for full deploy")
+            val buildDir = File(context.filesDir, "rime/build")
+            if (buildDir.exists()) {
+                buildDir.deleteRecursively()
+                buildDir.mkdirs()
+            }
+            if (RimeEngine.getInstance().deploy()) {
+                storeDeploymentHash(context)
+                SettingsPreferences.setDeploymentDone(context, true)
+                return true
+            }
+            return false
+        }
     }
     
     fun initializeRimeData(context: Context): Pair<String, String> {
@@ -170,12 +200,20 @@ object RimeConfigHelper {
     }
     
     private fun copyAssetsToRimeDir(context: Context, targetDir: File): Boolean {
-        try {
-            return copyAssetsRecursively(context, ASSETS_RIME_DIR, targetDir)
-        } catch (e: IOException) {
-            Log.e(TAG, "Failed to copy assets", e)
+        // assets 编译进 APK，同一 versionCode 内不会变化。记录上次同步的版本号，
+        // 一致时跳过全量拷贝：避免每次启动都覆盖 default.yaml 等文件（assets 默认压缩，
+        // openFd 抛异常导致 size 判断失效），从而保证部署 hash 稳定、不再每次启动全量重编译。
+        if (SettingsPreferences.getRimeAssetsVersion(context) == BuildConfig.VERSION_CODE) {
             return false
         }
+        val copied = try {
+            copyAssetsRecursively(context, ASSETS_RIME_DIR, targetDir)
+        } catch (e: IOException) {
+            Log.e(TAG, "Failed to copy assets", e)
+            false
+        }
+        SettingsPreferences.setRimeAssetsVersion(context, BuildConfig.VERSION_CODE)
+        return copied
     }
     
     private fun copyAssetsRecursively(context: Context, assetPath: String, targetDir: File): Boolean {

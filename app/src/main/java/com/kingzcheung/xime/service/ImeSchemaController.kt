@@ -11,6 +11,7 @@ import com.kingzcheung.xime.keyboard.HANDWRITING_SCHEMA_ID
 import com.kingzcheung.xime.settings.KeysConfigHelper
 import com.kingzcheung.xime.settings.SchemaConfigHelper
 import com.kingzcheung.xime.settings.SchemaManager
+import com.kingzcheung.xime.rime.RimeConfigHelper
 import com.kingzcheung.xime.settings.SettingsPreferences
 import com.kingzcheung.xime.ui.theme.KeyboardThemes
 import java.io.File
@@ -76,6 +77,9 @@ internal class ImeSchemaController(private val service: XimeInputMethodService) 
                 }
                 
                 service.rimeEngine.deploy()
+                // 部署后记录 hash 与完成标记，否则下次启动会因 hash 不一致再次全量编译
+                RimeConfigHelper.storeDeploymentHash(service)
+                SettingsPreferences.setDeploymentDone(service, true)
                 
                 // 部署完成后重新加载配置（Rime 可能在部署过程中改写文件）
                 KeysConfigHelper.loadConfig(service)
@@ -114,6 +118,9 @@ internal class ImeSchemaController(private val service: XimeInputMethodService) 
     private fun deploySchema() {
         try {
             service.rimeEngine.deploy()
+            // 部署后记录 hash 与完成标记，避免下次启动再次全量编译
+            RimeConfigHelper.storeDeploymentHash(service)
+            SettingsPreferences.setDeploymentDone(service, true)
             val savedSchema = SettingsPreferences.getCurrentSchema(service)
             applyPageSizeSetting(savedSchema)
             service.rimeEngine.switchSchema(savedSchema)
