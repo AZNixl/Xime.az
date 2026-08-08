@@ -26,7 +26,7 @@ fun SettingsScreen(
         composable(SettingsRoutes.Main) {
             SettingsMainContent(
                 onNavigateToSchema = { navController.navigate(SettingsRoutes.Schema) },
-                onNavigateToSchemaMarket = { navController.navigate(SettingsRoutes.SchemaMarket) },
+                onNavigateToMarket = { navController.navigate(SettingsRoutes.Market) },
                 onNavigateToTheme = { navController.navigate(SettingsRoutes.Theme) },
                 onNavigateToKeyEffect = { navController.navigate(SettingsRoutes.KeyEffect) },
                 onNavigateToLayoutDisplay = { navController.navigate(SettingsRoutes.LayoutDisplay) },
@@ -34,7 +34,6 @@ fun SettingsScreen(
                 onNavigateToPlugins = { navController.navigate(SettingsRoutes.Plugins) },
                 onNavigateToSmartPrediction = { navController.navigate(SettingsRoutes.SmartPrediction) },
                 onNavigateToSpeechToText = { navController.navigate(SettingsRoutes.SpeechToText) },
-                onNavigateToModelManagement = { navController.navigate(SettingsRoutes.ModelManagement) },
                 onNavigateToAbout = { navController.navigate(SettingsRoutes.About) },
                 onNavigateToWebDav = { navController.navigate(SettingsRoutes.WebDav) }
             )
@@ -51,15 +50,18 @@ fun SettingsScreen(
                     }
                     onWizardBack()
                 },
-                onNavigateToMarket = { navController.navigate(SettingsRoutes.SchemaMarket) },
+                onNavigateToMarket = { navController.navigate(SettingsRoutes.Market) },
                 onNavigateToRimeFileBrowser = { navController.navigate(SettingsRoutes.RimeFileBrowser) },
             )
         }
-        composable(SettingsRoutes.SchemaMarket) {
-            SchemaMarketContent(
+        composable(SettingsRoutes.Market) {
+            MarketHubContent(
                 onBack = { navController.popBackStack() },
                 onNavigateToDetail = { schemeId ->
                     navController.navigate("schema_market_detail/$schemeId")
+                },
+                onNavigateToModelDetail = { modelId ->
+                    navController.navigate("model_market_detail/$modelId")
                 },
                 onNavigateToLocal = { navController.navigate(SettingsRoutes.SchemaLocal) },
             )
@@ -74,8 +76,18 @@ fun SettingsScreen(
             arguments = listOf(navArgument("schemeId") { type = NavType.StringType }),
         ) { backStackEntry ->
             val schemeId = backStackEntry.arguments?.getString("schemeId") ?: return@composable
-            SchemaMarketDetailContent(
+            MarketSchemeDetailContent(
                 schemeId = schemeId,
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable(
+            route = SettingsRoutes.ModelMarketDetail,
+            arguments = listOf(navArgument("modelId") { type = NavType.StringType }),
+        ) { backStackEntry ->
+            val modelId = backStackEntry.arguments?.getString("modelId") ?: return@composable
+            MarketModelDetailContent(
+                modelId = modelId,
                 onBack = { navController.popBackStack() },
             )
         }
@@ -117,7 +129,7 @@ fun SettingsScreen(
         composable(SettingsRoutes.SmartPrediction) {
             SmartPredictionSettingsContent(
                 onBack = { navController.popBackStack() },
-                onNavigateToModelManagement = { navController.navigate(SettingsRoutes.ModelManagement) }
+                onNavigateToModelManagement = { navController.navigate(SettingsRoutes.MarketModel) }
             )
         }
         composable(SettingsRoutes.SpeechToText) {
@@ -157,9 +169,17 @@ fun SettingsScreen(
                 onNavigateToLogViewer = { navController.navigate(SettingsRoutes.LogViewer) }
             )
         }
-        composable(SettingsRoutes.ModelManagement) {
-            ModelManagementContent(
-                onBack = { navController.popBackStack() }
+        composable(SettingsRoutes.MarketModel) {
+            MarketHubContent(
+                onBack = { navController.popBackStack() },
+                onNavigateToDetail = { schemeId ->
+                    navController.navigate("schema_market_detail/$schemeId")
+                },
+                onNavigateToModelDetail = { modelId ->
+                    navController.navigate("model_market_detail/$modelId")
+                },
+                onNavigateToLocal = { navController.navigate(SettingsRoutes.SchemaLocal) },
+                initialTab = 1,
             )
         }
         composable(SettingsRoutes.LogViewer) {
@@ -176,14 +196,6 @@ fun SettingsScreen(
             LicensesContent(
                 onBack = { navController.popBackStack() }
             )
-        }
-    }
-
-    if (initialRoute != null) {
-        LaunchedEffect(initialRoute) {
-            when (initialRoute) {
-                "model_management" -> navController.navigate(SettingsRoutes.ModelManagement)
-            }
         }
     }
 }

@@ -111,9 +111,10 @@ object ModelManager {
     suspend fun downloadModel(
         context: Context,
         model: ModelInfo,
-        onProgress: (ModelDownloadState) -> Unit
+        onProgress: (ModelDownloadState) -> Unit,
+        version: ModelVersion? = null
     ) {
-        ModelDownloader.downloadModel(context, model, onProgress)
+        ModelDownloader.downloadModel(context, model, onProgress, version)
     }
 
     fun deleteModel(context: Context, id: String): Boolean {
@@ -135,6 +136,9 @@ object ModelManager {
             if (file.exists() && !file.delete()) {
                 success = false
             }
+        }
+        if (success) {
+            com.kingzcheung.xime.settings.MarketVersionStore.removeModelVersion(context, model.id)
         }
 
         return success

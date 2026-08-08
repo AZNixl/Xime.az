@@ -18,7 +18,8 @@ object PluginSignatureUtil {
      */
     fun classifyLuaPlugin(source: PluginSource): TrustLevel {
         return when (source) {
-            PluginSource.SYSTEM, PluginSource.ASSET -> TrustLevel.TRUSTED
+            PluginSource.SYSTEM, PluginSource.ASSET,
+            PluginSource.REMOTE -> TrustLevel.TRUSTED
             PluginSource.FILE -> TrustLevel.THIRD_PARTY
         }
     }

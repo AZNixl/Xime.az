@@ -114,11 +114,14 @@ object SchemaManager {
         return dir.exists() && (dir.listFiles()?.any { it.isFile } == true)
     }
 
-    /** 删除 market 中指定方案的整个子目录（含压缩包）。 */
+    /** 删除 market 中指定方案的整个子目录（含压缩包），并清理本地版本记录。 */
     fun deleteSchemeArchive(context: Context, schemeId: String): Boolean {
         val dir = getMarketDir(context, schemeId)
-        if (!dir.exists()) return false
-        return dir.deleteRecursively()
+        val removed = if (!dir.exists()) false else dir.deleteRecursively()
+        if (removed) {
+            MarketVersionStore.removeSchemeVersion(context, schemeId)
+        }
+        return removed
     }
 
     /**

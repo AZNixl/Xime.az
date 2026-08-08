@@ -94,4 +94,68 @@ data class MarketSchemeItem(
     val scheme: MarketScheme,
     val compatible: Boolean,
     val minAppVersion: String,
+    /** 本地已下载的方案版本（无则未下载） */
+    val installedVersion: String? = null,
+) {
+    /** 是否已有更新：已下载且本地版本 != 索引当前版本。 */
+    val hasUpdate: Boolean
+        get() = installedVersion != null && scheme.currentVersion.isNotBlank() &&
+            installedVersion != scheme.currentVersion
+}
+
+/* ─────────────────────────── 插件市场 ─────────────────────────── */
+
+/** 扁平插件索引格式：plugins 直接内联 MarketPlugin 对象列表（对应 plugins/index.yaml）。 */
+@Serializable
+data class PluginsDirectIndex(
+    @SerialName("index_version") val indexVersion: Int = 1,
+    @SerialName("updated_at") val updatedAt: String = "",
+    val plugins: List<MarketPlugin> = emptyList(),
 )
+
+@Serializable
+data class MarketPlugin(
+    val id: String = "",
+    val name: String = "",
+    val author: String = "",
+    val description: String = "",
+    val type: String = "remote",
+    val tags: List<String> = emptyList(),
+    @SerialName("pluginType") val pluginType: String = "",
+    @SerialName("appVersion") val appVersion: String = "",
+    @SerialName("currentVersion") val currentVersion: String = "",
+    val versions: List<PluginVersion> = emptyList(),
+    val homepage: String = "",
+    val license: String = "",
+    val warning: String = "",
+) {
+    /** 当前应安装的版本：优先匹配 currentVersion，否则取第一条。 */
+    fun resolvedVersion(): PluginVersion? =
+        versions.firstOrNull { it.version == currentVersion } ?: versions.firstOrNull()
+}
+
+@Serializable
+data class PluginVersion(
+    val version: String = "",
+    val date: String = "",
+    val changelog: String = "",
+    @SerialName("downloadUrl")
+    val downloadUrls: List<DownloadItem> = emptyList(),
+    val size: String = "",
+    val sha256: String = "",
+)
+
+/** 列表项 = 插件 + 运行期派生状态。 */
+data class MarketPluginItem(
+    val plugin: MarketPlugin,
+    val compatible: Boolean,
+    val minAppVersion: String,
+    val installed: Boolean,
+    /** 本地已安装的插件版本（安装后来自 PluginInfo.versionName） */
+    val installedVersion: String? = null,
+) {
+    /** 是否已有更新：已安装且本地版本 != 索引当前版本。 */
+    val hasUpdate: Boolean
+        get() = installed && installedVersion != null && plugin.currentVersion.isNotBlank() &&
+            installedVersion != plugin.currentVersion
+}
