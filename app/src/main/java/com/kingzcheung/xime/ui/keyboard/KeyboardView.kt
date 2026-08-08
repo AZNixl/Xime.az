@@ -24,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -51,6 +52,7 @@ import com.kingzcheung.xime.keyboard.PanelType
 import com.kingzcheung.xime.keyboard.ToolbarAction
 import com.kingzcheung.xime.keyboard.ToolbarButton
 import com.kingzcheung.xime.rime.T9InputController
+import com.kingzcheung.xime.service.CandidateState
 import com.kingzcheung.xime.settings.KeysConfigHelper
 import com.kingzcheung.xime.settings.SettingsPreferences
 import com.kingzcheung.xime.ui.menubar.ClipboardView
@@ -74,6 +76,7 @@ fun KeyboardView(
     modifier: Modifier = Modifier,
     inlineSuggestions: List<*> = listOf<Any>(),
     onCardPositioned: (left: Int, top: Int, right: Int, bottom: Int) -> Unit = { _: Int, _: Int, _: Int, _: Int -> },
+    candidateState: State<CandidateState> = remember { mutableStateOf(CandidateState()) },
 ) {
     val isShifted by viewModel.isShifted.collectAsStateWithLifecycle()
     val keyboardState by viewModel.keyboardState.collectAsStateWithLifecycle()
@@ -207,9 +210,10 @@ fun KeyboardView(
             val isHandwritingPage = page is KeyboardPage.Main && (page as KeyboardPage.Main).type == MainType.HANDWRITING
             val showHandwritingCandidates = (isHandwritingPage || isHandwritingLookup) && handwritingCandidates.isNotEmpty()
 
+            val cs = candidateState.value
             val candidateBarState = remember(
-                state.candidates, state.candidateComments, state.inputText, state.preeditText, state.isComposing,
-                state.associationCandidates, state.isShowingRecentClipboard, state.hasNextPage,
+                cs.candidates, cs.candidateComments, cs.inputText, cs.preeditText, cs.isComposing,
+                cs.associationCandidates, cs.isShowingRecentClipboard, cs.hasNextPage,
                 state.isCalculatorMode, handwritingCandidates, handwritingComments, showHandwritingCandidates,
             ) {
                 if (showHandwritingCandidates) {
@@ -220,14 +224,18 @@ fun KeyboardView(
                     )
                 } else {
                     CandidateBarState.from(
-                        candidates = state.candidates,
-                        candidateComments = state.candidateComments,
-                        inputText = state.inputText,
-                        preeditText = state.preeditText,
-                        isComposing = state.isComposing,
-                        associationCandidates = state.associationCandidates,
-                        isShowingRecentClipboard = state.isShowingRecentClipboard,
-                        hasNextPage = state.hasNextPage,
+                        candidates = cs.candidates,
+                        candidateComments = cs.candidateComments,
+                        inputText = cs.inputText,
+                        preeditText = cs.preeditText,
+                        isComposing = cs.isComposing,
+                        associationCandidates = if (cs.pendingEnglishText.isNotEmpty()) {
+                            listOf(cs.pendingEnglishText) + cs.associationCandidates
+                        } else {
+                            cs.associationCandidates
+                        },
+                        isShowingRecentClipboard = cs.isShowingRecentClipboard,
+                        hasNextPage = cs.hasNextPage,
                         isCalculatorActive = state.isCalculatorMode,
                     )
                 }
@@ -337,8 +345,8 @@ fun KeyboardView(
                     },
                     onShowMoreCandidates = { viewModel.showOverlay(OverlayRoute.CandidatePage) },
                     onInputTextClick = {
-                        if (state.inputText.isNotEmpty()) {
-                            callbacks.onClipboardSelect?.invoke(state.inputText)
+                        if (candidateState.value.inputText.isNotEmpty()) {
+                            callbacks.onClipboardSelect?.invoke(candidateState.value.inputText)
                         }
                     },
                     onAssociationSelect = { index ->
@@ -563,6 +571,7 @@ fun KeyboardView(
                             KeyboardLayoutScreen(
                                 keyboardState = keyboardState,
                                 uiState = state,
+                                candidateState = candidateState,
                                 viewModel = viewModel,
                                 callbacks = callbacks,
                                 onKeyPress = currentOnKeyPress,
@@ -919,13 +928,13 @@ fun KeyboardView(
                     )
                     is OverlayRoute.CandidatePage -> CandidatePage(
                         state = CandidatePageState(
-                            candidates = state.candidates.toList(),
-                            candidateComments = state.candidateComments.toList(),
-                            associationCandidates = state.associationCandidates.toList(),
+                            candidates = candidateState.value.candidates.toList(),
+                            candidateComments = candidateState.value.candidateComments.toList(),
+                            associationCandidates = candidateState.value.associationCandidates.toList(),
                             backgroundColor = keyboardBgColor,
                             textColor = candidateTextColor,
-                            hasNextPage = state.hasNextPage,
-                            hasPrevPage = state.hasPrevPage,
+                            hasNextPage = candidateState.value.hasNextPage,
+                            hasPrevPage = candidateState.value.hasPrevPage,
                             bottomPaddingDp = state.keyboardBottomPaddingDp,
                         ),
                         callbacks = CandidatePageCallbacks(

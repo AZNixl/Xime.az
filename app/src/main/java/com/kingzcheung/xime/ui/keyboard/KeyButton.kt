@@ -969,7 +969,9 @@ fun SwipeableIconKeyButton(
             hasTriggeredLongPress = true
             while (isLongPress) {
                 onLongClick()
-                delay(80)
+                // 长按重复间隔 30ms：80ms 时退格删除以 12.5Hz 离散更新
+                // 候选栏，低于视觉融合阈值，看起来像"一闪一闪"；30ms 时更新更密集更顺滑。
+                delay(30)
             }
         }
     }

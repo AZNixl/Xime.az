@@ -36,6 +36,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -68,6 +69,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kingzcheung.xime.R
 import com.kingzcheung.xime.rime.T9InputController
+import com.kingzcheung.xime.service.CandidateState
 import com.kingzcheung.xime.ui.theme.KeyboardThemes
 import com.kingzcheung.xime.util.PermissionHelper
 import com.kingzcheung.xime.util.SubcharHelper
@@ -106,6 +108,7 @@ fun T9KeyboardLayout(
     onKeyPressDown: ((String) -> Unit)? = null,
     isFloatingMode: Boolean = false,
     specialKeyTextColor: Color = Color.White,
+    candidateState: State<CandidateState> = remember { mutableStateOf(CandidateState()) },
 ) {
     val controller = t9Controller
     val configuration = LocalConfiguration.current
@@ -150,6 +153,7 @@ fun T9KeyboardLayout(
         onKeyPressDown = onKeyPressDown,
         onDelete = ::handleDelete,
         specialKeyTextColor = specialKeyTextColor,
+        candidateState = candidateState,
     )
 }
 
@@ -178,6 +182,7 @@ private fun T9KeyboardSwipeOverlay(
     onKeyPressDown: ((String) -> Unit)?,
     onDelete: () -> Unit,
     specialKeyTextColor: Color = Color.White,
+    candidateState: State<CandidateState> = remember { mutableStateOf(CandidateState()) },
 ) {
     var swipeState by remember { mutableStateOf(SwipeState()) }
     var keyboardBounds by remember { mutableStateOf(Rect(0f, 0f, 0f, 0f)) }
@@ -240,6 +245,7 @@ private fun T9KeyboardSwipeOverlay(
                         shadowEnabled = shadowEnabled,
                         shadowElevation = shadowElevation,
                         shadowShapeRadius = shadowShapeRadius,
+                        candidateState = candidateState,
                     )
                 }
 
@@ -269,6 +275,7 @@ private fun T9KeyboardSwipeOverlay(
                         onSwipeStateChange = ::processSwipeState,
                         onDelete = onDelete,
                         compactMode = true,
+                        candidateState = candidateState,
                     )
                     }
                 }
@@ -299,6 +306,7 @@ private fun T9KeyboardSwipeOverlay(
                         onSwipeStateChange = ::processSwipeState,
                         onDelete = onDelete,
                         compactMode = false,
+                        candidateState = candidateState,
                     )
                 }
             }
@@ -319,6 +327,7 @@ private fun T9LandscapeCandidatePanel(
     shadowEnabled: Boolean,
     shadowElevation: Dp,
     shadowShapeRadius: Dp,
+    candidateState: State<CandidateState> = remember { mutableStateOf(CandidateState()) },
 ) {
     val density = LocalDensity.current
     val shadowModifier = remember(shadowEnabled, shadowElevation, shadowShapeRadius, density, keyBackgroundColor) {
@@ -344,8 +353,8 @@ private fun T9LandscapeCandidatePanel(
             .clip(RoundedCornerShape(LocalKeyCornerRadius.current))
             .background(keyBackgroundColor)
     ) {
-        val rimeCandidates = uiState.candidates
-        val rimeComments = uiState.candidateComments
+        val rimeCandidates = candidateState.value.candidates
+        val rimeComments = candidateState.value.candidateComments
         if (rimeCandidates.isNotEmpty()) {
             val scrollState = rememberScrollState()
             Column(
@@ -373,7 +382,7 @@ private fun T9LandscapeCandidatePanel(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = if (uiState.isComposing) "..." else "",
+                    text = if (candidateState.value.isComposing) "..." else "",
                     color = keyTextColor.copy(alpha = 0.3f),
                     fontSize = 14.sp
                 )
@@ -452,6 +461,7 @@ private fun T9KeyboardContent(
     onSwipeStateChange: ((SwipeState, Rect) -> Unit)?,
     onDelete: () -> Unit,
     compactMode: Boolean = false,
+    candidateState: State<CandidateState> = remember { mutableStateOf(CandidateState()) },
 ) {
     val t9DigitFontSize = if (compactMode) 13.sp else 16.sp
     val ctrlFontSize = if (compactMode) 11.sp else androidx.compose.ui.unit.TextUnit.Unspecified

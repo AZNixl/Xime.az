@@ -2201,7 +2201,8 @@ private fun SpaceKey(
                         } else {
                             while (true) {
                                 currentOnKeyPress("space")
-                                delay(80)
+                                // 长按重复间隔 30ms（与退格键长按重复保持一致）
+                                delay(30)
                             }
                         }
                     }
