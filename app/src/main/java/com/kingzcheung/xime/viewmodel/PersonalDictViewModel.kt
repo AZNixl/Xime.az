@@ -22,12 +22,7 @@ data class PersonalDictUiState(
     val entries: List<DictEntry> = emptyList(),
     val filteredEntries: List<DictEntry> = emptyList(),
     val searchQuery: String = "",
-    val isLoading: Boolean = true,
-    val showAddDialog: Boolean = false,
-    val showEditDialog: Boolean = false,
-    val editIndex: Int = -1,
-    val editWord: String = "",
-    val editCode: String = ""
+    val isLoading: Boolean = true
 )
 
 class PersonalDictViewModel(application: Application) : AndroidViewModel(application) {
@@ -74,61 +69,6 @@ class PersonalDictViewModel(application: Application) : AndroidViewModel(applica
         }
     }
 
-    fun addEntry(word: String, code: String) {
-        val trimmedWord = word.trim()
-        val trimmedCode = code.trim()
-        if (trimmedWord.isEmpty() || trimmedCode.isEmpty()) return
-        val schemaId = _uiState.value.selectedSchema
-
-        viewModelScope.launch {
-            val current = _uiState.value.entries
-            val updated = current + DictEntry(trimmedWord, trimmedCode)
-            withContext(Dispatchers.IO) {
-                PersonalDictManager.saveEntries(context, schemaId, updated)
-            }
-            _uiState.update {
-                val query = it.searchQuery
-                it.copy(entries = updated, filteredEntries = filterEntries(updated, query))
-            }
-        }
-    }
-
-    fun updateEntry(index: Int, word: String, code: String) {
-        val trimmedWord = word.trim()
-        val trimmedCode = code.trim()
-        if (trimmedWord.isEmpty() || trimmedCode.isEmpty()) return
-        val schemaId = _uiState.value.selectedSchema
-
-        viewModelScope.launch {
-            val current = _uiState.value.entries.toMutableList()
-            if (index < 0 || index >= current.size) return@launch
-            current[index] = DictEntry(trimmedWord, trimmedCode)
-            withContext(Dispatchers.IO) {
-                PersonalDictManager.saveEntries(context, schemaId, current)
-            }
-            _uiState.update {
-                val query = it.searchQuery
-                it.copy(entries = current, filteredEntries = filterEntries(current, query))
-            }
-        }
-    }
-
-    fun deleteEntry(index: Int) {
-        val schemaId = _uiState.value.selectedSchema
-        viewModelScope.launch {
-            val current = _uiState.value.entries.toMutableList()
-            if (index < 0 || index >= current.size) return@launch
-            current.removeAt(index)
-            withContext(Dispatchers.IO) {
-                PersonalDictManager.saveEntries(context, schemaId, current)
-            }
-            _uiState.update {
-                val query = it.searchQuery
-                it.copy(entries = current, filteredEntries = filterEntries(current, query))
-            }
-        }
-    }
-
     fun setSearchQuery(query: String) {
         _uiState.update {
             it.copy(
@@ -140,34 +80,6 @@ class PersonalDictViewModel(application: Application) : AndroidViewModel(applica
 
     fun clearSearch() {
         setSearchQuery("")
-    }
-
-    fun showAddDialog() {
-        _uiState.update { it.copy(showAddDialog = true, editWord = "", editCode = "", editIndex = -1) }
-    }
-
-    fun hideAddDialog() {
-        _uiState.update { it.copy(showAddDialog = false) }
-    }
-
-    fun showEditDialog() {
-        _uiState.update { it.copy(showEditDialog = true) }
-    }
-
-    fun hideEditDialog() {
-        _uiState.update { it.copy(showEditDialog = false) }
-    }
-
-    fun setEditing(index: Int, word: String, code: String) {
-        _uiState.update { it.copy(editIndex = index, editWord = word, editCode = code) }
-    }
-
-    fun setEditWord(word: String) {
-        _uiState.update { it.copy(editWord = word) }
-    }
-
-    fun setEditCode(code: String) {
-        _uiState.update { it.copy(editCode = code) }
     }
 
     private fun filterEntries(entries: List<DictEntry>, query: String): List<DictEntry> {

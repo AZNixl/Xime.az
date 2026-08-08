@@ -30,6 +30,13 @@ data class SchemesFetch(
     val updatedAt: String = "",
 )
 
+/** 插件列表拉取结果。 */
+data class PluginsFetch(
+    val plugins: List<MarketPluginItem>,
+    val source: String,
+    val updatedAt: String = "",
+)
+
 /**
  * 方案市场数据源：从镜像基址的 rimes/index.yaml（扁平索引，schemas 内联所有 MarketScheme）
  * 获取方案列表，按版本 sha256 下载；安装后用 [RimeDependencyResolver] 补齐编译依赖。
@@ -116,9 +123,123 @@ object XimeIndexSource {
         }
     }
 
+    /**
+     * 获取插件列表：抓取 plugins/index.yaml（扁平索引，plugins 内联所有 MarketPlugin）。
+     * 遍历镜像直到成功；已安装版本表（id → versionName）用于派生 installed/hasUpdate 状态。
+     */
+    suspend fun fetchPlugins(
+        context: Context,
+        appVersion: String,
+        installedVersions: Map<String, String>,
+    ): Result<PluginsFetch> = withContext(Dispatchers.IO) {
+        ensureConfigured(context)
+        try {
+            for (base in mirrors) {
+                val host = hostOf(base)
+                try {
+                    val text = fetchTextSingle(base, "plugins/index.yaml") ?: continue
+                    val direct = XimeIndexParser.parsePluginsDirectIndex(text)
+                    val plugins = direct.plugins.distinctBy { it.id }
+                        .map { XimeIndexParser.toPluginItem(it, appVersion, installedVersions) }
+                    if (plugins.isNotEmpty()) {
+                        return@withContext Result.success(
+                            PluginsFetch(plugins, host, direct.updatedAt)
+                        )
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "fetchPlugins $host failed: ${e.message}")
+                }
+            }
+            Result.failure(IOException("无法获取插件列表（已尝试 ${mirrors.size} 个镜像）"))
+        } catch (e: Exception) {
+            Log.e(TAG, "fetchPlugins failed", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * 下载并安装插件（.xipk）。下载到 cache 后交给插件安装器解压到 files/plugins/<id>/。
+     * 返回安装结果；sha256 由下载层校验（有提供时）。
+     */
+    suspend fun downloadAndInstallPlugin(
+        context: Context,
+        plugin: MarketPlugin,
+        version: String? = null,
+        onDownloadProgress: (Long, Long) -> Unit = { _, _ -> },
+    ): InstallResult = withContext(Dispatchers.IO) {
+        val v = if (version != null) {
+            plugin.versions.firstOrNull { it.version == version }
+        } else {
+            plugin.resolvedVersion()
+        } ?: return@withContext InstallResult(false, failureReason = "无可用版本")
+        val dl = v.downloadUrls.firstOrNull { it.url.isNotBlank() }
+            ?: return@withContext InstallResult(false, failureReason = "缺少下载地址")
+
+        val fileName = dl.fileName.ifBlank { "${plugin.id}.xipk" }
+        val tmpFile = File(context.cacheDir, "xime_plugin_${plugin.id}_$fileName")
+
+        val downloadResult = try {
+            client.newCall(Request.Builder().url(dl.url).build()).execute().use { response ->
+                if (!response.isSuccessful) {
+                    return@withContext InstallResult(false, failureReason = "下载失败（HTTP ${response.code}）")
+                }
+                val body = response.body ?: return@withContext InstallResult(false, failureReason = "下载失败")
+                val totalBytes = body.contentLength()
+                val md = if (!dl.sha256.isNullOrBlank()) {
+                    java.security.MessageDigest.getInstance("SHA-256")
+                } else null
+                var downloadedBytes = 0L
+                body.byteStream().use { input ->
+                    tmpFile.outputStream().use { output ->
+                        val buf = ByteArray(8192)
+                        var n = input.read(buf)
+                        while (n >= 0) {
+                            output.write(buf, 0, n)
+                            md?.update(buf, 0, n)
+                            downloadedBytes += n
+                            if (totalBytes > 0) onDownloadProgress(downloadedBytes, totalBytes)
+                            n = input.read(buf)
+                        }
+                    }
+                }
+                if (md != null) {
+                    val actual = md.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
+                    if (!actual.equals(dl.sha256!!.trim(), ignoreCase = true)) {
+                        tmpFile.delete()
+                        return@withContext InstallResult(false, failureReason = "文件校验失败（sha256 不匹配）")
+                    }
+                }
+                InstallResult(success = true)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "downloadPlugin failed", e)
+            tmpFile.delete()
+            return@withContext InstallResult(false, failureReason = "下载失败：${e.message}")
+        }
+        if (!downloadResult.success) return@withContext downloadResult
+
+        // 安装（source=remote 代表市场来源，信任级别由插件中心判定）
+        val install = try {
+            com.kingzcheung.xime.plugin.core.runtime.PluginManager.installerManager.installPlugin(
+                tmpFile, forceOverwrite = true,
+                source = com.kingzcheung.xime.plugin.core.model.PluginSource.REMOTE,
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "installPlugin failed", e)
+            return@withContext InstallResult(false, failureReason = "安装失败：${e.message}")
+        } finally {
+            tmpFile.delete()
+        }
+        when (install) {
+            is com.kingzcheung.xime.plugin.core.runtime.installer.InstallerManager.InstallResult.Success ->
+                InstallResult(success = true, sha256Status = if (dl.sha256.isNullOrBlank()) null else true)
+            is com.kingzcheung.xime.plugin.core.runtime.installer.InstallerManager.InstallResult.Failure ->
+                InstallResult(false, failureReason = install.reason)
+        }
+    }
+
     /** 从镜像基址获取文件内容，失败返回 null。 */
-    private fun fetchTextSingle(base: String, repoPath: String): String? {
-        return try {
+    private fun fetchTextSingle(base: String, repoPath: String): String? {        return try {
             client.newCall(Request.Builder().url(base + repoPath).build()).execute().use { resp ->
                 if (resp.isSuccessful) {
                     resp.body?.string()?.takeIf { it.isNotBlank() }

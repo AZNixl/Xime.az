@@ -72,6 +72,50 @@ class XimeIndexParserTest {
             sha256: "ABC123"
     """.trimIndent()
 
+    private val pluginsIndex = """
+        index_version: 1
+        updated_at: "2026-08-08"
+        plugins:
+          - id: "com.kingzcheung.xime.plugin.kaomoji"
+            name: "颜文字表情包"
+            author: "Xime"
+            description: "包含 174 个常用颜文字的表情插件"
+            type: "remote"
+            tags: ["表情", "颜文字"]
+            pluginType: "emoji"
+            homepage: "https://github.com/ximeiorg/Xime"
+            license: "GPL-3.0"
+            appVersion: ">=2.6.0"
+            currentVersion: "2.1.0"
+            versions:
+              - version: "2.1.0"
+                date: "2026-08-07"
+                changelog: "初始发布"
+                downloadUrl:
+                  - url: "https://github.com/ximeiorg/Xime/releases/download/nightly/kaomoji-2.1.0.xipk"
+                    sha256: "541a6964c037d9a279ee0971d2b24b438722ef717edacebccdfd06098bdb1fa4"
+                    size: "3.22 KB"
+          - id: "com.kingzcheung.xime.plugin.funasr_asr"
+            name: "阿里百炼 FunAsr"
+            author: "Xime"
+            description: "阿里百炼 FunAsr 在线语音识别"
+            type: "remote"
+            tags: ["语音", "ASR"]
+            pluginType: "speech"
+            homepage: "https://github.com/ximeiorg/Xime"
+            license: "GPL-3.0"
+            appVersion: ">=2.6.0"
+            currentVersion: "1.1.0"
+            versions:
+              - version: "1.1.0"
+                date: "2026-08-07"
+                changelog: "初始发布"
+                downloadUrl:
+                  - url: "https://github.com/ximeiorg/Xime/releases/download/nightly/funasr-asr-1.1.0.xipk"
+                    sha256: "0afbc060f3a055c7cc5f9a9c2a58ab81633048bb60cfa71a922b4e90cbce69b5"
+                    size: "10.1 KB"
+    """.trimIndent()
+
     @Test
     fun `parseIndex maps root fields`() {
         val idx = XimeIndexParser.parseIndex(rootIndex)
@@ -164,9 +208,108 @@ class XimeIndexParserTest {
         val item = XimeIndexParser.toItem(s, "2.3.0-beta5")
         assertTrue(item.compatible)
         assertEquals("2.3.0", item.minAppVersion)
+        assertNull(item.installedVersion)
+        assertFalse(item.hasUpdate)
 
         val incompatible = XimeIndexParser.toItem(s.copy(appVersion = ">=9.9.9"), "2.3.0-beta5")
         assertFalse(incompatible.compatible)
         assertEquals("9.9.9", incompatible.minAppVersion)
+    }
+
+    @Test
+    fun `toItem reflects installed version and hasUpdate`() {
+        val s = XimeIndexParser.parseScheme(wubi86Scheme)
+        val outdated = XimeIndexParser.toItem(s, "2.3.0", installedVersion = "2.0.0")
+        assertEquals("2.0.0", outdated.installedVersion)
+        assertTrue(outdated.hasUpdate)
+
+        val upToDate = XimeIndexParser.toItem(s, "2.3.0", installedVersion = "2.0.1")
+        assertFalse(upToDate.hasUpdate)
+
+        val noCurrent = XimeIndexParser.toItem(s.copy(currentVersion = ""), "2.3.0", installedVersion = "1.0.0")
+        assertFalse(noCurrent.hasUpdate)
+    }
+
+    @Test
+    fun `parsePluginsDirectIndex maps fields`() {
+        val idx = XimeIndexParser.parsePluginsDirectIndex(pluginsIndex)
+        assertEquals(2, idx.plugins.size)
+        val kaomoji = idx.plugins.first()
+        assertEquals("com.kingzcheung.xime.plugin.kaomoji", kaomoji.id)
+        assertEquals("颜文字表情包", kaomoji.name)
+        assertEquals("emoji", kaomoji.pluginType)
+        assertEquals(">=2.6.0", kaomoji.appVersion)
+        assertEquals("2.1.0", kaomoji.currentVersion)
+        assertEquals(1, kaomoji.versions.size)
+        assertEquals(
+            "https://github.com/ximeiorg/Xime/releases/download/nightly/kaomoji-2.1.0.xipk",
+            kaomoji.versions[0].downloadUrls[0].url,
+        )
+        assertEquals(
+            "541a6964c037d9a279ee0971d2b24b438722ef717edacebccdfd06098bdb1fa4",
+            kaomoji.versions[0].downloadUrls[0].sha256,
+        )
+    }
+
+    @Test
+    fun `plugin resolvedVersion picks currentVersion`() {
+        val idx = XimeIndexParser.parsePluginsDirectIndex(pluginsIndex)
+        val kaomoji = idx.plugins.first()
+        assertEquals("2.1.0", kaomoji.resolvedVersion()?.version)
+    }
+
+    @Test
+    fun `toPluginItem computes compatibility and installed state`() {
+        val idx = XimeIndexParser.parsePluginsDirectIndex(pluginsIndex)
+        val kaomoji = idx.plugins.first()
+
+        val installed = XimeIndexParser.toPluginItem(
+            kaomoji, "2.6.0", installedVersions = mapOf(
+                "com.kingzcheung.xime.plugin.kaomoji" to "2.1.0",
+            ),
+        )
+        assertTrue(installed.compatible)
+        assertTrue(installed.installed)
+        assertEquals("2.1.0", installed.installedVersion)
+        assertFalse(installed.hasUpdate)
+        assertEquals("2.6.0", installed.minAppVersion)
+
+        val notInstalled = XimeIndexParser.toPluginItem(
+            kaomoji, "2.6.0", installedVersions = emptyMap(),
+        )
+        assertFalse(notInstalled.installed)
+        assertNull(notInstalled.installedVersion)
+
+        val incompatible = XimeIndexParser.toPluginItem(
+            kaomoji, "2.5.0", installedVersions = emptyMap(),
+        )
+        assertFalse(incompatible.compatible)
+
+        // nightly 版本 fail-open
+        val nightly = XimeIndexParser.toPluginItem(
+            kaomoji, "nightly-20260808-a1b2c3d", installedVersions = emptyMap(),
+        )
+        assertTrue(nightly.compatible)
+    }
+
+    @Test
+    fun `toPluginItem hasUpdate when installed version differs`() {
+        val idx = XimeIndexParser.parsePluginsDirectIndex(pluginsIndex)
+        val kaomoji = idx.plugins.first()
+
+        val outdated = XimeIndexParser.toPluginItem(
+            kaomoji, "2.6.0", installedVersions = mapOf(
+                "com.kingzcheung.xime.plugin.kaomoji" to "2.0.0",
+            ),
+        )
+        assertTrue(outdated.hasUpdate)
+
+        val noCurrent = idx.plugins.firstOrNull { it.id == "com.kingzcheung.xime.plugin.funasr_asr" }!!
+        val noCurrentItem = XimeIndexParser.toPluginItem(
+            noCurrent.copy(currentVersion = ""), "2.6.0", installedVersions = mapOf(
+                "com.kingzcheung.xime.plugin.funasr_asr" to "1.0.0",
+            ),
+        )
+        assertFalse(noCurrentItem.hasUpdate)
     }
 }

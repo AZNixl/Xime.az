@@ -79,12 +79,10 @@ object ModelIndexLoader {
         val category = parseCategory(categoryStr)
 
         val versionsNode = entry["versions"] as? YamlList ?: return null
-        val latestVersion = versionsNode.items.firstOrNull() as? YamlMap ?: return null
-
-        val archiveUrl = (latestVersion["archive"] as? YamlMap)
-            ?.let { (it["url"] as? YamlScalar)?.content }
-
-        val files = parseFiles(latestVersion)
+        val versions = versionsNode.items.mapNotNull { node ->
+            parseModelVersion(node as? YamlMap ?: return@mapNotNull null)
+        }
+        if (versions.isEmpty()) return null
 
         return ModelInfo(
             id = id,
@@ -92,8 +90,28 @@ object ModelIndexLoader {
             description = description,
             category = category,
             size = size,
-            files = files,
-            archiveUrl = archiveUrl
+            versions = versions
+        )
+    }
+
+    private fun parseModelVersion(versionNode: YamlMap): ModelVersion? {
+        val version = (versionNode["version"] as? YamlScalar)?.content
+            ?: (versionNode["name"] as? YamlScalar)?.content ?: return null
+        val date = (versionNode["date"] as? YamlScalar)?.content ?: ""
+        val changelog = (versionNode["changelog"] as? YamlScalar)?.content ?: ""
+        val size = (versionNode["size"] as? YamlScalar)?.content ?: ""
+        val sha256 = (versionNode["sha256"] as? YamlScalar)?.content ?: ""
+        val archiveUrl = (versionNode["archive"] as? YamlMap)
+            ?.let { (it["url"] as? YamlScalar)?.content }
+
+        return ModelVersion(
+            version = version,
+            date = date,
+            changelog = changelog,
+            files = parseFiles(versionNode),
+            archiveUrl = archiveUrl,
+            size = size,
+            sha256 = sha256
         )
     }
 

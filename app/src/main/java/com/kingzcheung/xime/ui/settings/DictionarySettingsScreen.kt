@@ -35,6 +35,7 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -42,6 +43,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -50,9 +52,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.rememberModalBottomSheetState
-import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
@@ -122,12 +121,10 @@ fun DictionarySettingsContent(
             )
         },
         floatingActionButton = {
-            if (selectedDictTab == 0 || selectedDictTab == 1) {
+            // 个人词库已改为只读，仅自定义短语支持增删改
+            if (selectedDictTab == 0) {
                 FloatingActionButton(
-                    onClick = {
-                        if (selectedDictTab == 0) viewModel.showAddDialog()
-                        else customPhraseVM.showAddDialog()
-                    },
+                    onClick = { customPhraseVM.showAddDialog() },
                     containerColor = MaterialTheme.colorScheme.primary
                 ) {
                     Icon(Icons.Default.Add, contentDescription = "添加", tint = MaterialTheme.colorScheme.onPrimary)
@@ -137,83 +134,16 @@ fun DictionarySettingsContent(
     ) { innerPadding ->
         Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
             Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                TabButton("个人词库", selected = selectedDictTab == 0, onClick = { selectedDictTab = 0 }, modifier = Modifier.weight(1f))
+                TabButton("自定义短语", selected = selectedDictTab == 0, onClick = { selectedDictTab = 0 }, modifier = Modifier.weight(1f))
                 Spacer(modifier = Modifier.width(8.dp))
-                TabButton("自定义短语", selected = selectedDictTab == 1, onClick = { selectedDictTab = 1 }, modifier = Modifier.weight(1f))
+                TabButton("个人词库", selected = selectedDictTab == 1, onClick = { selectedDictTab = 1 }, modifier = Modifier.weight(1f))
                 Spacer(modifier = Modifier.width(8.dp))
                 TabButton("方案词库", selected = selectedDictTab == 2, onClick = { selectedDictTab = 2 }, modifier = Modifier.weight(1f))
             }
             when (selectedDictTab) {
-                0 -> SchemaDictContent(viewModel = viewModel, uiState = uiState)
-                 1 -> CustomPhraseTabContent(viewModel = customPhraseVM, uiState = customPhraseState)
+                0 -> CustomPhraseTabContent(viewModel = customPhraseVM, uiState = customPhraseState)
+                1 -> SchemaDictContent(viewModel = viewModel, uiState = uiState)
                 2 -> SchemaDictBrowserPanel()
-            }
-        }
-    }
-
-    val sheetState = rememberModalBottomSheetState()
-    val scope = rememberCoroutineScope()
-
-    if (uiState.showAddDialog) {
-        ModalBottomSheet(
-            onDismissRequest = { viewModel.hideAddDialog() },
-            sheetState = sheetState,
-            shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
-        ) {
-            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp)) {
-                Text("添加词条", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(bottom = 20.dp))
-                OutlinedTextField(value = uiState.editWord, onValueChange = { viewModel.setEditWord(it) },
-                    label = { Text("词条") }, shape = RoundedCornerShape(12.dp), singleLine = true, modifier = Modifier.fillMaxWidth())
-                Spacer(modifier = Modifier.height(12.dp))
-                OutlinedTextField(value = uiState.editCode, onValueChange = { viewModel.setEditCode(it) },
-                    label = { Text("编码") }, shape = RoundedCornerShape(12.dp), singleLine = true, modifier = Modifier.fillMaxWidth())
-                Spacer(modifier = Modifier.height(24.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    TextButton(onClick = { viewModel.hideAddDialog() }) { Text("取消") }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Surface(
-                        modifier = Modifier.clickable(enabled = uiState.editWord.isNotBlank() && uiState.editCode.isNotBlank(),
-                            onClick = { viewModel.addEntry(uiState.editWord, uiState.editCode); viewModel.hideAddDialog(); scope.launch { sheetState.hide() } }),
-                        shape = RoundedCornerShape(10.dp), color = MaterialTheme.colorScheme.primary
-                    ) {
-                        Text("确定", modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp),
-                            style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimary)
-                    }
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-            }
-        }
-    }
-
-    if (uiState.showEditDialog) {
-        ModalBottomSheet(
-            onDismissRequest = { viewModel.hideEditDialog() },
-            sheetState = sheetState,
-            shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
-        ) {
-            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp)) {
-                Text("编辑词条", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(bottom = 20.dp))
-                OutlinedTextField(value = uiState.editWord, onValueChange = { viewModel.setEditWord(it) },
-                    label = { Text("词条") }, shape = RoundedCornerShape(12.dp), singleLine = true, modifier = Modifier.fillMaxWidth())
-                Spacer(modifier = Modifier.height(12.dp))
-                OutlinedTextField(value = uiState.editCode, onValueChange = { viewModel.setEditCode(it) },
-                    label = { Text("编码") }, shape = RoundedCornerShape(12.dp), singleLine = true, modifier = Modifier.fillMaxWidth())
-                Spacer(modifier = Modifier.height(24.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    TextButton(onClick = { viewModel.hideEditDialog() }) { Text("取消") }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Surface(
-                        modifier = Modifier.clickable(enabled = uiState.editWord.isNotBlank() && uiState.editCode.isNotBlank(),
-                            onClick = { viewModel.updateEntry(uiState.editIndex, uiState.editWord, uiState.editCode); viewModel.hideEditDialog(); scope.launch { sheetState.hide() } }),
-                        shape = RoundedCornerShape(10.dp), color = MaterialTheme.colorScheme.primary
-                    ) {
-                        Text("确定", modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp),
-                            style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimary)
-                    }
-                }
-                Spacer(modifier = Modifier.height(8.dp))
             }
         }
     }
@@ -234,7 +164,6 @@ private fun TabButton(text: String, selected: Boolean, onClick: () -> Unit, modi
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SchemaDictContent(
     viewModel: PersonalDictViewModel,
@@ -287,35 +216,18 @@ private fun SchemaDictContent(
                 LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp)) {
                     itemsIndexed(items = uiState.filteredEntries,
                         key = { i, e -> "${e.word}_${e.code}_$i" }) { _, entry ->
-                        val idx = uiState.entries.indexOf(entry)
-                        EntryItem(entry = entry,
-                            onEdit = {
-                                viewModel.setEditing(idx, entry.word, entry.code)
-                                viewModel.showEditDialog()
-                            },
-                            onDelete = { viewModel.deleteEntry(idx) })
+                        // 个人词库只读，不提供编辑/删除
+                        Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(entry.word, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                                    Text(entry.code, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                                }
+                            }
+                        }
                     }
                 }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun EntryItem(entry: DictEntry, onEdit: () -> Unit, onDelete: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-        Row(modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
-            verticalAlignment = Alignment.CenterVertically) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(entry.word, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-                Text(entry.code, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
-            }
-            IconButton(onClick = onEdit, modifier = Modifier.size(36.dp)) {
-                Icon(Icons.Default.Edit, contentDescription = "编辑", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-            }
-            IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) {
-                Icon(Icons.Default.Delete, contentDescription = "删除", tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f), modifier = Modifier.size(20.dp))
             }
         }
     }
@@ -336,11 +248,11 @@ private fun UsageHint() {
         Text("暂无词条", style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
-        Text("点击右下角 + 添加",
+        Text("个人词库当前仅支持查看",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(16.dp))
-        Text("个人词库与自定义短语的区别 → 查看使用说明",
+        Text("自定义短语的增删改 → 切换「自定义短语」标签页",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.primary)
     }

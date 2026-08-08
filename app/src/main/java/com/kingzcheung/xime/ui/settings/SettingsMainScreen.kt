@@ -68,7 +68,7 @@ import kotlinx.coroutines.withContext
 @Composable
 fun SettingsMainContent(
     onNavigateToSchema: () -> Unit,
-    onNavigateToSchemaMarket: () -> Unit = {},
+    onNavigateToMarket: () -> Unit = {},
     onNavigateToTheme: () -> Unit,
     onNavigateToKeyEffect: () -> Unit,
     onNavigateToLayoutDisplay: () -> Unit,
@@ -76,7 +76,6 @@ fun SettingsMainContent(
     onNavigateToPlugins: () -> Unit,
     onNavigateToSmartPrediction: () -> Unit,
     onNavigateToSpeechToText: () -> Unit,
-    onNavigateToModelManagement: () -> Unit = {},
     onNavigateToAbout: () -> Unit,
     onNavigateToWebDav: () -> Unit = {}
 ) {
@@ -202,42 +201,6 @@ fun SettingsMainContent(
             }
 
             item {
-                SettingsSection(title = "方案与词库", content = {
-                    SettingsItem(
-                        icon = Icons.TwoTone.KeyboardAlt,
-                        title = "输入方案",
-                        subtitle = "管理输入方案",
-                        onClick = onNavigateToSchema,
-                        showArrow = true
-                    )
-                    HorizontalDivider(
-                        modifier = Modifier.padding(start = 56.dp),
-                        thickness = 0.5.dp,
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                    )
-                    SettingsItem(
-                        icon = Icons.TwoTone.Storefront,
-                        title = "方案市场",
-                        subtitle = "从官方源下载安装输入方案",
-                        onClick = onNavigateToSchemaMarket,
-                        showArrow = true
-                    )
-                    HorizontalDivider(
-                        modifier = Modifier.padding(start = 56.dp),
-                        thickness = 0.5.dp,
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                    )
-                    SettingsItem(
-                        icon = Icons.TwoTone.Ballot,
-                        title = "词库管理",
-                        subtitle = "管理个人词库和自定义短语",
-                        onClick = onNavigateToDictionary,
-                        showArrow = true
-                    )
-                })
-            }
-
-            item {
                 SettingsSection(title = "外观与交互", content = {
                     SettingsItem(
                         icon = Icons.TwoTone.Palette,
@@ -274,7 +237,55 @@ fun SettingsMainContent(
             }
 
             item {
-                SettingsSection(title = "智能与扩展", content = {
+                SettingsSection(title = "方案与词库", content = {
+                    SettingsItem(
+                        icon = Icons.TwoTone.KeyboardAlt,
+                        title = "输入方案",
+                        subtitle = "管理输入方案",
+                        onClick = onNavigateToSchema,
+                        showArrow = true
+                    )
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = 56.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+                    SettingsItem(
+                        icon = Icons.TwoTone.Ballot,
+                        title = "词库管理",
+                        subtitle = "管理个人词库和自定义短语",
+                        onClick = onNavigateToDictionary,
+                        showArrow = true
+                    )
+                })
+            }
+
+            item {
+                SettingsSection(title = "扩展", content = {
+                    SettingsItem(
+                        icon = Icons.TwoTone.Storefront,
+                        title = "扩展商店",
+                        subtitle = "下载输入方案 / 模型 / 插件",
+                        onClick = onNavigateToMarket,
+                        showArrow = true
+                    )
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = 56.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+                    SettingsItem(
+                        icon = Icons.TwoTone.Extension,
+                        title = "插件管理",
+                        subtitle = "管理已安装的插件",
+                        onClick = onNavigateToPlugins,
+                        showArrow = true
+                    )
+                })
+            }
+
+            item {
+                SettingsSection(title = "智能", content = {
                     SettingsItem(
                         icon = Icons.TwoTone.AutoAwesome,
                         title = "智能联想",
@@ -301,30 +312,6 @@ fun SettingsMainContent(
                             sttEnabled = enabled
                             SettingsPreferences.setSttEnabled(context, enabled)
                         }
-                    )
-                    HorizontalDivider(
-                        modifier = Modifier.padding(start = 56.dp),
-                        thickness = 0.5.dp,
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                    )
-                    SettingsItem(
-                        icon = Icons.TwoTone.Extension,
-                        title = "插件管理",
-                        subtitle = "管理已安装的插件",
-                        onClick = onNavigateToPlugins,
-                        showArrow = true
-                    )
-                    HorizontalDivider(
-                        modifier = Modifier.padding(start = 56.dp),
-                        thickness = 0.5.dp,
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                    )
-                    SettingsItem(
-                        icon = Icons.TwoTone.Build,
-                        title = "模型管理",
-                        subtitle = "管理已下载的 AI 模型",
-                        onClick = onNavigateToModelManagement,
-                        showArrow = true
                     )
                 })
             }

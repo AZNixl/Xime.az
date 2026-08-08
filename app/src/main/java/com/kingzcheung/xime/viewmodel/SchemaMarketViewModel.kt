@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.kingzcheung.xime.BuildConfig
 import com.kingzcheung.xime.settings.MarketSchemeItem
+import com.kingzcheung.xime.settings.MarketVersionStore
 import com.kingzcheung.xime.settings.SchemaManager
 import com.kingzcheung.xime.settings.XimeIndexSource
 import kotlinx.coroutines.Dispatchers
@@ -24,6 +25,8 @@ data class SchemaMarketUiState(
     val downloadProgress: Float = 0f,
     /** 已下载到 market 目录的方案 id（压缩包文件存在） */
     val downloadedIds: Set<String> = emptySet(),
+    /** 已下载方案的版本号：schemeId → version */
+    val downloadedVersions: Map<String, String> = emptyMap(),
     /** sha256 校验状态：null=未提供sha256, true=校验通过, false=校验不通过 */
     val sha256Status: Map<String, Boolean?> = emptyMap(),
     val errorMessage: String? = null,
@@ -35,13 +38,24 @@ data class SchemaMarketUiState(
     val selectedVersions: Map<String, String> = emptyMap(),
     /** 索引文件最后更新时间 */
     val updatedAt: String = "",
+    /** 选中的分类标签：null 表示全部 */
+    val selectedTag: String? = null,
 ) {
+    /** 索引中出现的全部分类标签（去重排序）。 */
+    val availableTags: List<String>
+        get() = schemes.flatMap { it.scheme.tags }.distinct().sorted()
+
     val filteredSchemes: List<MarketSchemeItem>
-        get() = if (searchQuery.isBlank()) schemes else schemes.filter {
+        get() = schemes.filter { item ->
             val q = searchQuery.trim()
-            it.scheme.name.contains(q, true) ||
-                it.scheme.description.contains(q, true) ||
-                it.scheme.tags.any { t -> t.contains(q, true) }
+            val matchesQuery = q.isBlank() ||
+                item.scheme.name.contains(q, true) ||
+                item.scheme.description.contains(q, true) ||
+                item.scheme.tags.any { t -> t.contains(q, true) }
+            val matchesTag = selectedTag == null ||
+                item.scheme.tags.isEmpty() ||
+                item.scheme.tags.any { it == selectedTag }
+            matchesQuery && matchesTag
         }
 }
 
@@ -70,6 +84,10 @@ class SchemaMarketViewModel(application: Application) : AndroidViewModel(applica
                     else null
                 }?.toSet() ?: emptySet()
             }
+            // 已下载版本号：目录存在性为准，版本号从本地记录读取
+            val allVersions: Map<String, String> = withContext(Dispatchers.IO) {
+                MarketVersionStore.getAllSchemeVersions(context)
+            }.filterKeys { it in downloadedIds }
             result.onSuccess { fetch ->
                 if (fetch.schemes.isEmpty()) {
                     // 索引可达但没取到任何方案：当作软失败处理，不要用空列表覆盖已有数据
@@ -97,12 +115,15 @@ class SchemaMarketViewModel(application: Application) : AndroidViewModel(applica
                     }
                     _uiState.update {
                         it.copy(
-                            schemes = fetch.schemes,
+                            schemes = fetch.schemes.map { item ->
+                                item.copy(installedVersion = allVersions[item.scheme.id])
+                            },
                             isLoading = false,
                             source = fetch.source,
                             updatedAt = fetch.updatedAt,
                             errorMessage = null,
                             downloadedIds = downloadedIds,
+                            downloadedVersions = allVersions,
                             selectedVersions = mergedSel,
                             toastMessage = if (manual) "已刷新 · 来源：${fetch.source}" else it.toastMessage,
                         )
@@ -124,13 +145,16 @@ class SchemaMarketViewModel(application: Application) : AndroidViewModel(applica
 
     fun setSearchQuery(q: String) = _uiState.update { it.copy(searchQuery = q) }
 
+    /** 选择方案市场的分类标签。 */
+    fun selectTag(tag: String?) = _uiState.update { it.copy(selectedTag = tag) }
+
     /** 选择指定方案的版本。 */
     fun selectVersion(schemeId: String, version: String) {
         _uiState.update { it.copy(selectedVersions = it.selectedVersions + (schemeId to version)) }
     }
 
-    /** 下载方案到 market 目录（仅下载，不解压）。 */
-    fun downloadScheme(item: MarketSchemeItem) {
+    /** 下载方案到 market 目录（仅下载，不解压）。[version] 为空时使用已选版本。 */
+    fun downloadScheme(item: MarketSchemeItem, version: String? = null) {
         if (_uiState.value.downloadingId != null) {
             showToast("有其他方案正在下载，请稍候")
             return
@@ -141,7 +165,7 @@ class SchemaMarketViewModel(application: Application) : AndroidViewModel(applica
         }
         viewModelScope.launch {
             _uiState.update { it.copy(downloadingId = item.scheme.id, downloadProgress = 0f) }
-            val selectedVersion = _uiState.value.selectedVersions[item.scheme.id]
+            val selectedVersion = version ?: _uiState.value.selectedVersions[item.scheme.id]
             val result = withContext(Dispatchers.IO) {
                 XimeIndexSource.downloadScheme(
                     context, item.scheme,
@@ -155,11 +179,27 @@ class SchemaMarketViewModel(application: Application) : AndroidViewModel(applica
             val nowDownloaded = withContext(Dispatchers.IO) {
                 SchemaManager.isSchemeDownloaded(context, item.scheme.id)
             }
+            // 下载成功后记录本地版本号（用于更新检测）
+            val actualVersion = if (nowDownloaded) {
+                (version ?: selectedVersion ?: item.scheme.resolvedVersion()?.version
+                    ?: item.scheme.currentVersion).also {
+                    withContext(Dispatchers.IO) {
+                        MarketVersionStore.setSchemeVersion(context, item.scheme.id, it)
+                    }
+                }
+            } else null
             _uiState.update { st ->
                 st.copy(
                     downloadingId = null,
                     downloadProgress = 0f,
                     downloadedIds = if (nowDownloaded) st.downloadedIds + item.scheme.id else st.downloadedIds,
+                    downloadedVersions = if (actualVersion != null)
+                        st.downloadedVersions + (item.scheme.id to actualVersion) else st.downloadedVersions,
+                    schemes = st.schemes.map { s ->
+                        if (s.scheme.id == item.scheme.id && actualVersion != null) {
+                            s.copy(installedVersion = actualVersion)
+                        } else s
+                    },
                     sha256Status = if (result.success || result.sha256Status == false)
                         st.sha256Status + (item.scheme.id to result.sha256Status)
                     else st.sha256Status,
