@@ -2,6 +2,7 @@ package com.kingzcheung.xime.rime
 
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -41,6 +42,7 @@ class T9InputController(
     private val onRightCommitUndone: ((Int) -> Unit)? = null,
 ) {
     companion object {
+        private const val TAG = "T9InputController"
         const val CLEAR_COMPOSITION_ONLY = "clear_composition"
         const val CLEAR_ALL = "clear_all"
     }
@@ -70,6 +72,11 @@ class T9InputController(
      * 防止「同步刷新（如右选）→ 旧的异步刷新 post 后执行」把 UI 回退到旧状态。
      */
     private var uiGeneration = 0
+
+    /** 长按退格合并锁/状态：同一时刻至多一个退格 job，累积请求由 [pendingDeleteCount] 记录。 */
+    private val deleteCoalesceLock = Any()
+    private var deleteJobActive = false
+    private var pendingDeleteCount = 0
 
     /**
      * 最近一次 flush 快照的 input 缓存（@Volatile，后台 fetchAll 写入、主线程读取）。
@@ -315,29 +322,74 @@ class T9InputController(
 
     /**
      * 退格处理（异步，结果通过回调返回）。
-     * 队列内完成 processKey → flush → 撤销计数，Main 线程回调结果并刷新。
+     *
+     * 长按退格以 ~30ms 固定频率重复派发，而每次退格含 processKey → flush → compose
+     * 的 JNI 往返，耗时可能超过重复间隔。若每次都入队，t9Dispatcher 会堆积大量退格，
+     * 抬手后洪水式多删。这里合并高频重复：同一时刻至多一个退格 job，累积的请求由
+     * 执行中的 job 完成后顺带排空（[drainPendingDeletes]），退格速率被引擎吞吐自然限制。
+     *
      * @param callback 在 Main 线程调用，参数为退格结果。
      */
     fun onDeleted(callback: (DeleteResult) -> Unit) {
+        val shouldLaunch = synchronized(deleteCoalesceLock) {
+            if (deleteJobActive) {
+                pendingDeleteCount++
+                false
+            } else {
+                deleteJobActive = true
+                true
+            }
+        }
+        if (!shouldLaunch) return
         enqueue {
-            val result = rimeEngine.processKey(0xff08, 0)
-            rimeEngine.t9FlushRimeInput()
-            val undoneCount = rimeEngine.t9GetAndConsumeUndoneRightCommitCount()
-            val data = fetchAll()
-            val composition = data.result.toComposition()
-            val deleteResult = if (result) DeleteResult.DELETED else DeleteResult.NOT_CONSUMED
-            val gen = ++uiGeneration
-            mainHandler.post {
-                // 撤销计数与退格结果始终回调；仅当刷新仍是最新代际时应用，
-                // 避免后续更快的按键刷新被本退格的旧状态覆盖。
-                if (undoneCount > 0) {
-                    onRightCommitUndone?.invoke(undoneCount)
+            try {
+                processDelete(callback)
+            } finally {
+                drainPendingDeletes(callback)
+            }
+        }
+    }
+
+    /** 单次退格：processKey → flush → 撤销计数 → 取全量结果 → Main 刷新 + 回调。 */
+    private suspend fun processDelete(callback: (DeleteResult) -> Unit) {
+        val result = rimeEngine.processKey(0xff08, 0)
+        rimeEngine.t9FlushRimeInput()
+        val undoneCount = rimeEngine.t9GetAndConsumeUndoneRightCommitCount()
+        val data = fetchAll()
+        val composition = data.result.toComposition()
+        val deleteResult = if (result) DeleteResult.DELETED else DeleteResult.NOT_CONSUMED
+        val gen = ++uiGeneration
+        mainHandler.post {
+            // 撤销计数与退格结果始终回调；仅当刷新仍是最新代际时应用，
+            // 避免后续更快的按键刷新被本退格的旧状态覆盖。
+            if (undoneCount > 0) {
+                onRightCommitUndone?.invoke(undoneCount)
+            }
+            if (gen == uiGeneration) {
+                onCompositionRefresh?.invoke(composition)
+                applyCandidates(data.result, data.panel, data.options)
+            }
+            callback(deleteResult)
+        }
+    }
+
+    /** 消费长按退格期间累积的额外退格请求（t9Dispatcher 上顺序执行）。 */
+    private suspend fun drainPendingDeletes(callback: (DeleteResult) -> Unit) {
+        while (true) {
+            val shouldDrain = synchronized(deleteCoalesceLock) {
+                if (pendingDeleteCount == 0) {
+                    deleteJobActive = false
+                    false
+                } else {
+                    pendingDeleteCount--
+                    true
                 }
-                if (gen == uiGeneration) {
-                    onCompositionRefresh?.invoke(composition)
-                    applyCandidates(data.result, data.panel, data.options)
-                }
-                callback(deleteResult)
+            }
+            if (!shouldDrain) break
+            try {
+                processDelete(callback)
+            } catch (t: Throwable) {
+                Log.e(TAG, "onDeleted drain failed", t)
             }
         }
     }

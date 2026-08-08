@@ -38,14 +38,6 @@ data class SchemaSwitchUiState(
 )
 
 data class KeyboardUiState(
-    val candidates: List<String> = emptyList(),
-    val candidateComments: List<String> = emptyList(),
-    val inputText: String = "",
-    val preeditText: String = "",
-    val isComposing: Boolean = false,
-    val associationCandidates: List<String> = emptyList(),
-    val hasNextPage: Boolean = false,
-    val hasPrevPage: Boolean = false,
     val isAsciiMode: Boolean = false,
     val schemaName: String = "",
     val currentSchemaId: String = "",
@@ -74,7 +66,6 @@ data class KeyboardUiState(
     val toolbarButtons: List<String> = ToolbarButton.DEFAULT_VISIBLE.map { it.id },
     val isCalculatorMode: Boolean = false,
     val inputSessionId: Long = 0L,
-    val isShowingRecentClipboard: Boolean = false,
     val isFloatingMode: Boolean = false,
     val isHandwritingMode: Boolean = false,
     val floatingOffsetX: Int = 0,

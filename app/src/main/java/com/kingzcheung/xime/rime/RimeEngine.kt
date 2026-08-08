@@ -170,7 +170,7 @@ class RimeEngine {
                         // 首次使用前 custom.yaml 健康、用户词典生效。
                         ensureT9SchemaPatchesForDeployedSchemas(userDataDir)
 
-                        // 参考 trime: startup 只初始化引擎，不创建 session
+                        // startup 只初始化引擎，不创建 session
                         // session 在第一次使用时延迟创建（ensureSession）
                         // 部署在后台异步运行，不阻塞
 

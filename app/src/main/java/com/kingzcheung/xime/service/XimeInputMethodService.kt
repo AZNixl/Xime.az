@@ -175,6 +175,19 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     private val keyJobs = Channel<Job>(Channel.UNLIMITED)
     private val uiEventChannel = Channel<suspend () -> Unit>(Channel.CONFLATED)
 
+    /**
+     * 长按退格合并锁/状态。
+     *
+     * 长按退格以约 80ms 的固定频率重复派发，而 rime 退格（JNI + 输入重组）耗时可能
+     * 超过 80ms。若每次重复都排队，keyJobs 会堆积，候选栏 UI 更新变成"迟到的跳帧"
+     * 突发式刷新（一闪一闪）。这里把高频重复的退格合并为单个 job：处理完一次后
+     * 立即消费累积的 [pendingDeleteCount]，删除速率被 rime 吞吐自然限制，
+     * UI 更新平滑，抬手后也不会洪水式多删。
+     */
+    private val deleteCoalesceLock = Any()
+    private var deleteJobActive = false
+    private var pendingDeleteCount = 0
+
     init {
         serviceScope.launch {
             keyJobs.consumeEach { job ->
@@ -895,60 +908,65 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                 }
                         ) {
                         CompositionLocalProvider(LocalStretchFactor provides state.stretchFactor) {
-                            val kbState = KeyboardUiState(
-                                candidates = cand.candidates,
-                                candidateComments = cand.candidateComments,
-                                inputText = cand.inputText,
-                                preeditText = cand.preeditText,
-                                isComposing = cand.isComposing,
-                                associationCandidates = if (cand.pendingEnglishText.isNotEmpty()) {
-                                    listOf(cand.pendingEnglishText) + cand.associationCandidates
-                                } else {
-                                    cand.associationCandidates
-                                },
-                                hasNextPage = cand.hasNextPage,
-                                hasPrevPage = cand.hasPrevPage,
-                                isAsciiMode = state.isAsciiMode,
-                                schemaName = state.schemaName,
-                                currentSchemaId = state.currentSchemaId,
-                                schemas = state.schemas,
-                                schemaSwitches = state.schemaSwitches,
-                                enterKeyText = state.enterKeyText,
-                                isDarkTheme = isDarkTheme,
-                                darkMode = state.darkMode,
-                                themeId = state.themeId,
-                                keyboardHeightDp = effectiveKeyboardHeight,
-                                keyboardBottomPaddingDp = state.keyboardBottomPaddingDp,
-                                clipboardItems = clipboardItemsState.value,
-                                quickSendItems = quickSendItemsState.value,
-                                recentClipboardItems = recentClipboardItemsState.value,
-                                isVoiceMode = state.isVoiceMode,
-                                voiceBottomActive = state.voiceButtonState.bottomActive,
-                                voiceLeftActive = state.voiceButtonState.leftActive,
-                                voiceRightActive = state.voiceButtonState.rightActive,
-                                voicePluginName = state.voicePluginName,
-                                voiceRecognitionState = state.voiceRecognitionState,
-                                voiceRecognizedText = state.voiceRecognizedText,
-                                voiceAmplitude = voiceAmplitudeState.floatValue,
-                                isSttEnabled = state.isSttEnabled,
-                                toolbarButtons = state.toolbarButtons,
-                                isCalculatorMode = calculatorEngine.isActive(),
-                                inputSessionId = state.inputSessionId,
-                                isShowingRecentClipboard = cand.isShowingRecentClipboard,
-                                isFloatingMode = state.isFloatingMode,
-                                isHandwritingMode = isHandwritingMode,
-                                floatingOffsetX = state.floatingOffsetX,
-                                floatingOffsetY = state.floatingOffsetY,
-                                floatingMinOffsetY = floatingMinY,
-                                t9ResetSignal = state.t9ResetSignal,
-                                swipeCancelEpoch = state.swipeCancelEpoch,
-                                t9RightCandidateSelectedCount = state.t9RightCandidateSelectedCount,
-                                t9SelectedCandidatePinyin = state.t9SelectedCandidatePinyin,
-                                showQuickSendForm = state.showQuickSendForm,
-                                quickSendFormFocused = state.quickSendFormFocused,
-                                quickSendEditingItemId = state.quickSendEditingItemId,
-                                quickSendEditingItemText = state.quickSendEditingItemText,
-                            )
+                            // 注意：kbState 只承载键盘按键/布局状态，不承载候选数据。
+                            // 候选数据单独通过 candidateState 传给 KeyboardView。
+                            // remember 的 key 均为候选无关依赖：候选变化时 kbState 实例保持不变，
+                            // KeyboardView（按键区）跳过重组，只有读取 candidateState 的候选栏重组，
+                            // 避免长按退格时高频候选更新触发整个键盘重组导致候选栏闪烁。
+                            val kbState = remember(
+                                state,
+                                isDarkTheme,
+                                effectiveKeyboardHeight,
+                                floatingMinY,
+                                isHandwritingMode,
+                                clipboardItemsState.value,
+                                quickSendItemsState.value,
+                                recentClipboardItemsState.value,
+                                voiceAmplitudeState.floatValue,
+                                calculatorEngine.isActive(),
+                            ) {
+                                KeyboardUiState(
+                                    isAsciiMode = state.isAsciiMode,
+                                    schemaName = state.schemaName,
+                                    currentSchemaId = state.currentSchemaId,
+                                    schemas = state.schemas,
+                                    schemaSwitches = state.schemaSwitches,
+                                    enterKeyText = state.enterKeyText,
+                                    isDarkTheme = isDarkTheme,
+                                    darkMode = state.darkMode,
+                                    themeId = state.themeId,
+                                    keyboardHeightDp = effectiveKeyboardHeight,
+                                    keyboardBottomPaddingDp = state.keyboardBottomPaddingDp,
+                                    clipboardItems = clipboardItemsState.value,
+                                    quickSendItems = quickSendItemsState.value,
+                                    recentClipboardItems = recentClipboardItemsState.value,
+                                    isVoiceMode = state.isVoiceMode,
+                                    voiceBottomActive = state.voiceButtonState.bottomActive,
+                                    voiceLeftActive = state.voiceButtonState.leftActive,
+                                    voiceRightActive = state.voiceButtonState.rightActive,
+                                    voicePluginName = state.voicePluginName,
+                                    voiceRecognitionState = state.voiceRecognitionState,
+                                    voiceRecognizedText = state.voiceRecognizedText,
+                                    voiceAmplitude = voiceAmplitudeState.floatValue,
+                                    isSttEnabled = state.isSttEnabled,
+                                    toolbarButtons = state.toolbarButtons,
+                                    isCalculatorMode = calculatorEngine.isActive(),
+                                    inputSessionId = state.inputSessionId,
+                                    isFloatingMode = state.isFloatingMode,
+                                    isHandwritingMode = isHandwritingMode,
+                                    floatingOffsetX = state.floatingOffsetX,
+                                    floatingOffsetY = state.floatingOffsetY,
+                                    floatingMinOffsetY = floatingMinY,
+                                    t9ResetSignal = state.t9ResetSignal,
+                                    swipeCancelEpoch = state.swipeCancelEpoch,
+                                    t9RightCandidateSelectedCount = state.t9RightCandidateSelectedCount,
+                                    t9SelectedCandidatePinyin = state.t9SelectedCandidatePinyin,
+                                    showQuickSendForm = state.showQuickSendForm,
+                                    quickSendFormFocused = state.quickSendFormFocused,
+                                    quickSendEditingItemId = state.quickSendEditingItemId,
+                                    quickSendEditingItemText = state.quickSendEditingItemText,
+                                )
+                            }
                             val view = LocalView.current
                             val callbacks = remember(floatingMinY) {
                                 KeyboardCallbacks(
@@ -1248,6 +1266,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                             KeyboardView(
                                 viewModel = keyboardViewModel,
                                 state = kbState,
+                                candidateState = candidateState,
                                 callbacks = callbacks,
                                 inlineSuggestions = inlineSuggestionManager?.suggestions.orEmpty(),
                                 onCardPositioned = { _: Int, top: Int, _: Int, bottom: Int ->
@@ -1708,7 +1727,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                         win.setNavigationBarColor(android.graphics.Color.TRANSPARENT)
                     }
                 } else {
-                    // 非浮动模式：参考成熟输入法（fcitx5/trime/yuyan）的 FULL 方案。
+                    // 非浮动模式：参考成熟输入法 FULL 方案的背景/高度布局。
                     // 1) edge-to-edge：窗口绘制到系统导航栏后面，键盘背景（渐变/图片）可延伸到底部；
                     // 2) 窗口背景透明：键盘内容由 Compose 绘制，键盘上方露出应用内容而不是白色/主题色块；
                     // 3) 导航栏透明 + 关闭强制对比度：底部导航栏区域由键盘背景覆盖，不会露出系统白色。
@@ -2247,6 +2266,11 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                 }
             }
         }
+        // 长按退格以固定频率重复派发，走合并路径，避免 keyJobs 堆积导致候选栏抖动
+        if (key == "delete") {
+            handleDeleteKey()
+            return
+        }
         val job = serviceScope.launch(keyProcessingDispatcher, start = CoroutineStart.LAZY) {
             val state = uiState.value
             val candState = candidateState.value
@@ -2255,108 +2279,6 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             var committedText: String? = null
             
             when (key) {
-                "delete" -> {
-                    // 计算器模式：追踪退格
-                    calculatorEngine.handleDelete()
-                    updateCalculatorCandidates()
-                    
-                    // 数字/符号键盘：直接发送系统退格，不经过 Rime
-                    // 防止 T9 残留状态被 Rime 退格修改导致 UI 不一致
-                    val layoutState = keyboardViewModel.keyboardState.value
-                    if (layoutState is KeyboardLayoutState.Number || layoutState is KeyboardLayoutState.Symbol) {
-                        withContext(Dispatchers.Main) {
-                            sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL)
-                        }
-                    } else when {
-                        // 1. 英文待处理文本：逐个删除字符，重新加载联想
-                        candState.pendingEnglishText.isNotEmpty() -> {
-                            val pendingLen = candState.pendingEnglishText.length
-                            if (pendingLen > 1) {
-                                val newPending = candState.pendingEnglishText.dropLast(1)
-                                withContext(Dispatchers.Main) {
-                                    sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL)
-                                    candidateState.value = candidateState.value.copy(
-                                        pendingEnglishText = newPending,
-                                        candidates = emptyList(),
-                                        candidateComments = emptyList(),
-                                        associationCandidates = emptyList()
-                                    )
-                                }
-                                serviceScope.launch {
-                                    val candidates = predictionManager.getEnglishAssociations(newPending, PredictionManager.MAX_ASSOCIATION_COUNT)
-                                    withContext(Dispatchers.Main) {
-                                        candidateState.value = candidateState.value.copy(associationCandidates = candidates)
-                                    }
-                                }
-                            } else {
-                                withContext(Dispatchers.Main) {
-                                    sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL)
-                                    candidateState.value = candidateState.value.copy(
-                                        pendingEnglishText = "",
-                                        candidates = emptyList(),
-                                        candidateComments = emptyList(),
-                                        associationCandidates = emptyList(),
-                                        isShowingRecentClipboard = false
-                                    )
-                                }
-                            }
-                        }
-                        
-                        // 2. Rime 编码中：让 Rime 处理退格，更新候选
-                        candState.isComposing || candState.inputText.isNotEmpty() -> {
-                            rimeEngine.processKey(0xff08, 0)
-                            val result = rimeEngine.getProcessResult(true)
-                            if (result.inputText.isEmpty()) {
-                                rimeEngine.clearComposition()
-                                // T9 部分提交：剩余编码删完后，已上屏/ composing 的部分候选词无法用
-                                // RIME 退格删除，会一直卡在候选栏。这里撤销最近一次部分提交：
-                                // 清空 composing 区域（或删除上屏文本）并从累积列表移除。
-                                if (t9PartialCommitTexts.isNotEmpty()) {
-                                    val len = t9PartialCommitTexts.last().length
-                                    withContext(Dispatchers.Main) {
-                                        if (SettingsPreferences.getInputTextLocation(this@XimeInputMethodService)
-                                            == SettingsPreferences.INPUT_TEXT_INPUT_BOX) {
-                                            endComposingInputBox()
-                                        } else {
-                                            currentInputConnection?.deleteSurroundingText(len, 0)
-                                        }
-                                    }
-                                    t9PartialCommitTexts.removeLastOrNull()
-                                }
-                            }
-                            uiEventChannel.trySend {
-                                updateUIWithResult(result)
-                                if (calculatorEngine.isActive()) updateCalculatorCandidates()
-                            }
-                        }
-                        
-                        // 3. 联想词或剪贴板：仅清空候选栏，不回删已上屏字符
-                        candState.associationCandidates.isNotEmpty() || candState.isShowingRecentClipboard -> {
-                            candidateState.value = candidateState.value.copy(
-                                candidates = emptyList(),
-                                candidateComments = emptyList(),
-                                associationCandidates = emptyList(),
-                                isShowingRecentClipboard = false
-                            )
-                        }
-                        
-                        // 4. 无候选也无编码：直接回删已上屏文本
-                        else -> {
-                            predictionManager.deleteLastChar()
-                            
-                            withContext(Dispatchers.Main) {
-                                sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL)
-                            }
-                            
-                            candidateState.value = candidateState.value.copy(
-                                candidates = emptyList(),
-                                candidateComments = emptyList(),
-                                associationCandidates = emptyList(),
-                                isShowingRecentClipboard = false
-                            )
-                        }
-                    }
-                }
                 "clear_composition" -> {
                     calculatorEngine.clear()
                     updateCalculatorCandidates()
@@ -2761,6 +2683,171 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             }
         }
         keyJobs.trySend(job)
+    }
+
+    /**
+     * 退格键合并入口（主线程调用）。
+     *
+     * 无退格任务在执行时启动一个；已有任务在执行/排队时只累加 [pendingDeleteCount]，
+     * 由执行中的任务完成后顺带排空。这样长按退格不会让 keyJobs 无限堆积，
+     * 候选栏 UI 更新保持平滑，抬手后最多多删 1~2 个字符。
+     */
+    private fun handleDeleteKey() {
+        val shouldLaunch = synchronized(deleteCoalesceLock) {
+            if (deleteJobActive) {
+                pendingDeleteCount++
+                false
+            } else {
+                deleteJobActive = true
+                true
+            }
+        }
+        if (!shouldLaunch) return
+        launchDeleteJob()
+    }
+
+    /**
+     * 启动一个退格 job（keyJobs FIFO 保序）。完成后若仍有累积的退格请求，
+     * 通过 [maybeScheduleFollowUp] 排入下一个 job。这样 keyJobs 中至多有一个
+     * 退格 job 在执行/排队：既避免长按退格（~80ms 重复）超过 rime 退格吞吐时
+     * 把 keyJobs 堆满、导致候选栏 UI 以"迟到的跳帧"方式刷新（一闪一闪），
+     * 也保持与其它按键的相对顺序——合并的退格会在夹在中间的字母键之后执行。
+     */
+    private fun launchDeleteJob() {
+        val job = serviceScope.launch(keyProcessingDispatcher, start = CoroutineStart.LAZY) {
+            try {
+                processDeleteKey()
+            } catch (t: Throwable) {
+                Log.e(TAG, "processDeleteKey failed", t)
+            } finally {
+                maybeScheduleFollowUp()
+            }
+        }
+        keyJobs.trySend(job)
+    }
+
+    /** 若长按退格期间有累积的请求，排入下一个退格 job；否则结束合并状态。 */
+    private fun maybeScheduleFollowUp() {
+        val shouldLaunch = synchronized(deleteCoalesceLock) {
+            if (pendingDeleteCount == 0) {
+                deleteJobActive = false
+                false
+            } else {
+                pendingDeleteCount--
+                true
+            }
+        }
+        if (shouldLaunch) {
+            launchDeleteJob()
+        }
+    }
+
+    /** 单次退格处理（keyProcessingDispatcher 上执行）。 */
+    private suspend fun processDeleteKey() {
+        val candState = candidateState.value
+        // 退格改变输入上下文：使在途的联想预测结果失效，防止过期结果迟到回填
+        // associationCandidates，导致长按退格删除时候选栏在"联想词↔空"之间闪动。
+        predictionManager.invalidatePendingPredictions()
+        // 计算器模式：追踪退格
+        calculatorEngine.handleDelete()
+        updateCalculatorCandidates()
+
+        // 数字/符号键盘：直接发送系统退格，不经过 Rime
+        // 防止 T9 残留状态被 Rime 退格修改导致 UI 不一致
+        val layoutState = keyboardViewModel.keyboardState.value
+        if (layoutState is KeyboardLayoutState.Number || layoutState is KeyboardLayoutState.Symbol) {
+            withContext(Dispatchers.Main) {
+                sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL)
+            }
+        } else when {
+            // 1. 英文待处理文本：逐个删除字符，重新加载联想
+            candState.pendingEnglishText.isNotEmpty() -> {
+                val pendingLen = candState.pendingEnglishText.length
+                if (pendingLen > 1) {
+                    val newPending = candState.pendingEnglishText.dropLast(1)
+                    withContext(Dispatchers.Main) {
+                        sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL)
+                        candidateState.value = candidateState.value.copy(
+                            pendingEnglishText = newPending,
+                            candidates = emptyList(),
+                            candidateComments = emptyList(),
+                            associationCandidates = emptyList()
+                        )
+                    }
+                    serviceScope.launch {
+                        val candidates = predictionManager.getEnglishAssociations(newPending, PredictionManager.MAX_ASSOCIATION_COUNT)
+                        withContext(Dispatchers.Main) {
+                            candidateState.value = candidateState.value.copy(associationCandidates = candidates)
+                        }
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL)
+                        candidateState.value = candidateState.value.copy(
+                            pendingEnglishText = "",
+                            candidates = emptyList(),
+                            candidateComments = emptyList(),
+                            associationCandidates = emptyList(),
+                            isShowingRecentClipboard = false
+                        )
+                    }
+                }
+            }
+
+            // 2. Rime 编码中：让 Rime 处理退格，更新候选
+            candState.isComposing || candState.inputText.isNotEmpty() -> {
+                rimeEngine.processKey(0xff08, 0)
+                val result = rimeEngine.getProcessResult(true)
+                if (result.inputText.isEmpty()) {
+                    rimeEngine.clearComposition()
+                    // T9 部分提交：剩余编码删完后，已上屏/ composing 的部分候选词无法用
+                    // RIME 退格删除，会一直卡在候选栏。这里撤销最近一次部分提交：
+                    // 清空 composing 区域（或删除上屏文本）并从累积列表移除。
+                    if (t9PartialCommitTexts.isNotEmpty()) {
+                        val len = t9PartialCommitTexts.last().length
+                        withContext(Dispatchers.Main) {
+                            if (SettingsPreferences.getInputTextLocation(this@XimeInputMethodService)
+                                == SettingsPreferences.INPUT_TEXT_INPUT_BOX) {
+                                endComposingInputBox()
+                            } else {
+                                currentInputConnection?.deleteSurroundingText(len, 0)
+                            }
+                        }
+                        t9PartialCommitTexts.removeLastOrNull()
+                    }
+                }
+                uiEventChannel.trySend {
+                    updateUIWithResult(result)
+                    if (calculatorEngine.isActive()) updateCalculatorCandidates()
+                }
+            }
+
+            // 3. 联想词或剪贴板：仅清空候选栏，不回删已上屏字符
+            candState.associationCandidates.isNotEmpty() || candState.isShowingRecentClipboard -> {
+                candidateState.value = candidateState.value.copy(
+                    candidates = emptyList(),
+                    candidateComments = emptyList(),
+                    associationCandidates = emptyList(),
+                    isShowingRecentClipboard = false
+                )
+            }
+
+            // 4. 无候选也无编码：直接回删已上屏文本
+            else -> {
+                predictionManager.deleteLastChar()
+
+                withContext(Dispatchers.Main) {
+                    sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL)
+                }
+
+                candidateState.value = candidateState.value.copy(
+                    candidates = emptyList(),
+                    candidateComments = emptyList(),
+                    associationCandidates = emptyList(),
+                    isShowingRecentClipboard = false
+                )
+            }
+        }
     }
 
     /**

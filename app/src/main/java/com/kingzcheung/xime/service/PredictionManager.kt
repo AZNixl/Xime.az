@@ -26,6 +26,17 @@ class PredictionManager(
     
     private var _lastCommittedText = ""
     val lastCommittedText: String get() = _lastCommittedText
+
+    /**
+     * 预测请求代际号：退格/清空等改变上下文的操作调用 [invalidatePendingPredictions]，
+     * 使所有在途的异步预测结果失效。否则长按退格删除时，旧的联想结果会迟到并反复
+     * 回填 associationCandidates，候选栏在"显示联想词 ↔ 空"之间闪动（一闪一闪）。
+     */
+    private var requestEpoch = 0L
+
+    fun invalidatePendingPredictions() {
+        requestEpoch++
+    }
     
     fun appendCommittedText(text: String) {
         _lastCommittedText = (_lastCommittedText + text).takeLast(MAX_CONTEXT_LENGTH)
@@ -90,6 +101,7 @@ class PredictionManager(
             return
         }
         
+        val epoch = requestEpoch
         serviceScope.launch {
             try {
                 if (!AssociationManager.isInitialized()) {
@@ -99,7 +111,9 @@ class PredictionManager(
                     if (!initSuccess) {
                         Log.e(TAG, "Failed to initialize AssociationManager")
                         withContext(Dispatchers.Main) {
-                            onPredictionResult(emptyList())
+                            if (epoch == requestEpoch) {
+                                onPredictionResult(emptyList())
+                            }
                         }
                         return@launch
                     }
@@ -108,12 +122,17 @@ class PredictionManager(
                 val candidates = AssociationManager.predict(contextText, MAX_ASSOCIATION_COUNT)
                 
                 withContext(Dispatchers.Main) {
-                    onPredictionResult(candidates.map { it.text })
+                    // 代际过期说明上下文已被退格/清空修改，丢弃过期结果避免候选栏闪动
+                    if (epoch == requestEpoch) {
+                        onPredictionResult(candidates.map { it.text })
+                    }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Prediction failed", e)
                 withContext(Dispatchers.Main) {
-                    onPredictionResult(emptyList())
+                    if (epoch == requestEpoch) {
+                        onPredictionResult(emptyList())
+                    }
                 }
             }
         }

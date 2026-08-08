@@ -359,7 +359,7 @@ private fun SchemeTrailingButton(
                 )
                 item.installedVersion?.let { version ->
                     Text(
-                        "v$version",
+                        "$version",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.outline,
                     )

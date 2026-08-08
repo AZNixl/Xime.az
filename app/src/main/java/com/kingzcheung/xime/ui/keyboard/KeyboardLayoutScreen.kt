@@ -1,7 +1,10 @@
 package com.kingzcheung.xime.ui.keyboard
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -9,6 +12,7 @@ import com.kingzcheung.xime.keyboard.GestureAction
 import com.kingzcheung.xime.keyboard.OverlayRoute
 import com.kingzcheung.xime.handwriting.HandwritingCandidate
 import com.kingzcheung.xime.rime.T9InputController
+import com.kingzcheung.xime.service.CandidateState
 import com.kingzcheung.xime.settings.KeysConfigHelper
 import com.kingzcheung.xime.ui.theme.KeyboardThemes
 import com.kingzcheung.xime.ui.theme.resolveSolidColor
@@ -29,6 +33,7 @@ fun KeyboardLayoutScreen(
     handwritingClearSignal: Int = 0,
     onHandwritingLookupExit: (() -> Unit)? = null,
     t9Controller: T9InputController? = null,
+    candidateState: State<CandidateState> = remember { mutableStateOf(CandidateState()) },
 ) {
     val kbColors = KeysConfigHelper.getKeyboardColors()
     val longToColor: (Long) -> Color = { if (it > 0xFFFFFF) Color(it) else Color(0xFF000000 or it) }
@@ -205,6 +210,7 @@ fun KeyboardLayoutScreen(
                         callbacks = callbacks,
                         uiState = uiState,
                         t9Controller = t9Controller,
+                        candidateState = candidateState,
                         keyBackgroundColor = keyBgColor,
                         keyTextColor = keyTextColor,
                         specialKeyBackgroundColor = specialKeyBgColor,
