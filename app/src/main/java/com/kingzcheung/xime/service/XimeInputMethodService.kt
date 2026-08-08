@@ -476,51 +476,18 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                 notifyDeploymentStatus(true, "正在加载输入法引擎...")
                 rimeEngine.initialize(userDataDir, sharedDataDir)
 
-                // 检查词库是否已部署（prism.bin 文件是否存在）
+                // 检查词库是否已部署（deploymentDone 标记 + 部署 hash 一致）
                 val deploymentDone = SettingsPreferences.isDeploymentDone(this@XimeInputMethodService)
                 val needsDeployment = !deploymentDone || !RimeConfigHelper.isDeploymentComplete(this@XimeInputMethodService)
 
                 if (needsDeployment) {
-                    // 首次部署：需要完整编译词库
+                    // 统一部署入口（进程内互斥，hash 一致时内部跳过）。
+                    // 与 XimeApplication 预初始化共享，避免两者并发触发两次全量编译。
                     notifyDeploymentStatus(true, "正在编译词库...")
-
-                    // 如果所有方案已编译完成，只是 deploymentDone 标记没设（例如从设置页部署的），
-                    // 用增量刷新即可，避免不必要的全量扫描
-                    val alreadyCompiled = RimeConfigHelper.isDeploymentComplete(this@XimeInputMethodService)
-                    val maintenanceStarted = rimeEngine.startMaintenance(!alreadyCompiled)
-                    if (!maintenanceStarted) {
-                        Log.w(TAG, "initRimeEngine: startMaintenance returned false! " +
-                                "Deployment may not have started. Trying deploy() as fallback...")
-                        val deployed = rimeEngine.deploy()
-                        if (deployed) {
-                            Log.i(TAG, "initRimeEngine: deploy() succeeded as fallback")
-                        } else {
-                            Log.e(TAG, "initRimeEngine: both startMaintenance and deploy() failed")
-                        }
-                    }
-
-                    // 诊断：检查 maintenance 是否真的进入了维护模式
-                    val maintaining = rimeEngine.isMaintaining()
-                    Log.d(TAG, "initRimeEngine: startMaintenance returned $maintenanceStarted, isMaintaining=$maintaining")
-
-                    // 等待编译完成（最多 120 秒），startMaintenance 是异步的，
-                    // 不等待的话 ensureSession 读到的是空 schema 列表
-                    if (maintaining) {
-                        var maintenanceWaited = 0L
-                        val maintenanceTimeoutMs = 300_000L
-                        while (rimeEngine.isMaintaining() && maintenanceWaited < maintenanceTimeoutMs) {
-                            Thread.sleep(100)
-                            maintenanceWaited += 100
-                            if (maintenanceWaited % 5000 == 0L) {
-                                Log.d(TAG, "initRimeEngine: waiting for maintenance... (${maintenanceWaited / 1000}s)")
-                            }
-                        }
-                        if (rimeEngine.isMaintaining()) {
-                            Log.w(TAG, "initRimeEngine: maintenance still running after timeout, continuing anyway")
-                        } else {
-                            Log.d(TAG, "initRimeEngine: maintenance completed in ${maintenanceWaited}ms")
-                            rimeEngine.updateLastBuildTime()
-                        }
+                    if (RimeConfigHelper.ensureDeployment(this@XimeInputMethodService)) {
+                        rimeEngine.updateLastBuildTime()
+                    } else {
+                        Log.e(TAG, "initRimeEngine: ensureDeployment failed, deployment may not have completed")
                     }
                 } else {
                     Log.d(TAG, "initRimeEngine: Already deployed, creating session directly")

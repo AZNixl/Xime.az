@@ -9,6 +9,7 @@ object SettingsPreferences {
     private const val KEY_CURRENT_SCHEMA = "current_schema"
     private const val KEY_DEPLOYMENT_DONE = "deployment_done"
     private const val KEY_DEPLOYMENT_HASH = "deployment_hash"
+    private const val KEY_RIME_ASSETS_VERSION = "rime_assets_version"
     private const val KEY_SETUP_COMPLETED = "setup_completed"
     private const val KEY_DARK_MODE = "dark_mode"
     private const val KEY_VERBOSE_LOGGING = "verbose_logging"
@@ -167,6 +168,15 @@ object SettingsPreferences {
 
     fun setDeploymentHash(context: Context, hash: String) {
         getPrefs(context).edit().putString(KEY_DEPLOYMENT_HASH, hash).apply()
+    }
+
+    /** 上次完成 rime assets 同步的 versionCode（0 表示从未同步）。 */
+    fun getRimeAssetsVersion(context: Context): Int {
+        return getPrefs(context).getInt(KEY_RIME_ASSETS_VERSION, 0)
+    }
+
+    fun setRimeAssetsVersion(context: Context, version: Int) {
+        getPrefs(context).edit().putInt(KEY_RIME_ASSETS_VERSION, version).apply()
     }
 
     /** 调试 verbose 日志总开关（仅 Debug 构建生效，Release 恒关闭）。 */
