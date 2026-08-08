@@ -144,6 +144,15 @@ class XimeIndexParserTest {
     }
 
     @Test
+    fun `isCompatible fails open for nightly version strings`() {
+        // nightly 构建 versionName 形如 nightly-YYYYMMDD-commit，非语义化版本号
+        assertTrue(XimeIndexParser.isCompatible("nightly-20260808-a1b2c3d", ">=2.3.0"))
+        assertTrue(XimeIndexParser.isCompatible("nightly-20260808-a1b2c3d", ">=9.9.9"))
+        assertTrue(XimeIndexParser.isCompatible("nightly-20260808-a1b2c3d", ""))
+        assertTrue(XimeIndexParser.isCompatible("master", ">=2.3.0"))
+    }
+
+    @Test
     fun `minAppVersionLabel strips operator`() {
         assertEquals("2.3.0", XimeIndexParser.minAppVersionLabel(">=2.3.0"))
         assertEquals("9.9.9", XimeIndexParser.minAppVersionLabel(">=9.9.9"))
