@@ -64,6 +64,7 @@ data class CandidateBarVisuals(
     val textColor: Color,
     val dividerColor: Color,
     val accentColor: Color = Color(0xFF1A73E8),
+    val selectedTextColor: Color = Color(0xFF1A73E8),
     val isDarkTheme: Boolean = false,
 )
 
@@ -360,6 +361,7 @@ fun CandidateBar(
                         } else "",
                         isSelected = index == 0,
                         accentColor = visuals.accentColor,
+                        selectedTextColor = visuals.selectedTextColor,
                         fontSize = candidateTextSize.sp
                     )
                 }
@@ -385,6 +387,7 @@ fun CandidateBar(
                             comment = displayComments.getOrElse(index) { "" },
                             isSelected = assocState?.highlightIndex == index,
                             accentColor = visuals.accentColor,
+                            selectedTextColor = visuals.selectedTextColor,
                             fontSize = candidateTextSize.sp
                         )
                     }
@@ -552,6 +555,7 @@ fun CandidateItem(
     comment: String = "",
     isSelected: Boolean = false,
     accentColor: Color = Color(0xFF1A73E8),
+    selectedTextColor: Color = Color(0xFF1A73E8),
     @SuppressLint("ModifierParameter") modifier: Modifier = Modifier,
     fontSize: androidx.compose.ui.unit.TextUnit = 19.sp
 ) {
@@ -568,7 +572,7 @@ fun CandidateItem(
     ) {
         Text(
             text = text,
-            color = if (isSelected) accentColor else textColor,
+            color = if (isSelected) selectedTextColor else textColor,
             fontSize = fontSize,
             fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal,
             maxLines = 1
@@ -577,7 +581,7 @@ fun CandidateItem(
             Spacer(modifier = Modifier.width(3.dp))
             Text(
                 text = comment,
-                color = if (isSelected) accentColor.copy(alpha = 0.6f) else textColor.copy(alpha = 0.5f),
+                color = if (isSelected) selectedTextColor.copy(alpha = 0.6f) else textColor.copy(alpha = 0.5f),
                 fontSize = (fontSize.value * 11f / 19f).sp,
                 fontWeight = FontWeight.Normal,
                 maxLines = 1

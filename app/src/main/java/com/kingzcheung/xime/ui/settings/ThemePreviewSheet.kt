@@ -207,6 +207,8 @@ private fun ThemeKeyboardPreview(
     val candidateTextColor = KeyboardThemes.getCandidateTextColorOverride(theme.id, isDark)
         ?: if (isDark) longToColor(kbColors.candidateTextColorDark)
         else longToColor(kbColors.candidateTextColor)
+    val selectedTextColor = KeyboardThemes.getCandidateSelectedTextColorOverride(theme.id, isDark)
+        ?: if (isDark) theme.candidateSelectedTextColorDark else theme.candidateSelectedTextColorLight
     val context = LocalContext.current
     val candidateTextSize = SettingsPreferences.getCandidateTextSize(context)
 
@@ -225,7 +227,7 @@ private fun ThemeKeyboardPreview(
                     .fillMaxSize()
                     .padding(start = 4.dp, end = 4.dp, bottom = 8.dp),
             ) {
-                CandidateBarPreview(accent, candidateTextColor, candidateTextSize)
+                CandidateBarPreview(accent, candidateTextColor, selectedTextColor, candidateTextSize)
 
                 Column(modifier = Modifier
                     .fillMaxWidth()
@@ -329,6 +331,7 @@ private fun ThemeKeyboardPreview(
 private fun CandidateBarPreview(
     accent: Color,
     textColor: Color,
+    selectedTextColor: Color,
     textSize: Int,
 ) {
     Column(
@@ -347,6 +350,7 @@ private fun CandidateBarPreview(
                 isSelected = true,
                 accent = accent,
                 textColor = textColor,
+                selectedTextColor = selectedTextColor,
                 textSize = textSize
             )
             Spacer(modifier = Modifier.width(4.dp))
@@ -355,6 +359,7 @@ private fun CandidateBarPreview(
                 isSelected = false,
                 accent = accent,
                 textColor = textColor,
+                selectedTextColor = selectedTextColor,
                 textSize = textSize
             )
         }
@@ -367,6 +372,7 @@ private fun PreviewCandidate(
     isSelected: Boolean,
     accent: Color,
     textColor: Color,
+    selectedTextColor: Color,
     textSize: Int,
 ) {
     Box(
@@ -377,7 +383,7 @@ private fun PreviewCandidate(
     ) {
         Text(
             text = text,
-            color = if (isSelected) accent else textColor,
+            color = if (isSelected) selectedTextColor else textColor,
             fontSize = textSize.sp,
             fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal,
             maxLines = 1,

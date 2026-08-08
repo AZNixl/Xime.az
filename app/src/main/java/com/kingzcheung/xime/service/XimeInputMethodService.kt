@@ -744,6 +744,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                         val candidateTextCol = com.kingzcheung.xime.ui.theme.KeyboardThemes.getCandidateTextColorOverride(state.themeId, isDark)
                             ?: if (isDark) longToColor(kbColors.candidateTextColorDark) else longToColor(kbColors.candidateTextColor)
                         val accentCol = com.kingzcheung.xime.ui.theme.KeyboardThemes.getAccentColor(state.themeId, isDark)
+                        val selectedTextCol = com.kingzcheung.xime.ui.theme.KeyboardThemes.getCandidateSelectedTextColor(state.themeId, isDark)
                         val keyboardBgColor = cardBg
                         val rootTheme = com.kingzcheung.xime.ui.theme.KeyboardThemes.getThemeById(state.themeId)
                         if (state.isCompact && (cand.candidates.isNotEmpty() || cand.isShowingRecentClipboard || cand.inputText.isNotEmpty())) {
@@ -760,6 +761,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                 cardBackgroundColor = cardBg,
                                 candidateTextColor = candidateTextCol,
                                 activeColor = accentCol,
+                                selectedTextColor = selectedTextCol,
                             )
                         } else if (state.isCompact) {
                             Box(modifier = Modifier.fillMaxSize())

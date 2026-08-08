@@ -310,6 +310,8 @@ class MainActivity : ComponentActivity() {
                 key_text_color_dark: 0xf2f2f2
                 candidate_text_color: 0x232323
                 candidate_text_color_dark: 0xf2f2f2
+                candidate_selected_text_color: 0xffffff
+                candidate_selected_text_color_dark: 0xffffff
         """.trimIndent()
         val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
         clipboard.setPrimaryClip(android.content.ClipData.newPlainText("xime theme", template))

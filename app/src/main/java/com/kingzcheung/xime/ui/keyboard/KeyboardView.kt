@@ -172,6 +172,8 @@ fun KeyboardView(
     val candidateTextColor = KeyboardThemes.getCandidateTextColorOverride(state.themeId, state.isDarkTheme)
         ?: if (state.isDarkTheme) longToColor(kbColors.candidateTextColorDark)
         else longToColor(kbColors.candidateTextColor)
+    val candidateSelectedTextColor = KeyboardThemes.getCandidateSelectedTextColorOverride(state.themeId, state.isDarkTheme)
+        ?: KeyboardThemes.getCandidateSelectedTextColor(state.themeId, state.isDarkTheme)
     val dividerColor = if (state.isDarkTheme) androidx.compose.ui.graphics.Color(0xFF3C4043) else androidx.compose.ui.graphics.Color(0xFFDADCE0)
 
     val clipboardTab = (page as? KeyboardPage.Overlay)?.let {
@@ -298,6 +300,7 @@ fun KeyboardView(
                     textColor = candidateTextColor,
                     dividerColor = dividerColor,
                     accentColor = accentColor,
+                    selectedTextColor = candidateSelectedTextColor,
                     isDarkTheme = state.isDarkTheme
                 ),
                 callbacks = CandidateBarCallbacks(

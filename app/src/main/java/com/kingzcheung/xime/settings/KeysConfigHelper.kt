@@ -311,6 +311,10 @@ data class ColorSchemeEntry(
     val candidateTextColor: Long? = null,
     @SerialName("candidate_text_color_dark")
     val candidateTextColorDark: Long? = null,
+    @SerialName("candidate_selected_text_color")
+    val candidateSelectedTextColor: Long? = null,
+    @SerialName("candidate_selected_text_color_dark")
+    val candidateSelectedTextColorDark: Long? = null,
     @SerialName("keyboard_background")
     val keyboardBackground: BackgroundConfig? = null,
     @SerialName("key_background")
