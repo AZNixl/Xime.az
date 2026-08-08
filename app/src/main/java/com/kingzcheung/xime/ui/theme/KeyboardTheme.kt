@@ -58,6 +58,9 @@ data class KeyboardColorScheme(
     // 候选文字颜色
     val candidateTextColorLight: Color = Color(0xFF1A73E8),
     val candidateTextColorDark: Color = Color(0xFF8AB4F8),
+    // 候选选中文字颜色（未配置时回退到按键文字色）
+    val candidateSelectedTextColorLight: Color = Color(0xFF202124),
+    val candidateSelectedTextColorDark: Color = Color(0xFFE8EAED),
     // 分隔线颜色
     val dividerColorLight: Color = Color(0xFFDADCE0),
     val dividerColorDark: Color = Color(0xFF3C4043),
@@ -139,6 +142,8 @@ object KeyboardThemes {
             ?: longToColor(global.candidateTextColor)
         val candColorDark = entry.candidateTextColorDark?.let { longToColor(it) }
             ?: longToColor(global.candidateTextColorDark)
+        val candSelectedLight = entry.candidateSelectedTextColor?.let { longToColor(it) } ?: txtColor
+        val candSelectedDark = entry.candidateSelectedTextColorDark?.let { longToColor(it) } ?: txtColorDark
 
         return KeyboardColorScheme(
             id = id,
@@ -163,6 +168,8 @@ object KeyboardThemes {
             keyTextColorDark = txtColorDark,
             candidateTextColorLight = candColorLight,
             candidateTextColorDark = candColorDark,
+            candidateSelectedTextColorLight = candSelectedLight,
+            candidateSelectedTextColorDark = candSelectedDark,
             keyboardBackground = entry.keyboardBackground,
             keyBackground = entry.keyBackground,
             candidateBarBackground = entry.candidateBarBackground,
@@ -354,6 +361,12 @@ object KeyboardThemes {
                 ?: longToColor(global.candidateTextColor),
             candidateTextColorDark = entry.candidateTextColorDark?.let { longToColor(it) }
                 ?: longToColor(global.candidateTextColorDark),
+            candidateSelectedTextColorLight = entry.candidateSelectedTextColor?.let { longToColor(it) }
+                ?: (entry.keyTextColor?.let { longToColor(it) }
+                    ?: scheme.candidateSelectedTextColorLight),
+            candidateSelectedTextColorDark = entry.candidateSelectedTextColorDark?.let { longToColor(it) }
+                ?: (entry.keyTextColorDark?.let { longToColor(it) }
+                    ?: scheme.candidateSelectedTextColorDark),
             keyboardBackground = entry.keyboardBackground ?: scheme.keyboardBackground,
             keyBackground = entry.keyBackground ?: scheme.keyBackground,
             candidateBarBackground = entry.candidateBarBackground ?: scheme.candidateBarBackground,
@@ -426,6 +439,12 @@ object KeyboardThemes {
         return if (isDark) theme.candidateTextColorDark else theme.candidateTextColorLight
     }
 
+    /** 候选选中文字色，未显式配置时回退到按键文字色。 */
+    fun getCandidateSelectedTextColor(themeId: String, isDark: Boolean): Color {
+        val theme = getThemeById(themeId)
+        return if (isDark) theme.candidateSelectedTextColorDark else theme.candidateSelectedTextColorLight
+    }
+
     fun getDividerColor(themeId: String, isDark: Boolean): Color {
         val theme = getThemeById(themeId)
         return if (isDark) theme.dividerColorDark else theme.dividerColorLight
@@ -454,6 +473,16 @@ object KeyboardThemes {
             entry.candidateTextColorDark?.let { longToColor(it) }
         } else {
             entry.candidateTextColor?.let { longToColor(it) }
+        }
+    }
+
+    /** 返回 color_schemes 中显式定义的候选选中文字色，未定义返回 null。 */
+    fun getCandidateSelectedTextColorOverride(themeId: String, isDark: Boolean): Color? {
+        val entry = configOverrides[themeId] ?: return null
+        return if (isDark) {
+            entry.candidateSelectedTextColorDark?.let { longToColor(it) }
+        } else {
+            entry.candidateSelectedTextColor?.let { longToColor(it) }
         }
     }
 }

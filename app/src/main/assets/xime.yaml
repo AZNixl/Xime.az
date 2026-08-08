@@ -46,6 +46,17 @@ style:
 #    xime.custom.yaml 中添加引用它的 color_scheme，src 写相对 rime/ 的路径。
 #    内置主题的同名文件会被用户目录中的文件覆盖。
 #
+# color_schemes 每个主题可用的颜色字段（未设置的会回退到全局 keyboard.colors 默认值）：
+#   primary_color          - 主题强调色（种子色）
+#   keyboard_bg_color      - 键盘背景后备色（配置了 keyboard_background 时以 background 为准）
+#   key_bg_color / key_bg_color_dark           - 按键底色（亮/暗）
+#   special_key_bg_color / _dark               - 特殊按键底色（亮/暗）
+#   candidate_bar_bg_color                     - 候选栏底色
+#   key_text_color / key_text_color_dark       - 按键文字色（亮/暗）
+#   candidate_text_color / _dark               - 候选文字色（亮/暗）
+#   candidate_selected_text_color / _dark      - 候选选中文字色（亮/暗），未设置时回退到
+#                                                 key_text_color（图片背景看不清时建议单独配置）
+#
 color_schemes:
   lavender_purple:
     name: "薰衣草紫"
@@ -283,6 +294,8 @@ color_schemes:
     key_text_color_dark: 0xf2f2f2
     candidate_text_color: 0x232323
     candidate_text_color_dark: 0xf2f2f2
+    candidate_selected_text_color: 0x9CB2D6
+    candidate_selected_text_color_dark: 0x9CB2D6
 
   mrfawdi_nature:
     name: "暮色之桥"
@@ -296,8 +309,10 @@ color_schemes:
     key_bg_color_dark: 0x5affffff
     key_text_color: 0x3a2028
     key_text_color_dark: 0xf7eef1
-    candidate_text_color: 0x76565F
-    candidate_text_color_dark: 0xf7eef1
+    candidate_text_color: 0xA4828C
+    candidate_text_color_dark: 0xA4828C
+    candidate_selected_text_color: 0xDCA79C
+    candidate_selected_text_color_dark: 0xDCA79C
 
   olivcelso_desert:
     name: "大漠流金"
