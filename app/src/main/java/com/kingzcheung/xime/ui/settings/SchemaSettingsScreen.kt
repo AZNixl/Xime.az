@@ -720,7 +720,7 @@ private fun SchemaToggleItem(
                 ) {
                     if (schema.version.isNotEmpty()) {
                         Text(
-                            text = "v${schema.version}",
+                            text = "${schema.version}",
                             style = MaterialTheme.typography.labelSmall,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,

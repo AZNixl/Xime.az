@@ -312,10 +312,10 @@ private fun ExtensionItem(
     val hostCompatible = remember(extension.id) { viewModel.isHostCompatible(extension) }
     val hostRange = remember(extension) {
         buildString {
-            if (!extension.minHostVersion.isNullOrBlank()) append("v${extension.minHostVersion}")
+            if (!extension.minHostVersion.isNullOrBlank()) append(extension.minHostVersion)
             if (!extension.maxHostVersion.isNullOrBlank()) {
                 if (isNotEmpty()) append(" - ") else append("≤ ")
-                append("v${extension.maxHostVersion}")
+                append(extension.maxHostVersion)
             }
         }
     }
@@ -421,7 +421,7 @@ private fun ExtensionItem(
                 Text("•", style = MaterialTheme.typography.bodySmall, 
                      color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
                 Text(
-                    text = "v${extension.versionName}",
+                    text = "${extension.versionName}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

@@ -99,6 +99,11 @@ class ModelManagementViewModel(application: Application) : AndroidViewModel(appl
         }
     }
 
+    /** 仅重新检查本地下载状态（不重新拉取远程 index），用于从本地管理页返回后同步。 */
+    fun refreshDownloadedState() {
+        viewModelScope.launch { loadModels() }
+    }
+
     fun selectVersion(modelId: String, version: String) {
         _uiState.update {
             it.copy(selectedVersions = it.selectedVersions + (modelId to version))
