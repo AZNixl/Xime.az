@@ -55,9 +55,7 @@ fun ToolbarCustomizeView(
 ) {
     val allButtons = ToolbarButton.entries.filter { button ->
         if (button == ToolbarButton.HANDWRITING_LOOKUP) {
-            val mf = java.io.File(LocalContext.current.filesDir, "ochwpro.onnx")
-            val cf = java.io.File(LocalContext.current.filesDir, "char_index.json")
-            mf.exists() && cf.exists()
+            com.kingzcheung.xime.handwriting.HandwritingEngine.hasModel(LocalContext.current)
         } else true
     }
     val originalButtons = remember { toolbarButtons }

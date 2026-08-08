@@ -399,7 +399,8 @@ fun CandidateBar(
                         modifier = Modifier
                             .weight(1f, fill = true)
                             .horizontalScroll(rememberScrollState()),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.End,
                     ) {
                         if (toolbarActions.isNotEmpty()) {
                             toolbarActions.forEach { action ->

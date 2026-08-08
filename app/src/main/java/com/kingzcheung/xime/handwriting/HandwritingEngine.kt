@@ -66,6 +66,13 @@ object HandwritingEngine {
 
     fun isInitialized(): Boolean = initialized
 
+    /** 手写模型是否可用（含旧版 filesDir 根目录模型迁移后检查）。 */
+    fun hasModel(context: Context): Boolean {
+        ModelStorage.migrateLegacyForModel(context, "ochwpro")
+        val modelDir = ModelStorage.getModelDir(context, "ochwpro")
+        return File(modelDir, "ochwpro.onnx").exists() && File(modelDir, "char_index.json").exists()
+    }
+
     override fun toString(): String {
         return "HandwritingEngine(initialized=$initialized, chars=${chars.size})"
     }

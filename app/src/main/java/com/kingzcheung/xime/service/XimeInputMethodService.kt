@@ -3194,9 +3194,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     private fun switchSchema(schemaId: String) {
         if (schemaId == HANDWRITING_SCHEMA_ID) {
             // 检查手写模型文件是否已下载
-            val modelFile = java.io.File(filesDir, "ochwpro.onnx")
-            val charIndexFile = java.io.File(filesDir, "char_index.json")
-            if (!modelFile.exists() || !charIndexFile.exists()) {
+            if (!com.kingzcheung.xime.handwriting.HandwritingEngine.hasModel(this)) {
                 Log.w(TAG, "Handwriting model not found, redirecting to download")
                 android.widget.Toast.makeText(
                     this, "请先下载手写模型", android.widget.Toast.LENGTH_LONG
