@@ -64,6 +64,8 @@ object XimeIndexParser {
         if (!c.startsWith(">=")) return true // 不支持的操作符 → fail-open
         val min = numericCore(c.removePrefix(">=").trim())
         val app = numericCore(appVersion)
+        // 任一无法解析（如 nightly-日期-commit、master 等非语义化版本号）→ fail-open
+        if (min == null || app == null) return true
         for (i in 0..2) {
             if (app[i] != min[i]) return app[i] > min[i]
         }
@@ -87,10 +89,11 @@ object XimeIndexParser {
             minAppVersion = minAppVersionLabel(scheme.appVersion),
         )
 
-    /** 取版本号的数值核心 major.minor.patch（忽略 -beta/+build 后缀，缺位补 0）。 */
-    private fun numericCore(v: String): List<Int> {
+    /** 取版本号的数值核心 major.minor.patch（忽略 -beta/+build 后缀，缺位补 0）；无法解析返回 null。 */
+    private fun numericCore(v: String): List<Int>? {
         val core = v.trim().takeWhile { it != '-' && it != '+' }
-        val parts = core.split('.').map { it.toIntOrNull() ?: 0 }
+        if (core.isEmpty()) return null
+        val parts = core.split('.').map { it.toIntOrNull() ?: return null }
         return (parts + listOf(0, 0, 0)).take(3)
     }
 }
