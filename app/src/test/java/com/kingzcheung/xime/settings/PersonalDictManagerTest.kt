@@ -31,163 +31,7 @@ private fun mockContext(): Context {
 
 class PersonalDictManagerTest {
 
-    private val defaultHeader = """# Rime dict
----
-name: user_simp_pinyin
-version: '1.0'
-sort: original
-use_preset_vocabulary: false
-...
-"""
-
-    @Test
-    fun `default header has correct Rime format`() {
-        assertTrue(defaultHeader.startsWith("# Rime dict"))
-        assertTrue(defaultHeader.contains("name: user_simp_pinyin"))
-        assertTrue(defaultHeader.contains("version: '1.0'"))
-        assertTrue(defaultHeader.contains("sort: original"))
-        assertTrue(defaultHeader.contains("use_preset_vocabulary: false"))
-        assertTrue(defaultHeader.endsWith("...\n"))
-    }
-
-    @Test
-    fun `extractHeader returns header before marker`() {
-        val text = """# Rime dict
----
-name: user_simp
-version: '1.0'
-...
-粗鄙之语	cu bi zhi yu
-"""
-        val file = createTempFile(text)
-        val result = PersonalDictManager.extractHeader(file, defaultHeader)
-        assertTrue(result.startsWith("# Rime dict"))
-        assertTrue(result.endsWith("...\n"))
-        assertEquals("""# Rime dict
----
-name: user_simp
-version: '1.0'
-...
-""", result)
-    }
-
-    @Test
-    fun `extractHeader returns default for non-existent file`() {
-        val file = File.createTempFile("test_nonexistent", ".tmp")
-        file.delete()
-        val result = PersonalDictManager.extractHeader(file, defaultHeader)
-        assertEquals(defaultHeader, result)
-    }
-
-    @Test
-    fun `extractHeader returns default for file without marker`() {
-        val file = createTempFile("no marker here\njust text\n")
-        val result = PersonalDictManager.extractHeader(file, defaultHeader)
-        assertEquals(defaultHeader, result)
-    }
-
-    @Test
-    fun `extractHeaderFromText handles marker in middle`() {
-        val text = "prefix\n...\nsuffix"
-        val result = PersonalDictManager.extractHeaderFromText(text, defaultHeader)
-        assertEquals("prefix\n...\n", result)
-    }
-
-    @Test
-    fun `extractHeaderFromText handles no preceding newline`() {
-        val text = "...\nsuffix"
-        val result = PersonalDictManager.extractHeaderFromText(text, defaultHeader)
-        assertEquals("...\n", result)
-    }
-
-    @Test
-    fun `extractHeaderFromText returns default when no marker`() {
-        assertEquals(defaultHeader, PersonalDictManager.extractHeaderFromText("no marker", defaultHeader))
-    }
-
-    @Test
-    fun `buildDictText preserves header and formats entries`() {
-        val entries = listOf(
-            DictEntry("测试", "ce shi"),
-            DictEntry("词条", "ci tiao")
-        )
-        val result = PersonalDictManager.buildDictText(defaultHeader, entries)
-        val expected = """# Rime dict
----
-name: user_simp_pinyin
-version: '1.0'
-sort: original
-use_preset_vocabulary: false
-...
-测试	ce shi
-词条	ci tiao
-"""
-        assertEquals(expected, result)
-    }
-
-    @Test
-    fun `buildDictText output uses tab delimiter not space`() {
-        val result = PersonalDictManager.buildDictText(defaultHeader, listOf(DictEntry("你好", "ni hao")))
-        assertTrue(result.contains("你好\tni hao"))
-        assertFalse(result.contains("你好 ni hao"))
-    }
-
-    @Test
-    fun `buildDictText ends each entry with newline`() {
-        val result = PersonalDictManager.buildDictText(defaultHeader, listOf(DictEntry("a", "b")))
-        assertTrue(result.endsWith("a\tb\n"))
-    }
-
-    @Test
-    fun `buildDictText handles empty entries`() {
-        val result = PersonalDictManager.buildDictText(defaultHeader, emptyList())
-        assertEquals(defaultHeader, result)
-    }
-
-    @Test
-    fun `round trip preserves entries with multi-word codes`() {
-        val originalEntries = listOf(
-            DictEntry("你好", "ni hao"),
-            DictEntry("世界", "shi jie"),
-            DictEntry("测试", "ce shi")
-        )
-        val text = PersonalDictManager.buildDictText(defaultHeader, originalEntries)
-        val parsedEntries = PersonalDictManager.parsePersonalDictEntries(text)
-        assertEquals(originalEntries.size, parsedEntries.size)
-        assertEquals(originalEntries, parsedEntries)
-    }
-
-    @Test
-    fun `full file round-trip preserves entries`() {
-        val file = File.createTempFile("personal_dict_roundtrip", ".tmp")
-        file.deleteOnExit()
-        val originalEntries = listOf(
-            DictEntry("你好", "ni hao"),
-            DictEntry("世界", "shi jie")
-        )
-        PersonalDictManager.buildDictText(defaultHeader, originalEntries).let { file.writeText(it, Charsets.UTF_8) }
-        val newHeader = PersonalDictManager.extractHeader(file, defaultHeader)
-        assertEquals(defaultHeader, newHeader)
-        val parsed = PersonalDictManager.parsePersonalDictEntries(file.readText(Charsets.UTF_8))
-        assertEquals(originalEntries, parsed)
-    }
-
-    @Test
-    fun `file created from scratch has correct format`() {
-        val file = File.createTempFile("personal_dict_scratch", ".tmp")
-        file.deleteOnExit()
-        file.delete()
-        val h = PersonalDictManager.extractHeader(file, defaultHeader)
-        assertEquals(defaultHeader, h)
-        val entries = listOf(DictEntry("a", "b"))
-        val text = PersonalDictManager.buildDictText(h, entries)
-        file.writeText(text, Charsets.UTF_8)
-        val content = file.readText(Charsets.UTF_8)
-        assertTrue(content.startsWith("# Rime dict"))
-        assertTrue(content.contains("name: user_simp_pinyin"))
-        assertTrue(content.contains("...\n"))
-        assertTrue(content.contains("a\tb"))
-    }
+    // ── 个人词库（只读显示） ──
 
     @Test
     fun `parsePersonalDictEntries reads entries after marker tab-delimited`() {
@@ -241,73 +85,241 @@ use_preset_vocabulary: false
     }
 
     @Test
-    fun `round trip with tab-only codes`() {
-        val original = listOf(
-            DictEntry("粗鄙之语", "cu bi zhi yu")
+    fun `readSchemaPacks returns user packs declared in schema`() {
+        val rimeDir = createTempDir()
+        java.io.File(rimeDir, "pinyin_simp.schema.yaml").writeText("""
+translator:
+  dictionary: pinyin_simp
+  packs:
+    - user_simp
+    - user_extra
+  preedit_format:
+    - xform/a/b
+""".trimIndent(), Charsets.UTF_8)
+        val result = PersonalDictManager.run { readSchemaPacks(rimeDir, "pinyin_simp") }
+        assertEquals(listOf("user_simp", "user_extra"), result)
+    }
+
+    @Test
+    fun `readSchemaPacks returns empty when schema has no packs`() {
+        val rimeDir = createTempDir()
+        java.io.File(rimeDir, "wubi86.schema.yaml").writeText("translator:\n  dictionary: wubi86\n", Charsets.UTF_8)
+        assertTrue(PersonalDictManager.run { readSchemaPacks(rimeDir, "wubi86") }.isEmpty())
+    }
+
+    @Test
+    fun `readSchemaPacks parses real pinyin schema structure via kaml`() {
+        val rimeDir = createTempDir()
+        java.io.File(rimeDir, "pinyin_simp.schema.yaml").writeText("""
+schema:
+  schema_id: pinyin_simp
+  name: 简体拼音
+switches:
+  - name: ascii_mode
+    states: [ 中文, 西文 ]
+engine:
+  translators:
+    - punct_translator
+    - script_translator
+    - reverse_lookup_translator
+    - lua_translator@*uuid
+translator:
+  dictionary: pinyin_simp
+  packs:
+    - user_simp
+  preedit_format:
+    - xform/([nl])v/$1ü/
+reverse_lookup:
+  dictionary: stroke
+  prefix: "`"
+punctuator:
+  import_preset: default
+  __include: symbols:/punctuator
+""".trimIndent(), Charsets.UTF_8)
+        val result = PersonalDictManager.run { readSchemaPacks(rimeDir, "pinyin_simp") }
+        assertEquals(listOf("user_simp"), result)
+    }
+
+    @Test
+    fun `readSchemaPacks falls back to regex when yaml parse fails`() {
+        val rimeDir = createTempDir()
+        // 非法 YAML（引用未定义别名），kaml 解析失败后应回退正则
+        java.io.File(rimeDir, "bad.schema.yaml").writeText("""
+translator:
+  dictionary: bad
+  packs:
+    - user_bad
+foo: *undefined_alias
+""".trimIndent(), Charsets.UTF_8)
+        val result = PersonalDictManager.run { readSchemaPacks(rimeDir, "bad") }
+        assertEquals(listOf("user_bad"), result)
+    }
+
+    @Test
+    fun `resolvePersonalDictFile uses schema own packs name`() {
+        val rimeDir = createTempDir()
+        java.io.File(rimeDir, "pinyin_simp.schema.yaml").writeText("""
+translator:
+  dictionary: pinyin_simp
+  packs:
+    - user_simp
+""".trimIndent())
+        val file = PersonalDictManager.resolvePersonalDictFile(rimeDir, "pinyin_simp")
+        assertEquals("user_simp.dict.yaml", file.name)
+    }
+
+    @Test
+    fun `loadEntries reads schema own pack file`() {
+        val context = mockContext()
+        val rimeDir = java.io.File(context.filesDir, "rime")
+        rimeDir.mkdirs()
+        java.io.File(rimeDir, "pinyin_simp.schema.yaml").writeText("""
+translator:
+  dictionary: pinyin_simp
+  packs:
+    - user_simp
+""".trimIndent(), Charsets.UTF_8)
+        java.io.File(rimeDir, "user_simp.dict.yaml").writeText("# Rime dict\n---\nname: user_simp\n...\n你好\tni hao\n", Charsets.UTF_8)
+        val entries = PersonalDictManager.loadEntries(context, "pinyin_simp")
+        assertTrue(entries.any { it.word == "你好" && it.code == "ni hao" })
+    }
+
+    @Test
+    fun `loadEntries returns empty when pack file missing`() {
+        val context = mockContext()
+        val rimeDir = java.io.File(context.filesDir, "rime")
+        rimeDir.mkdirs()
+        java.io.File(rimeDir, "pinyin_simp.schema.yaml").writeText("""
+translator:
+  dictionary: pinyin_simp
+  packs:
+    - user_simp
+""".trimIndent(), Charsets.UTF_8)
+        assertTrue(PersonalDictManager.loadEntries(context, "pinyin_simp").isEmpty())
+    }
+
+    // ── ensureSchemaPack：仅自定义短语 + 清理旧 merged patch ──
+
+    @Test
+    fun `ensureSchemaPack creates custom phrase translator when schema has entries`() {
+        val context = mockContext()
+        val rimeDir = java.io.File(context.filesDir, "rime")
+        rimeDir.mkdirs()
+        java.io.File(rimeDir, "pinyin_simp.schema.yaml").writeText("""
+speller:
+  alphabet: abc
+  algebra:
+    - erase/^xx$/
+""".trimIndent())
+        createCustomPhraseFile(rimeDir, "pinyin_simp")
+        runBlocking { PersonalDictManager.ensureSchemaPack(context, "pinyin_simp") }
+        val customFile = java.io.File(rimeDir, "pinyin_simp.custom.yaml")
+        assertTrue("custom.yaml should be created", customFile.exists())
+        val text = customFile.readText(Charsets.UTF_8)
+        assertTrue(text.contains("table_translator@custom_phrase"))
+        assertFalse("no merged dictionary patch", text.contains("translator/dictionary"))
+    }
+
+    @Test
+    fun `ensureSchemaPack does not inject translator when no custom phrase entries`() {
+        val context = mockContext()
+        val rimeDir = java.io.File(context.filesDir, "rime")
+        rimeDir.mkdirs()
+        java.io.File(rimeDir, "wubi86.schema.yaml").writeText("""
+speller:
+  alphabet: abcdefghijklmnopqrstuvwxyz
+  max_code_length: 4
+""".trimIndent())
+        runBlocking { PersonalDictManager.ensureSchemaPack(context, "wubi86") }
+        val customFile = java.io.File(rimeDir, "wubi86.custom.yaml")
+        if (customFile.exists()) {
+            assertFalse("no translator when empty phrase file", customFile.readText(Charsets.UTF_8).contains("table_translator@custom_phrase"))
+        }
+        assertFalse("no merged dict created", java.io.File(rimeDir, "wubi86_merged.dict.yaml").exists())
+    }
+
+    @Test
+    fun `ensureSchemaPack is no-op when schema file missing`() {
+        val context = mockContext()
+        val rimeDir = java.io.File(context.filesDir, "rime")
+        rimeDir.mkdirs()
+        // no schema file created
+        runBlocking { PersonalDictManager.ensureSchemaPack(context, "nonexistent") }
+        val customFile = java.io.File(rimeDir, "nonexistent.custom.yaml")
+        assertFalse("no custom.yaml should be created for missing schema", customFile.exists())
+    }
+
+    @Test
+    fun `ensureSchemaPack is idempotent`() {
+        val context = mockContext()
+        val rimeDir = java.io.File(context.filesDir, "rime")
+        rimeDir.mkdirs()
+        java.io.File(rimeDir, "pinyin_simp.schema.yaml").writeText("""
+speller:
+  alphabet: abc
+  algebra:
+    - erase/^xx$/
+""".trimIndent())
+        createCustomPhraseFile(rimeDir, "pinyin_simp")
+        runBlocking { PersonalDictManager.ensureSchemaPack(context, "pinyin_simp") }
+        runBlocking { PersonalDictManager.ensureSchemaPack(context, "pinyin_simp") }
+        val text = java.io.File(rimeDir, "pinyin_simp.custom.yaml").readText(Charsets.UTF_8)
+        assertEquals(1, text.split("table_translator@custom_phrase").size - 1)
+    }
+
+    @Test
+    fun `ensureSchemaPack cleans stale merged patch and merged dict`() {
+        val context = mockContext()
+        val rimeDir = java.io.File(context.filesDir, "rime")
+        rimeDir.mkdirs()
+        java.io.File(rimeDir, "pinyin_simp.schema.yaml").writeText("""
+speller:
+  alphabet: abc
+  algebra:
+    - erase/^xx$/
+""".trimIndent())
+        // 模拟旧版本遗留：merged dict 转发文件 + custom.yaml 引用 merged 词典
+        java.io.File(rimeDir, "pinyin_simp_merged.dict.yaml").writeText(
+            "# Rime dict\n---\nname: pinyin_simp_merged\nversion: \"1.0\"\nsort: original\nimport_tables:\n  - pinyin_simp\n...\n",
+            Charsets.UTF_8
         )
-        val text = PersonalDictManager.buildDictText(defaultHeader, original)
-        val parsed = PersonalDictManager.parsePersonalDictEntries(text)
-        assertEquals(original, parsed)
+        java.io.File(rimeDir, "pinyin_simp.custom.yaml").writeText("""patch:
+  "translator/dictionary": pinyin_simp_merged
+""", Charsets.UTF_8)
+        runBlocking { PersonalDictManager.ensureSchemaPack(context, "pinyin_simp") }
+        assertFalse("stale merged dict should be removed", java.io.File(rimeDir, "pinyin_simp_merged.dict.yaml").exists())
+        val customText = java.io.File(rimeDir, "pinyin_simp.custom.yaml").readText(Charsets.UTF_8)
+        assertFalse("merged reference should be removed", customText.contains("pinyin_simp_merged"))
     }
 
     @Test
-    fun `round trip with unicode entries`() {
-        val original = listOf(
-            DictEntry("日本語", "ni hon go"),
-            DictEntry("한국어", "han gu g eo"),
-            DictEntry("😊", "biao qing")
+    fun `cleanupStaleMergedPatch removes merged dict and reference`() {
+        val rimeDir = createTempDir()
+        java.io.File(rimeDir, "wubi86_merged.dict.yaml").writeText(
+            "# Rime dict\n---\nname: wubi86_merged\nversion: \"1.0\"\nsort: original\nimport_tables:\n  - wubi86\n...\n",
+            Charsets.UTF_8
         )
-        val text = PersonalDictManager.buildDictText(defaultHeader, original)
-        val parsed = PersonalDictManager.parsePersonalDictEntries(text)
-        assertEquals(original, parsed)
+        java.io.File(rimeDir, "wubi86.custom.yaml").writeText("""patch:
+  "translator/dictionary": wubi86_merged
+  "engine/filters/@before 0": custom_filter
+""", Charsets.UTF_8)
+        PersonalDictManager.cleanupStaleMergedPatch(rimeDir, "wubi86")
+        assertFalse("merged dict should be deleted", java.io.File(rimeDir, "wubi86_merged.dict.yaml").exists())
+        val text = java.io.File(rimeDir, "wubi86.custom.yaml").readText(Charsets.UTF_8)
+        assertFalse("merged reference should be removed", text.contains("wubi86_merged"))
+        assertTrue("other patches preserved", text.contains("custom_filter"))
     }
 
     @Test
-    fun `buildDictText generates correct output`() {
-        val entries = listOf(DictEntry("你好", "ni hao"))
-        val result = PersonalDictManager.buildDictText(defaultHeader, entries)
-        assertEquals("""# Rime dict
----
-name: user_simp_pinyin
-version: '1.0'
-sort: original
-use_preset_vocabulary: false
-...
-你好	ni hao
-""", result)
-    }
-
-    @Test
-    fun `buildDictText handles header without data entries`() {
-        val result = PersonalDictManager.buildDictText(defaultHeader, listOf(DictEntry("a", "b")))
-        assertTrue(result.contains("a\tb\n"))
-    }
-
-    @Test
-    fun `multiple saves do not corrupt header`() {
-        val file = File.createTempFile("personal_dict_multi", ".tmp")
-        file.deleteOnExit()
-        val entries1 = listOf(DictEntry("a", "b"))
-        PersonalDictManager.buildDictText(defaultHeader, entries1).let { file.writeText(it, Charsets.UTF_8) }
-        val h1 = PersonalDictManager.extractHeader(file, defaultHeader)
-        val entries2 = listOf(DictEntry("a", "b"), DictEntry("c", "d"))
-        PersonalDictManager.buildDictText(h1, entries2).let { file.writeText(it, Charsets.UTF_8) }
-        val h2 = PersonalDictManager.extractHeader(file, defaultHeader)
-        assertEquals(defaultHeader, h2)
-        val parsed = PersonalDictManager.parsePersonalDictEntries(file.readText(Charsets.UTF_8))
-        assertEquals(entries2, parsed)
-    }
-
-    @Test
-    fun `output is valid RIME dict format`() {
-        val entries = listOf(DictEntry("测试", "ce shi"))
-        val result = PersonalDictManager.buildDictText(defaultHeader, entries)
-        val lines = result.split('\n')
-        assertTrue(lines.any { it.startsWith("name:") })
-        val dataStart = lines.indexOfFirst { it == "..." }
-        assertTrue(dataStart >= 0)
-        val dataLines = lines.drop(dataStart + 1).filter { it.isNotBlank() && !it.startsWith("#") }
-        assertTrue(dataLines.any { it.contains('\t') })
+    fun `cleanupStaleMergedPatch no-op when no stale patch`() {
+        val rimeDir = createTempDir()
+        java.io.File(rimeDir, "wubi86.custom.yaml").writeText("""patch:
+  "engine/translators/+":
+    - lua_translator@my_script
+""", Charsets.UTF_8)
+        PersonalDictManager.cleanupStaleMergedPatch(rimeDir, "wubi86")
+        val text = java.io.File(rimeDir, "wubi86.custom.yaml").readText(Charsets.UTF_8)
+        assertTrue("non-merged patches untouched", text.contains("lua_translator@my_script"))
     }
 
     // ── 自定义短语 ──
@@ -444,22 +456,37 @@ c	d
     }
 
     @Test
+    fun `applyCustomPhraseTranslator preserves existing patches`() {
+        val dir = createTempDir()
+        val file = File(dir, "pinyin_simp.custom.yaml")
+        file.writeText("""patch:
+  engine/filters/@before/0:
+    - lua_filter@custom_filter
+  menu/page_size: 8
+""", Charsets.UTF_8)
+        PersonalDictManager.applyCustomPhraseTranslator(dir, "pinyin_simp", "custom_phrase")
+        val text = file.readText(Charsets.UTF_8)
+        assertTrue("Lua filter preserved", text.contains("lua_filter@custom_filter"))
+        assertTrue("page_size preserved", text.contains("menu/page_size: 8"))
+        assertTrue("custom_phrase added", text.contains("table_translator@custom_phrase"))
+        assertTrue("custom_phrase config complete", text.contains("db_class: stabledb"))
+    }
+
+    @Test
     fun `getCustomPhraseDictName reads user_dict from custom yaml`() {
         val rimeDir = createTempDir()
         File(rimeDir, "wubi86.custom.yaml").writeText("""patch:
   "custom_phrase":
     user_dict: custom_phrase_double
 """)
-        val rimeDirFinal = rimeDir
-        val result = PersonalDictManager.run { getCustomPhraseDictName(rimeDirFinal, "wubi86") }
+        val result = PersonalDictManager.run { getCustomPhraseDictName(rimeDir, "wubi86") }
         assertEquals("custom_phrase_double", result)
     }
 
     @Test
     fun `getCustomPhraseDictName returns default when no custom yaml`() {
         val rimeDir = createTempDir()
-        val rimeDirFinal = rimeDir
-        val result = PersonalDictManager.run { getCustomPhraseDictName(rimeDirFinal, "wubi86") }
+        val result = PersonalDictManager.run { getCustomPhraseDictName(rimeDir, "wubi86") }
         assertEquals("custom_phrase", result)
     }
 
@@ -469,8 +496,7 @@ c	d
         File(rimeDir, "wubi86.custom.yaml").writeText("""patch:
   "translator/packs": ["user_simp_pinyin"]
 """)
-        val rimeDirFinal = rimeDir
-        val result = PersonalDictManager.run { getCustomPhraseDictName(rimeDirFinal, "wubi86") }
+        val result = PersonalDictManager.run { getCustomPhraseDictName(rimeDir, "wubi86") }
         assertEquals("custom_phrase", result)
     }
 
@@ -497,704 +523,9 @@ c	d
         val entries = listOf(DictEntry("hello", "hw"))
         PersonalDictManager.saveCustomPhrases(context, null, entries)
         val file = PersonalDictManager.getCustomPhraseFile(context)
-        assertEquals("custom_phrase.txt", file.name)
         assertTrue(file.exists())
-    }
-
-    // ── 方案补丁 ──
-
-    @Test
-    fun `hasSpellerAlgebra returns true when algebra present`() {
-        val rimeDir = createTempDir()
-        java.io.File(rimeDir, "demo.schema.yaml").writeText("""speller:
-  alphabet: abc
-  algebra:
-    - erase/^xx$/
-""", Charsets.UTF_8)
-        assertTrue(PersonalDictManager.hasSpellerAlgebra(rimeDir, "demo"))
-    }
-
-    @Test
-    fun `hasSpellerAlgebra returns false without algebra`() {
-        val rimeDir = createTempDir()
-        java.io.File(rimeDir, "demo.schema.yaml").writeText("""speller:
-  alphabet: abcdefghijklmnopqrstuvwxyz
-  max_code_length: 4
-""", Charsets.UTF_8)
-        assertFalse(PersonalDictManager.hasSpellerAlgebra(rimeDir, "demo"))
-    }
-
-    // ── ensureSchemaPack 按需创建 ──
-
-    @Test
-    fun `ensureSchemaPack creates custom yaml for schema with algebra`() {
-        val context = mockContext()
-        val rimeDir = java.io.File(context.filesDir, "rime")
-        rimeDir.mkdirs()
-        java.io.File(rimeDir, "pinyin_simp.schema.yaml").writeText("""
-speller:
-  alphabet: abc
-  algebra:
-    - erase/^xx$/
-""".trimIndent())
-        createCustomPhraseFile(rimeDir, "pinyin_simp")
-        runBlocking { PersonalDictManager.ensureSchemaPack(context, "pinyin_simp") }
-        val customFile = java.io.File(rimeDir, "pinyin_simp.custom.yaml")
-        assertTrue("custom.yaml should be created for schema with algebra", customFile.exists())
-        val text = customFile.readText(Charsets.UTF_8)
-        assertTrue(text.contains("translator/packs"))
-        assertTrue("custom_phrase should also be added", text.contains("table_translator@custom_phrase"))
-    }
-
-    @Test
-    fun `ensureSchemaPack creates merged dict for schema without algebra`() {
-        val context = mockContext()
-        val rimeDir = java.io.File(context.filesDir, "rime")
-        rimeDir.mkdirs()
-        java.io.File(rimeDir, "wubi86.schema.yaml").writeText("""
-speller:
-  alphabet: abcdefghijklmnopqrstuvwxyz
-  max_code_length: 4
-""".trimIndent())
-        java.io.File(rimeDir, "wubi86.dict.yaml").writeText("name: wubi86\nversion: \"1.0\"\nsort: original\n...\n", Charsets.UTF_8)
-        runBlocking { PersonalDictManager.ensureSchemaPack(context, "wubi86") }
-        assertTrue("merged dict should be created", java.io.File(rimeDir, "wubi86_merged.dict.yaml").exists())
-        val customFile = java.io.File(rimeDir, "wubi86.custom.yaml")
-        assertTrue("custom.yaml should be created", customFile.exists())
-        val text = customFile.readText(Charsets.UTF_8)
-        assertTrue(text.contains("translator/dictionary"))
-    }
-
-    @Test
-    fun `ensureSchemaPack skips reverse_lookup schemas`() {
-        val context = mockContext()
-        val rimeDir = java.io.File(context.filesDir, "rime")
-        rimeDir.mkdirs()
-        java.io.File(rimeDir, "wubi86_pinyin.schema.yaml").writeText("""
-translator:
-  dictionary: wubi86_pinyin
-  reverse_lookup_translator: true
-""".trimIndent())
-        createCustomPhraseFile(rimeDir, "wubi86_pinyin")
-        runBlocking { PersonalDictManager.ensureSchemaPack(context, "wubi86_pinyin") }
-        val customFile = java.io.File(rimeDir, "wubi86_pinyin.custom.yaml")
-        assertTrue("custom.yaml should be created (custom_phrase only)", customFile.exists())
-        val text = customFile.readText(Charsets.UTF_8)
-        assertTrue(text.contains("table_translator@custom_phrase"))
-        // reverse_lookup schemas should NOT get packs or merged dict
-        assertFalse("should not have packs", text.contains("translator/packs"))
-        assertFalse("should not have merged dict", text.contains("translator/dictionary"))
-    }
-
-    @Test
-    fun `ensureSchemaPack is no-op when schema file missing`() {
-        val context = mockContext()
-        val rimeDir = java.io.File(context.filesDir, "rime")
-        rimeDir.mkdirs()
-        // no schema file created
-        runBlocking { PersonalDictManager.ensureSchemaPack(context, "nonexistent") }
-        val customFile = java.io.File(rimeDir, "nonexistent.custom.yaml")
-        assertFalse("no custom.yaml should be created for missing schema", customFile.exists())
-    }
-
-    @Test
-    fun `ensureSchemaPack is idempotent`() {
-        val context = mockContext()
-        val rimeDir = java.io.File(context.filesDir, "rime")
-        rimeDir.mkdirs()
-        java.io.File(rimeDir, "pinyin_simp.schema.yaml").writeText("""
-speller:
-  alphabet: abc
-  algebra:
-    - erase/^xx$/
-""".trimIndent())
-        createCustomPhraseFile(rimeDir, "pinyin_simp")
-        runBlocking { PersonalDictManager.ensureSchemaPack(context, "pinyin_simp") }
-        runBlocking { PersonalDictManager.ensureSchemaPack(context, "pinyin_simp") }
-        val text = java.io.File(rimeDir, "pinyin_simp.custom.yaml").readText(Charsets.UTF_8)
-        // packs line should appear only once
-        assertEquals(1, text.split("user_pinyin_simp").size - 1)
-        assertEquals(1, text.split("table_translator@custom_phrase").size - 1)
-    }
-
-    @Test
-    fun `applyPackConfig creates custom yaml with packs for schema WITH algebra`() {
-        val rimeDir = createTempDir()
-        PersonalDictManager.applyPackConfig(rimeDir, "pinyin_simp")
-        val customFile = File(rimeDir, "pinyin_simp.custom.yaml")
-        assertTrue(customFile.exists())
-        val text = customFile.readText(Charsets.UTF_8)
-        assertTrue(text.contains("translator/packs"))
-        assertTrue(text.contains("user_pinyin_simp"))
-    }
-
-    @Test
-    fun `applyPackConfig is idempotent`() {
-        val rimeDir = createTempDir()
-        PersonalDictManager.applyPackConfig(rimeDir, "pinyin_simp")
-        PersonalDictManager.applyPackConfig(rimeDir, "pinyin_simp")
-        val customFile = File(rimeDir, "pinyin_simp.custom.yaml")
-        val text = customFile.readText(Charsets.UTF_8)
-        assertEquals(1, text.split("user_pinyin_simp").size - 1)
-    }
-
-    @Test
-    fun `applyMergedDictConfig creates merged dict and custom for schema WITHOUT algebra`() {
-        val rimeDir = createTempDir()
-        java.io.File(rimeDir, "wubi86.dict.yaml").writeText("name: wubi86\nversion: \"1.0\"\nsort: original\n...\n工\ta\n", Charsets.UTF_8)
-        PersonalDictManager.applyMergedDictConfig(rimeDir, "wubi86")
-        val dictFile = File(rimeDir, "wubi86_merged.dict.yaml")
-        assertTrue(dictFile.exists())
-        val dictText = dictFile.readText(Charsets.UTF_8)
-        assertTrue(dictText.contains("import_tables:"))
-        assertTrue(dictText.contains("- wubi86"))
-        assertTrue(dictText.contains("- user_wubi86"))
-        val customFile = File(rimeDir, "wubi86.custom.yaml")
-        assertTrue(customFile.exists())
-        val customText = customFile.readText(Charsets.UTF_8)
-        assertTrue(customText.contains("translator/dictionary"))
-        assertTrue(customText.contains("wubi86_merged"))
-    }
-
-    @Test
-    fun `applyMergedDictConfig is idempotent`() {
-        val rimeDir = createTempDir()
-        java.io.File(rimeDir, "wubi86.dict.yaml").writeText("name: wubi86\nversion: \"1.0\"\nsort: original\n...\n工\ta\n", Charsets.UTF_8)
-        PersonalDictManager.applyMergedDictConfig(rimeDir, "wubi86")
-        PersonalDictManager.applyMergedDictConfig(rimeDir, "wubi86")
-        val text = File(rimeDir, "wubi86.custom.yaml").readText(Charsets.UTF_8)
-        assertEquals(1, text.split("wubi86_merged").size - 1)
-    }
-
-    @Test
-    fun `applyMergedDictConfig expands forwarder source dict import_tables`() {
-        val rimeDir = createTempDir()
-        // 转发器：源词典自身无内联词条，仅 import_tables 引用子目录叶子表
-        java.io.File(rimeDir, "wubi98_mint.dict.yaml").writeText(
-            "---\nname: wubi98_mint\nversion: \"1.0\"\nsort: by_weight\nimport_tables:\n  - dicts/wubi98_base\n  - dicts/other_kaomoji\n...\n",
-            Charsets.UTF_8
-        )
-        PersonalDictManager.applyMergedDictConfig(rimeDir, "wubi98_mint")
-        val dictText = File(rimeDir, "wubi98_mint_merged.dict.yaml").readText(Charsets.UTF_8)
-        // 必须展开叶子表，而非引用转发器自身
-        assertTrue(dictText.contains("- dicts/wubi98_base"))
-        assertTrue(dictText.contains("- dicts/other_kaomoji"))
-        assertTrue(dictText.contains("- user_wubi98_mint"))
-        assertFalse("merged dict must not reference the forwarder itself", dictText.contains("- wubi98_mint\n"))
-    }
-
-    @Test
-    fun `readImportTables returns empty for flat dict`() {
-        val rimeDir = createTempDir()
-        val flat = java.io.File(rimeDir, "wubi86.dict.yaml")
-        flat.writeText("name: wubi86\nversion: \"1.0\"\nsort: original\n...\n工\ta\n", Charsets.UTF_8)
-        val result = PersonalDictManager.run { readImportTables(flat) }
-        assertTrue(result.isEmpty())
-    }
-
-    // ── 有编码（内联词条）判定 ──
-
-    @Test
-    fun `dictTextHasInlineEntries is true for dict with tab entries`() {
-        assertTrue(PersonalDictManager.dictTextHasInlineEntries("name: wubi86\n...\n工\ta\n许愿\tytdr\n"))
-    }
-
-    @Test
-    fun `dictTextHasInlineEntries is true for tab-prefixed empty-word entries`() {
-        assertTrue(PersonalDictManager.dictTextHasInlineEntries("...\n\tcokg\t\t全角空格\n"))
-    }
-
-    @Test
-    fun `dictTextHasInlineEntries is false for header-only dict`() {
-        assertFalse(PersonalDictManager.dictTextHasInlineEntries("name: wubi86\nversion: \"1.0\"\nsort: original\n...\n"))
-    }
-
-    @Test
-    fun `dictTextHasInlineEntries is false for forwarder with only import_tables`() {
-        val text = "---\nname: wubi98_mint\nversion: \"1.0\"\nsort: by_weight\nimport_tables:\n  - dicts/wubi98_base\n  - dicts/other_kaomoji\n...\n"
-        assertFalse(PersonalDictManager.dictTextHasInlineEntries(text))
-    }
-
-    // ── 方案自带合并表 ──
-
-    @Test
-    fun `applyMergedDictConfig appends pack to schema own merged dict without self reference`() {
-        val rimeDir = createTempDir()
-        // 方案自带合并表：translator/dictionary 已指向 ${schemaId}_merged，
-        // 合并表无内联词条（无编码），仅 import 子词典。
-        java.io.File(rimeDir, "wubi86.dict.yaml").writeText("name: wubi86\n...\n工\ta\n", Charsets.UTF_8)
-        java.io.File(rimeDir, "wubi86_merged.dict.yaml").writeText("""# Rime dict
----
-name: wubi86_merged
-version: "1.0"
-sort: by_weight
-import_tables:
-  - wubi86
-...
-""", Charsets.UTF_8)
-        PersonalDictManager.applyMergedDictConfig(rimeDir, "wubi86")
-        val dictText = File(rimeDir, "wubi86_merged.dict.yaml").readText(Charsets.UTF_8)
-        assertTrue(dictText.contains("- user_wubi86"))
-        assertTrue(dictText.contains("- wubi86"))
-        assertFalse("must not reference itself", dictText.contains("- wubi86_merged"))
-        assertEquals("front-matter sort preserved", 1, dictText.split("sort: by_weight").size - 1)
-        assertEquals("user pack appears once", 1, dictText.split("- user_wubi86").size - 1)
-    }
-
-    @Test
-    fun `applyMergedDictConfig with schema own merged dict is idempotent`() {
-        val rimeDir = createTempDir()
-        java.io.File(rimeDir, "wubi86.dict.yaml").writeText("name: wubi86\n...\n工\ta\n", Charsets.UTF_8)
-        java.io.File(rimeDir, "wubi86_merged.dict.yaml").writeText("""# Rime dict
----
-name: wubi86_merged
-version: "1.0"
-sort: original
-import_tables:
-  - wubi86
-...
-""", Charsets.UTF_8)
-        PersonalDictManager.applyMergedDictConfig(rimeDir, "wubi86")
-        PersonalDictManager.applyMergedDictConfig(rimeDir, "wubi86")
-        val dictText = File(rimeDir, "wubi86_merged.dict.yaml").readText(Charsets.UTF_8)
-        assertEquals(1, dictText.split("- user_wubi86").size - 1)
-    }
-
-    // ── insertUnderPatch 合入逻辑 ──
-
-    @Test
-    fun `insertUnderPatch creates patch when file missing`() {
-        val dir = createTempDir()
-        // applyPackConfig creates <schemaId>.custom.yaml
-        PersonalDictManager.applyPackConfig(dir, "pinyin_simp")
-        val file = File(dir, "pinyin_simp.custom.yaml")
-        assertTrue("file should exist", file.exists())
-        val text = file.readText(Charsets.UTF_8)
-        assertTrue("should start with patch:", text.startsWith("patch:"))
-        assertTrue(text.contains("translator/packs"))
-    }
-
-    @Test
-    fun `insertUnderPatch merges into existing patch block`() {
-        val dir = createTempDir()
-        val file = File(dir, "pinyin_simp.custom.yaml")
-        file.writeText("""# comment
-patch:
-  engine/translators/+:
-    - lua_translator@my_script
-  menu/page_size: 6
-""", Charsets.UTF_8)
-        PersonalDictManager.applyPackConfig(dir, "pinyin_simp")
-        val text = file.readText(Charsets.UTF_8)
-        assertTrue("existing lua translator preserved", text.contains("lua_translator@my_script"))
-        assertTrue("new pack config added", text.contains("translator/packs"))
-        assertTrue("existing menu/page_size preserved", text.contains("menu/page_size: 6"))
-        assertTrue("pack name present", text.contains("user_pinyin_simp"))
-    }
-
-    @Test
-    fun `insertUnderPatch creates patch when file has no patch section`() {
-        val dir = createTempDir()
-        // applyCustomPhraseTranslator creates <schemaId>.custom.yaml
-        val file = File(dir, "wubi86.custom.yaml")
-        file.writeText("# just a comment\n", Charsets.UTF_8)
-        PersonalDictManager.applyCustomPhraseTranslator(dir, "wubi86", "custom_phrase")
-        val text = file.readText(Charsets.UTF_8)
-        assertTrue("patch: should be created", text.contains("patch:"))
-        assertTrue("content should be added under patch", text.contains("table_translator@custom_phrase"))
-    }
-
-    @Test
-    fun `insertUnderPatch handles document end marker`() {
-        val dir = createTempDir()
-        val file = File(dir, "pinyin_simp.custom.yaml")
-        file.writeText("""patch:
-  existing_key: value
-...
-""", Charsets.UTF_8)
-        PersonalDictManager.applyPackConfig(dir, "pinyin_simp")
-        val text = file.readText(Charsets.UTF_8)
-        assertFalse("doc end marker should be stripped", text.contains("..."))
-        assertTrue("existing key preserved", text.contains("existing_key: value"))
-        assertTrue("new entry added", text.contains("translator/packs"))
-    }
-
-    @Test
-    fun `insertUnderPatch preserves existing entries when merging`() {
-        val dir = createTempDir()
-        val file = File(dir, "pinyin_simp.custom.yaml")
-        file.writeText("""patch:
-  engine/filters/@before/0:
-    - lua_filter@custom_filter1
-    - lua_filter@custom_filter2
-  menu/page_size: 8
-""", Charsets.UTF_8)
-        PersonalDictManager.applyPackConfig(dir, "pinyin_simp")
-        val text = file.readText(Charsets.UTF_8)
-        assertTrue(text.contains("engine/filters/@before/0:"))
-        assertTrue(text.contains("lua_filter@custom_filter1"))
-        assertTrue(text.contains("lua_filter@custom_filter2"))
-        assertTrue(text.contains("menu/page_size: 8"))
-        assertTrue(text.contains("translator/packs"))
-    }
-
-    @Test
-    fun `applyPackConfig preserves existing lua patches in custom yaml`() {
-        val dir = createTempDir()
-        val file = File(dir, "pinyin_simp.custom.yaml")
-        file.writeText("""patch:
-  engine/filters/@before/0:
-    - lua_filter@custom_filter
-  menu/page_size: 8
-""", Charsets.UTF_8)
-        PersonalDictManager.applyPackConfig(dir, "pinyin_simp")
-        val text = file.readText(Charsets.UTF_8)
-        assertTrue("Lua filter preserved", text.contains("lua_filter@custom_filter"))
-        assertTrue("page_size preserved", text.contains("menu/page_size: 8"))
-        assertTrue("packs config merged", text.contains("translator/packs"))
-    }
-
-    @Test
-    fun `applyMergedDictConfig preserves existing content in custom yaml`() {
-        val dir = createTempDir()
-        java.io.File(dir, "wubi86.dict.yaml").writeText("name: wubi86\nversion: \"1.0\"\nsort: original\n...\n", Charsets.UTF_8)
-        val file = File(dir, "wubi86.custom.yaml")
-        file.writeText("""patch:
-  engine/filters/@before/0:
-    - lua_filter@my_filter
-""", Charsets.UTF_8)
-        PersonalDictManager.applyMergedDictConfig(dir, "wubi86")
-        val text = file.readText(Charsets.UTF_8)
-        assertTrue("existing lua filter preserved", text.contains("lua_filter@my_filter"))
-        assertTrue("merged dict config added", text.contains("translator/dictionary"))
-        assertTrue("merged dict name present", text.contains("wubi86_merged"))
-    }
-
-    @Test
-    fun `applyCustomPhraseTranslator preserves existing patches`() {
-        val dir = createTempDir()
-        val file = File(dir, "pinyin_simp.custom.yaml")
-        file.writeText("""patch:
-  engine/filters/@before/0:
-    - lua_filter@custom_filter
-  menu/page_size: 8
-""", Charsets.UTF_8)
-        PersonalDictManager.applyCustomPhraseTranslator(dir, "pinyin_simp", "custom_phrase")
-        val text = file.readText(Charsets.UTF_8)
-        assertTrue("Lua filter preserved", text.contains("lua_filter@custom_filter"))
-        assertTrue("page_size preserved", text.contains("menu/page_size: 8"))
-        assertTrue("custom_phrase added", text.contains("table_translator@custom_phrase"))
-        assertTrue("custom_phrase config complete", text.contains("db_class: stabledb"))
-    }
-
-    @Test
-    fun `ensureSchemaPack preserves existing custom yaml with lua patches`() {
-        val context = mockContext()
-        val rimeDir = java.io.File(context.filesDir, "rime")
-        rimeDir.mkdirs()
-        // 模拟第三方方案：有 schema.yaml + 预置 custom.yaml（含 Lua 翻译器）
-        java.io.File(rimeDir, "flypy.schema.yaml").writeText("""
-speller:
-  alphabet: abcdefghijklmnopqrstuvwxyz
-  algebra:
-    - erase/^xx$/
-""".trimIndent())
-        java.io.File(rimeDir, "flypy.custom.yaml").writeText("""patch:
-  engine/filters/@before/0:
-    - lua_filter@my_filter
-  menu/page_size: 8
-""", Charsets.UTF_8)
-        createCustomPhraseFile(rimeDir, "flypy")
-        runBlocking { PersonalDictManager.ensureSchemaPack(context, "flypy") }
-        val text = java.io.File(rimeDir, "flypy.custom.yaml").readText(Charsets.UTF_8)
-        // Lua 配置保留
-        assertTrue(text.contains("lua_filter@my_filter"))
-        assertTrue(text.contains("menu/page_size: 8"))
-        // Xime 配置合入
-        assertTrue(text.contains("translator/packs"))
-        assertTrue(text.contains("table_translator@custom_phrase"))
-        // 确保幂等
-        assertEquals("custom_phrase appears once", 1, text.split("table_translator@custom_phrase").size - 1)
-        assertEquals("packs appears once", 1, text.split("user_flypy").size - 1)
-    }
-
-    @Test
-    fun `multiple apply calls produce valid yaml with all entries once`() {
-        val dir = createTempDir()
-        val file = File(dir, "pinyin_simp.custom.yaml")
-        file.writeText("""patch:
-  existing_key: value
-""", Charsets.UTF_8)
-        PersonalDictManager.applyPackConfig(dir, "pinyin_simp")
-        PersonalDictManager.applyCustomPhraseTranslator(dir, "pinyin_simp", "custom_phrase")
-        PersonalDictManager.applyCustomPhraseTranslator(dir, "pinyin_simp", "custom_phrase")
-        PersonalDictManager.applyPackConfig(dir, "pinyin_simp")
-        val text = file.readText(Charsets.UTF_8)
-        assertTrue("existing key preserved", text.contains("existing_key: value"))
-        assertTrue("packs added", text.contains("translator/packs"))
-        assertTrue("custom_phrase added", text.contains("table_translator@custom_phrase"))
-        assertTrue("existing appears once", text.indexOf("existing_key: value") == text.lastIndexOf("existing_key: value"))
-        assertTrue("packs appears once", text.indexOf("translator/packs") == text.lastIndexOf("translator/packs"))
-        assertTrue("custom_phrase appears once", text.indexOf("table_translator@custom_phrase") == text.lastIndexOf("table_translator@custom_phrase"))
-    }
-
-    @Test
-    fun `ensureSchemaPack merged dict path preserves existing content`() {
-        val context = mockContext()
-        val rimeDir = java.io.File(context.filesDir, "rime")
-        rimeDir.mkdirs()
-        // 模拟无 speller/algebra 的第三方方案（如五笔）的预置 custom.yaml
-        java.io.File(rimeDir, "wubi86.schema.yaml").writeText("""
-speller:
-  alphabet: abcdefghijklmnopqrstuvwxyz
-  max_code_length: 4
-""".trimIndent())
-        java.io.File(rimeDir, "wubi86.dict.yaml").writeText("name: wubi86\nversion: \"1.0\"\nsort: original\n...\n", Charsets.UTF_8)
-        java.io.File(rimeDir, "wubi86.custom.yaml").writeText("""patch:
-  engine/filters/@before/0:
-    - lua_filter@custom_filter
-  menu/page_size: 8
-""", Charsets.UTF_8)
-        createCustomPhraseFile(rimeDir, "wubi86")
-        runBlocking { PersonalDictManager.ensureSchemaPack(context, "wubi86") }
-        val text = java.io.File(rimeDir, "wubi86.custom.yaml").readText(Charsets.UTF_8)
-        assertTrue("Lua filter preserved", text.contains("lua_filter@custom_filter"))
-        assertTrue("page_size preserved", text.contains("menu/page_size: 8"))
-        assertTrue("merged dict config added", text.contains("translator/dictionary"))
-        assertTrue("custom_phrase added", text.contains("table_translator@custom_phrase"))
-        assertEquals("merged dict appears once", 1, text.split("wubi86_merged").size - 1)
-        assertEquals("custom_phrase appears once", 1, text.split("table_translator@custom_phrase").size - 1)
-    }
-
-    @Test
-    fun `ensureSchemaPack reverse lookup path preserves existing content`() {
-        val context = mockContext()
-        val rimeDir = java.io.File(context.filesDir, "rime")
-        rimeDir.mkdirs()
-        java.io.File(rimeDir, "wubi86_pinyin.schema.yaml").writeText("""
-translator:
-  dictionary: wubi86_pinyin
-  reverse_lookup_translator: true
-""".trimIndent())
-        java.io.File(rimeDir, "wubi86_pinyin.custom.yaml").writeText("""patch:
-  engine/filters/@before/0:
-    - lua_filter@custom_filter
-  menu/page_size: 8
-""", Charsets.UTF_8)
-        createCustomPhraseFile(rimeDir, "wubi86_pinyin")
-        runBlocking { PersonalDictManager.ensureSchemaPack(context, "wubi86_pinyin") }
-        val text = java.io.File(rimeDir, "wubi86_pinyin.custom.yaml").readText(Charsets.UTF_8)
-        assertTrue("Lua filter preserved", text.contains("lua_filter@custom_filter"))
-        assertTrue("page_size preserved", text.contains("menu/page_size: 8"))
-        assertTrue("custom_phrase added", text.contains("table_translator@custom_phrase"))
-        assertFalse("no packs for reverse_lookup", text.contains("translator/packs"))
-        assertFalse("no merged dict for reverse_lookup", text.contains("translator/dictionary"))
-    }
-
-    @Test
-    fun `applyPackConfig creates file when custom yaml is empty`() {
-        val dir = createTempDir()
-        val file = File(dir, "pinyin_simp.custom.yaml")
-        file.createNewFile()
-        file.writeText("")
-        PersonalDictManager.applyPackConfig(dir, "pinyin_simp")
-        val text = file.readText(Charsets.UTF_8)
-        assertTrue("patch created even for empty file", text.contains("patch:"))
-        assertTrue("packs added", text.contains("translator/packs"))
-    }
-
-    // ── 方案自带 packs 声明 ──
-
-    @Test
-    fun `readSchemaPacks returns user packs declared in schema`() {
-        val rimeDir = createTempDir()
-        java.io.File(rimeDir, "pinyin_simp.schema.yaml").writeText("""
-translator:
-  dictionary: pinyin_simp
-  packs:
-    - user_simp
-    - user_extra
-  preedit_format:
-    - xform/a/b
-""".trimIndent(), Charsets.UTF_8)
-        val result = PersonalDictManager.run { readSchemaPacks(rimeDir, "pinyin_simp") }
-        assertEquals(listOf("user_simp", "user_extra"), result)
-    }
-
-    @Test
-    fun `readSchemaPacks returns empty when schema has no packs`() {
-        val rimeDir = createTempDir()
-        java.io.File(rimeDir, "wubi86.schema.yaml").writeText("translator:\n  dictionary: wubi86\n", Charsets.UTF_8)
-        assertTrue(PersonalDictManager.run { readSchemaPacks(rimeDir, "wubi86") }.isEmpty())
-    }
-
-    @Test
-    fun `readSchemaPacks parses real pinyin schema structure via kaml`() {
-        val rimeDir = createTempDir()
-        java.io.File(rimeDir, "pinyin_simp.schema.yaml").writeText("""
-schema:
-  schema_id: pinyin_simp
-  name: 简体拼音
-switches:
-  - name: ascii_mode
-    states: [ 中文, 西文 ]
-engine:
-  translators:
-    - punct_translator
-    - script_translator
-    - reverse_lookup_translator
-    - lua_translator@*uuid
-translator:
-  dictionary: pinyin_simp
-  packs:
-    - user_simp
-  preedit_format:
-    - xform/([nl])v/$1ü/
-reverse_lookup:
-  dictionary: stroke
-  prefix: "`"
-punctuator:
-  import_preset: default
-  __include: symbols:/punctuator
-""".trimIndent(), Charsets.UTF_8)
-        val result = PersonalDictManager.run { readSchemaPacks(rimeDir, "pinyin_simp") }
-        assertEquals(listOf("user_simp"), result)
-    }
-
-    @Test
-    fun `readSchemaPacks falls back to regex when yaml parse fails`() {
-        val rimeDir = createTempDir()
-        // 非法 YAML（引用未定义别名），kaml 解析失败后应回退正则
-        java.io.File(rimeDir, "bad.schema.yaml").writeText("""
-translator:
-  dictionary: bad
-  packs:
-    - user_bad
-foo: *undefined_alias
-""".trimIndent(), Charsets.UTF_8)
-        val result = PersonalDictManager.run { readSchemaPacks(rimeDir, "bad") }
-        assertEquals(listOf("user_bad"), result)
-    }
-
-    @Test
-    fun `ensureSchemaPack uses schema own pack name and skips packs patch`() {
-        val context = mockContext()
-        val rimeDir = java.io.File(context.filesDir, "rime")
-        rimeDir.mkdirs()
-        java.io.File(rimeDir, "pinyin_simp.schema.yaml").writeText("""
-speller:
-  alphabet: abc
-  algebra:
-    - erase/^xx$/
-translator:
-  dictionary: pinyin_simp
-  packs:
-    - user_simp
-""".trimIndent())
-        createCustomPhraseFile(rimeDir, "pinyin_simp")
-        runBlocking { PersonalDictManager.ensureSchemaPack(context, "pinyin_simp") }
-        assertTrue("own pack file should exist", java.io.File(rimeDir, "user_simp.dict.yaml").exists())
-        assertFalse("generated pack name should not be used", java.io.File(rimeDir, "user_pinyin_simp.dict.yaml").exists())
-        val customText = java.io.File(rimeDir, "pinyin_simp.custom.yaml").readText(Charsets.UTF_8)
-        assertFalse("schema own packs should not be overridden by patch", customText.contains("translator/packs"))
-        assertTrue("custom_phrase should still be added", customText.contains("table_translator@custom_phrase"))
-    }
-
-    @Test
-    fun `applyPackConfig clears stale patch when schema owns packs`() {
-        val rimeDir = createTempDir()
-        java.io.File(rimeDir, "pinyin_simp.schema.yaml").writeText("""
-translator:
-  dictionary: pinyin_simp
-  packs:
-    - user_simp
-""".trimIndent(), Charsets.UTF_8)
-        val customFile = java.io.File(rimeDir, "pinyin_simp.custom.yaml")
-        customFile.writeText("""patch:
-  "translator/packs": ["user_pinyin_simp"]
-""", Charsets.UTF_8)
-        PersonalDictManager.applyPackConfig(rimeDir, "pinyin_simp")
-        val text = customFile.readText(Charsets.UTF_8)
-        assertFalse("stale patch should be removed", text.contains("translator/packs"))
-    }
-
-    @Test
-    fun `ensureSchemaPack keeps existing own pack file content`() {
-        val context = mockContext()
-        val rimeDir = java.io.File(context.filesDir, "rime")
-        rimeDir.mkdirs()
-        java.io.File(rimeDir, "pinyin_simp.schema.yaml").writeText("""
-speller:
-  alphabet: abc
-  algebra:
-    - erase/^xx$/
-translator:
-  dictionary: pinyin_simp
-  packs:
-    - user_simp
-""".trimIndent())
-        java.io.File(rimeDir, "user_simp.dict.yaml").writeText("# Rime dict\n---\nname: user_simp\n...\n你好\tni hao\n", Charsets.UTF_8)
-        createCustomPhraseFile(rimeDir, "pinyin_simp")
-        runBlocking { PersonalDictManager.ensureSchemaPack(context, "pinyin_simp") }
-        val text = java.io.File(rimeDir, "user_simp.dict.yaml").readText(Charsets.UTF_8)
-        assertTrue("existing entries must be kept", text.contains("你好\tni hao"))
-    }
-
-    // ── 词库管理：方案自带 packs 的用户词库解析 ──
-
-    @Test
-    fun `resolvePersonalDictFile uses schema own packs name`() {
-        val rimeDir = createTempDir()
-        java.io.File(rimeDir, "pinyin_simp.schema.yaml").writeText("""
-translator:
-  dictionary: pinyin_simp
-  packs:
-    - user_simp
-""".trimIndent())
-        val file = PersonalDictManager.resolvePersonalDictFile(rimeDir, "pinyin_simp")
-        assertEquals("user_simp.dict.yaml", file.name)
-    }
-
-    @Test
-    fun `loadEntries reads schema own pack file`() {
-        val context = mockContext()
-        val rimeDir = java.io.File(context.filesDir, "rime")
-        rimeDir.mkdirs()
-        java.io.File(rimeDir, "pinyin_simp.schema.yaml").writeText("""
-translator:
-  dictionary: pinyin_simp
-  packs:
-    - user_simp
-""".trimIndent(), Charsets.UTF_8)
-        java.io.File(rimeDir, "user_simp.dict.yaml").writeText("# Rime dict\n---\nname: user_simp\n...\n你好\tni hao\n", Charsets.UTF_8)
-        val entries = PersonalDictManager.loadEntries(context, "pinyin_simp")
-        assertTrue(entries.any { it.word == "你好" && it.code == "ni hao" })
-    }
-
-    @Test
-    fun `saveEntries writes to schema own pack file`() {
-        val context = mockContext()
-        val rimeDir = java.io.File(context.filesDir, "rime")
-        rimeDir.mkdirs()
-        java.io.File(rimeDir, "pinyin_simp.schema.yaml").writeText("""
-translator:
-  dictionary: pinyin_simp
-  packs:
-    - user_simp
-""".trimIndent(), Charsets.UTF_8)
-        PersonalDictManager.saveEntries(context, "pinyin_simp", listOf(DictEntry("测试", "ce shi")))
-        val file = java.io.File(rimeDir, "user_simp.dict.yaml")
-        assertTrue("should write to schema own pack file", file.exists())
-        assertFalse("must not create generated pack name", java.io.File(rimeDir, "user_pinyin_simp.dict.yaml").exists())
-        val loaded = PersonalDictManager.parsePersonalDictEntries(file.readText(Charsets.UTF_8))
-        assertTrue(loaded.any { it.word == "测试" })
-    }
-
-    private fun createTempFile(content: String): File {
-        val file = File.createTempFile("personal_dict_test", ".tmp")
-        file.writeText(content, Charsets.UTF_8)
-        file.deleteOnExit()
-        return file
+        val loaded = PersonalDictManager.parseStableDbEntries(file.readText(Charsets.UTF_8))
+        assertTrue(loaded.any { it.word == "hello" })
     }
 
     private fun createTempDir(): File {
