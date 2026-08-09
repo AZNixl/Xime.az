@@ -32,6 +32,7 @@ fun SettingsScreen(
                 onNavigateToLayoutDisplay = { navController.navigate(SettingsRoutes.LayoutDisplay) },
                 onNavigateToDictionary = { navController.navigate(SettingsRoutes.Dictionary) },
                 onNavigateToPlugins = { navController.navigate(SettingsRoutes.Plugins) },
+                onNavigateToModelLocal = { navController.navigate(SettingsRoutes.ModelLocal) },
                 onNavigateToSmartPrediction = { navController.navigate(SettingsRoutes.SmartPrediction) },
                 onNavigateToSpeechToText = { navController.navigate(SettingsRoutes.SpeechToText) },
                 onNavigateToAbout = { navController.navigate(SettingsRoutes.About) },
@@ -121,6 +122,9 @@ fun SettingsScreen(
                 onBack = { navController.popBackStack() },
                 onNavigateToPluginSettings = { pluginId ->
                     navController.navigate("${SettingsRoutes.PluginSettings}/$pluginId")
+                },
+                onNavigateToPluginMarketDetail = { pluginId ->
+                    navController.navigate("plugin_market_detail/$pluginId")
                 },
                 onNavigateToSpeechToText = { navController.navigate(SettingsRoutes.SpeechToText) }
             )

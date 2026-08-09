@@ -86,6 +86,7 @@ import com.kingzcheung.xime.model.ModelCategory
 import com.kingzcheung.xime.model.ModelDownloadState
 import com.kingzcheung.xime.model.ModelInfo
 import com.kingzcheung.xime.model.ModelVersion
+import com.kingzcheung.xime.plugin.core.runtime.PluginManager
 import com.kingzcheung.xime.settings.MarketScheme
 import com.kingzcheung.xime.settings.MarketSchemeItem
 import com.kingzcheung.xime.settings.MarketPluginItem
@@ -1903,6 +1904,14 @@ private fun PluginDetailBody(
     val selectedVersion = uiState.selectedVersions[plugin.id]
         ?: plugin.resolvedVersion()?.version.orEmpty()
 
+    val installedPlugin = remember(item.plugin.id) {
+        if (item.installed) {
+            PluginManager.getAllInstallPlugins().find { it.id == item.plugin.id }
+        } else {
+            null
+        }
+    }
+
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
@@ -1984,6 +1993,32 @@ private fun PluginDetailBody(
             item {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     plugin.tags.forEach { tag -> MarketTag(tag) }
+                }
+            }
+        }
+
+        val declaredHosts = installedPlugin?.declaredHosts.orEmpty()
+        if (declaredHosts.isNotEmpty()) {
+            item {
+                Text(
+                    "网络权限",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            item {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerLow,
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        NetworkAccessSection(
+                            pluginId = item.plugin.id,
+                            pluginName = plugin.name.ifEmpty { plugin.id },
+                            hosts = declaredHosts,
+                        )
+                    }
                 }
             }
         }

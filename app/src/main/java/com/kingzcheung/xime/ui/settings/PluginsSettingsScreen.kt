@@ -7,7 +7,6 @@ import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -34,8 +33,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AddBox
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.FileOpen
@@ -45,6 +42,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.twotone.Storefront
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -103,6 +101,7 @@ import kotlinx.coroutines.withContext
 fun PluginsSettingsContent(
     onBack: () -> Unit,
     onNavigateToPluginSettings: (String) -> Unit = {},
+    onNavigateToPluginMarketDetail: (String) -> Unit = {},
     onNavigateToSpeechToText: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -265,6 +264,7 @@ fun PluginsSettingsContent(
                             icon = uiState.icons[extension.id],
                             viewModel = viewModel,
                             onClick = { onNavigateToPluginSettings(extension.id) },
+                            onOpenMarketDetail = { onNavigateToPluginMarketDetail(extension.id) },
                             isActive = extension.category == PluginCategory.ASR && extension.id == activeAsrPluginId,
                             onActivate = if (extension.category.activation == Activation.SINGLE) {
                                 onNavigateToSpeechToText
@@ -295,13 +295,13 @@ private fun ExtensionItem(
     icon: PluginIcon?,
     viewModel: PluginsSettingsViewModel,
     onClick: () -> Unit = {},
+    onOpenMarketDetail: () -> Unit = {},
     isActive: Boolean = false,
     onActivate: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     var isEnabled by remember { mutableStateOf(viewModel.isPluginEnabled(extension.id)) }
     var showErrorDialog by remember { mutableStateOf(false) }
-    var isExpanded by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showTrustConfirm by remember { mutableStateOf(false) }
     var trustConfirmAction by remember { mutableStateOf<(() -> Unit)?>(null) }
@@ -350,7 +350,7 @@ private fun ExtensionItem(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { isExpanded = !isExpanded }
+                .clickable { onOpenMarketDetail() }
                 .padding(12.dp)
         ) {
             // 第一行：图标 + 标题 + 状态指示器
@@ -395,14 +395,6 @@ private fun ExtensionItem(
                             modifier = Modifier.size(14.dp)
                         )
                     }
-                    
-                    // 展开指示器
-                    Icon(
-                        if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = if (isExpanded) "收起" else "展开",
-                        modifier = Modifier.size(18.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                    )
                 }
             }
             
@@ -437,141 +429,139 @@ private fun ExtensionItem(
                 )
             }
             
-            // 展开详情
-            AnimatedVisibility(visible = isExpanded) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+            // 详情
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                
+                if (extension.description.isNotEmpty()) {
+                    Text(
+                        text = extension.description,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
+                }
+
+                if (extension.declaredHosts.isNotEmpty()) {
+                    NetworkAccessSection(
+                        pluginId = extension.id,
+                        pluginName = extension.name,
+                        hosts = extension.declaredHosts
+                    )
+                }
+
+                if (!hostCompatible) {
+                    Text(
+                        text = "该插件不支持当前主应用版本，已跳过加载" +
+                            if (hostRange.isNotEmpty()) "（要求 $hostRange）" else "。请更新主应用后重试。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error.copy(alpha = 0.8f)
+                    )
+                }
+
+                // 操作按钮行
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-                    
-                    if (extension.description.isNotEmpty()) {
-                        Text(
-                            text = extension.description,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                        )
-                    }
-
-                    if (extension.declaredHosts.isNotEmpty()) {
-                        NetworkAccessSection(
-                            pluginId = extension.id,
-                            pluginName = extension.name,
-                            hosts = extension.declaredHosts
-                        )
-                    }
-
-                    if (!hostCompatible) {
-                        Text(
-                            text = "该插件不支持当前主应用版本，已跳过加载" +
-                                if (hostRange.isNotEmpty()) "（要求 $hostRange）" else "。请更新主应用后重试。",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error.copy(alpha = 0.8f)
-                        )
-                    }
-                    
-                    // 操作按钮行
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        if (extension.category.activation == Activation.SINGLE) {
-                            // 单选分类：激活在对应功能设置页完成，插件中心不显示启用开关
-                            if (!hostCompatible) {
-                                Text(
-                                    text = "与主应用版本不兼容",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.error
-                                )
-                            } else {
-                                Text(
-                                    text = if (isActive) "当前使用中" else "未使用",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = if (isActive) MaterialTheme.colorScheme.primary
-                                    else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.weight(1f))
-
-                            if (!hostCompatible && hostRange.isNotEmpty()) {
-                                Text(
-                                    text = "要求 $hostRange",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                )
-                            } else if (!isActive && onActivate != null) {
-                                OutlinedButton(
-                                    onClick = {
-                                        if (extension.trustLevel == TrustLevel.TRUSTED) {
-                                            onActivate()
-                                        } else {
-                                            trustConfirmAction = { onActivate() }
-                                            showTrustConfirm = true
-                                        }
-                                    },
-                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                                ) {
-                                    Text("去选择", style = MaterialTheme.typography.labelMedium)
-                                }
-                            }
-                        } else {
-                            // 多选分类：插件管理不提供启用开关，启用/停用在使用处进行（如表情面板）
+                    if (extension.category.activation == Activation.SINGLE) {
+                        // 单选分类：激活在对应功能设置页完成，插件中心不显示启用开关
+                        if (!hostCompatible) {
                             Text(
-                                text = when {
-                                    !hostCompatible -> "不兼容"
-                                    isEnabled -> "已启用"
-                                    else -> "未启用"
-                                },
+                                text = "与主应用版本不兼容",
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = if (!hostCompatible)
-                                    MaterialTheme.colorScheme.error
-                                else if (isEnabled)
-                                    MaterialTheme.colorScheme.onSurface
-                                else
-                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                color = MaterialTheme.colorScheme.error
                             )
-
-                            Spacer(modifier = Modifier.weight(1f))
+                        } else {
+                            Text(
+                                text = if (isActive) "当前使用中" else "未使用",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = if (isActive) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
 
-                        // 设置按钮
-                        if (hasSettings) {
+                        Spacer(modifier = Modifier.weight(1f))
+
+                        if (!hostCompatible && hostRange.isNotEmpty()) {
+                            Text(
+                                text = "要求 $hostRange",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            )
+                        } else if (!isActive && onActivate != null) {
                             OutlinedButton(
-                                onClick = onClick,
+                                onClick = {
+                                    if (extension.trustLevel == TrustLevel.TRUSTED) {
+                                        onActivate()
+                                    } else {
+                                        trustConfirmAction = { onActivate() }
+                                        showTrustConfirm = true
+                                    }
+                                },
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                             ) {
-                                Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("设置", style = MaterialTheme.typography.labelMedium)
+                                Text("去选择", style = MaterialTheme.typography.labelMedium)
                             }
                         }
-                        
-                        // 删除按钮
-                        if (extension.source == PluginSource.SYSTEM) {
-                            IconButton(
-                                onClick = {
-                                    try {
-                                        val intent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                                        intent.data = Uri.parse("package:${extension.id}")
-                                        context.startActivity(intent)
-                                        Toast.makeText(context, "请在应用信息页面卸载", Toast.LENGTH_SHORT).show()
-                                    } catch (e: Exception) {
-                                        Toast.makeText(context, "无法打开: ${e.message}", Toast.LENGTH_SHORT).show()
-                                    }
+                    } else {
+                        // 多选分类：插件管理不提供启用开关，启用/停用在使用处进行（如表情面板）
+                        Text(
+                            text = when {
+                                !hostCompatible -> "不兼容"
+                                isEnabled -> "已启用"
+                                else -> "未启用"
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (!hostCompatible)
+                                MaterialTheme.colorScheme.error
+                            else if (isEnabled)
+                                MaterialTheme.colorScheme.onSurface
+                            else
+                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+
+                    // 设置按钮
+                    if (hasSettings) {
+                        OutlinedButton(
+                            onClick = onClick,
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("设置", style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+
+                    // 删除按钮
+                    if (extension.source == PluginSource.SYSTEM) {
+                        IconButton(
+                            onClick = {
+                                try {
+                                    val intent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                                    intent.data = Uri.parse("package:${extension.id}")
+                                    context.startActivity(intent)
+                                    Toast.makeText(context, "请在应用信息页面卸载", Toast.LENGTH_SHORT).show()
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "无法打开: ${e.message}", Toast.LENGTH_SHORT).show()
                                 }
-                            ) {
-                                Icon(Icons.Default.Delete, contentDescription = "卸载",
-                                     tint = MaterialTheme.colorScheme.error)
                             }
-                        } else {
-                            IconButton(
-                                onClick = { showDeleteConfirm = true }
-                            ) {
-                                Icon(Icons.Default.Delete, contentDescription = "卸载",
-                                     tint = MaterialTheme.colorScheme.error)
-                            }
+                        ) {
+                            Icon(Icons.Default.Delete, contentDescription = "卸载",
+                                 tint = MaterialTheme.colorScheme.error)
+                        }
+                    } else {
+                        IconButton(
+                            onClick = { showDeleteConfirm = true }
+                        ) {
+                            Icon(Icons.Default.Delete, contentDescription = "卸载",
+                                 tint = MaterialTheme.colorScheme.error)
                         }
                     }
                 }
@@ -649,10 +639,11 @@ private fun ExtensionItem(
 
 // 插件网络访问授权：展示声明域名，未授权可授权，已授权可撤销
 @Composable
-private fun NetworkAccessSection(
+fun NetworkAccessSection(
     pluginId: String,
     pluginName: String,
-    hosts: List<String>
+    hosts: List<String>,
+    modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     var authorized by remember(pluginId) {
@@ -660,7 +651,7 @@ private fun NetworkAccessSection(
     }
     var pendingHost by remember { mutableStateOf<String?>(null) }
 
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(
             text = "网络访问",
             style = MaterialTheme.typography.labelMedium,
@@ -748,7 +739,7 @@ fun PluginIconView(
             .background(
                 MaterialTheme.colorScheme.surfaceVariant,
                 shape = RoundedCornerShape(10.dp)
-            )
+            ).padding(4.dp)
     } else {
         modifier
     }
