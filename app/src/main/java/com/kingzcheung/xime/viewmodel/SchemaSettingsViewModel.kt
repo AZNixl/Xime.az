@@ -97,8 +97,13 @@ class SchemaSettingsViewModel(application: Application) : AndroidViewModel(appli
         if (RimeEngine.isInitialized()) {
             val available = RimeEngine.getInstance().getAvailableSchemas()
             if (schema.schemaId in available) {
-                RimeEngine.getInstance().switchSchema(schema.schemaId)
-                showToast("已切换到${schema.name}")
+                // 部署/编译进行中 switchSchema 不阻塞返回 false，避免主线程等待
+                val switched = RimeEngine.getInstance().switchSchema(schema.schemaId)
+                if (switched) {
+                    showToast("已切换到${schema.name}")
+                } else {
+                    showToast("词库部署中，请稍后再切换方案")
+                }
             } else {
                 showToast("请点击「部署」按钮")
             }

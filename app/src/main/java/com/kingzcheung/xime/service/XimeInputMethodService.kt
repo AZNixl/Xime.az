@@ -543,6 +543,10 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                     }
                     
                     sessionController.updateSchemaName()
+                    // onStartInput 在部署进行中会跳过 schema 切换与选项恢复，
+                    // 部署完成后这里补齐 UI 状态，保证键盘可用
+                    sessionController.restorePersistedSchemaOptions()
+                    updateUI()
                     Log.d(TAG, "initRimeEngine: Rime engine initialized successfully")
                 }
             } catch (e: Exception) {
@@ -1064,73 +1068,80 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         )
         
         if (RimeEngine.isInitialized()) {
-            val savedSchema = SettingsPreferences.getCurrentSchema(this)
-            val currentSchema = rimeEngine.getCurrentSchema()
-            val availableSchemas = rimeEngine.getAvailableSchemas()
-            debugLog("onStartInput: saved=$savedSchema, current=$currentSchema, available=${availableSchemas.joinToString()}")
-            
-            val actualSchema: String
-            when {
-                savedSchema == HANDWRITING_SCHEMA_ID -> {
-                    debugLog("onStartInput: saved schema is handwriting, checking model files")
-                    val hwDir = com.kingzcheung.xime.model.ModelStorage.getModelDir(this, "ochwpro")
-                    com.kingzcheung.xime.model.ModelStorage.migrateLegacyForModel(this, "ochwpro")
-                    val modelFile = java.io.File(hwDir, "ochwpro.onnx")
-                    val charIndexFile = java.io.File(hwDir, "char_index.json")
-                    if (!modelFile.exists() || !charIndexFile.exists()) {
-                        Log.w(TAG, "Handwriting model not found, falling back to first available schema")
-                        android.widget.Toast.makeText(
-                            this, "请先下载手写模型", android.widget.Toast.LENGTH_LONG
-                        ).show()
-                        val fallbackSchema = if (availableSchemas.isNotEmpty()) {
-                            availableSchemas.first()
+            // 部署/全量编译进行中：不执行 schema 切换（switchSchema 会等待 rimeLock，
+            // 60MB 词库编译可达 30s+，主线程等待会导致 ANR）。部署完成后
+            // initRimeEngine 的流程会自动切换到正确方案，这里只做 UI 状态恢复。
+            if (!rimeEngine.isMaintaining()) {
+                val savedSchema = SettingsPreferences.getCurrentSchema(this)
+                val currentSchema = rimeEngine.getCurrentSchema()
+                val availableSchemas = rimeEngine.getAvailableSchemas()
+                debugLog("onStartInput: saved=$savedSchema, current=$currentSchema, available=${availableSchemas.joinToString()}")
+                
+                val actualSchema: String
+                when {
+                    savedSchema == HANDWRITING_SCHEMA_ID -> {
+                        debugLog("onStartInput: saved schema is handwriting, checking model files")
+                        val hwDir = com.kingzcheung.xime.model.ModelStorage.getModelDir(this, "ochwpro")
+                        com.kingzcheung.xime.model.ModelStorage.migrateLegacyForModel(this, "ochwpro")
+                        val modelFile = java.io.File(hwDir, "ochwpro.onnx")
+                        val charIndexFile = java.io.File(hwDir, "char_index.json")
+                        if (!modelFile.exists() || !charIndexFile.exists()) {
+                            Log.w(TAG, "Handwriting model not found, falling back to first available schema")
+                            android.widget.Toast.makeText(
+                                this, "请先下载手写模型", android.widget.Toast.LENGTH_LONG
+                            ).show()
+                            val fallbackSchema = if (availableSchemas.isNotEmpty()) {
+                                availableSchemas.first()
+                            } else {
+                                savedSchema
+                            }
+                            schemaController.applyPageSizeSetting(fallbackSchema)
+                            rimeEngine.switchSchema(fallbackSchema)
+                            SettingsPreferences.setCurrentSchema(this, fallbackSchema)
+                            actualSchema = fallbackSchema
                         } else {
-                            savedSchema
+                            debugLog("onStartInput: saved schema is handwriting, keeping handwriting mode")
+                            keyboardViewModel.switchMain(com.kingzcheung.xime.keyboard.MainType.HANDWRITING)
+                            actualSchema = savedSchema
                         }
+                    }
+                    savedSchema in availableSchemas -> {
+                        if (savedSchema != currentSchema) {
+                            debugLog("onStartInput: Switching to saved schema: $savedSchema")
+                            schemaController.applyPageSizeSetting(savedSchema)
+                            rimeEngine.switchSchema(savedSchema)
+                        } else {
+                            // 即使 schema 相同也重新 switch 一下，确保 processor 完全初始化
+                            debugLog("onStartInput: Schema already matches, re-switching to init processors")
+                            schemaController.applyPageSizeSetting(savedSchema)
+                            rimeEngine.switchSchema(savedSchema)
+                        }
+                        actualSchema = savedSchema
+                    }
+                    SchemaManager.isSchemaCompiled(this@XimeInputMethodService, savedSchema) -> {
+                        debugLog("onStartInput: Schema compiled but not in get_schema_list, switching anyway")
+                        schemaController.applyPageSizeSetting(savedSchema)
+                        rimeEngine.switchSchema(savedSchema)
+                        actualSchema = savedSchema
+                    }
+                    availableSchemas.isNotEmpty() -> {
+                        val fallbackSchema = availableSchemas.first()
+                        debugLog("onStartInput: savedSchema '$savedSchema' not available, falling back to '$fallbackSchema'")
                         schemaController.applyPageSizeSetting(fallbackSchema)
                         rimeEngine.switchSchema(fallbackSchema)
                         SettingsPreferences.setCurrentSchema(this, fallbackSchema)
                         actualSchema = fallbackSchema
-                    } else {
-                        debugLog("onStartInput: saved schema is handwriting, keeping handwriting mode")
-                        keyboardViewModel.switchMain(com.kingzcheung.xime.keyboard.MainType.HANDWRITING)
-                        actualSchema = savedSchema
                     }
+                    else -> actualSchema = savedSchema
                 }
-                savedSchema in availableSchemas -> {
-                    if (savedSchema != currentSchema) {
-                        debugLog("onStartInput: Switching to saved schema: $savedSchema")
-                        schemaController.applyPageSizeSetting(savedSchema)
-                        rimeEngine.switchSchema(savedSchema)
-                    } else {
-                        // 即使 schema 相同也重新 switch 一下，确保 processor 完全初始化
-                        debugLog("onStartInput: Schema already matches, re-switching to init processors")
-                        schemaController.applyPageSizeSetting(savedSchema)
-                        rimeEngine.switchSchema(savedSchema)
-                    }
-                    actualSchema = savedSchema
-                }
-                SchemaManager.isSchemaCompiled(this@XimeInputMethodService, savedSchema) -> {
-                    debugLog("onStartInput: Schema compiled but not in get_schema_list, switching anyway")
-                    schemaController.applyPageSizeSetting(savedSchema)
-                    rimeEngine.switchSchema(savedSchema)
-                    actualSchema = savedSchema
-                }
-                availableSchemas.isNotEmpty() -> {
-                    val fallbackSchema = availableSchemas.first()
-                    debugLog("onStartInput: savedSchema '$savedSchema' not available, falling back to '$fallbackSchema'")
-                    schemaController.applyPageSizeSetting(fallbackSchema)
-                    rimeEngine.switchSchema(fallbackSchema)
-                    SettingsPreferences.setCurrentSchema(this, fallbackSchema)
-                    actualSchema = fallbackSchema
-                }
-                else -> actualSchema = savedSchema
+                sessionController.updateSchemaName()
+                
+                // 从 user.yaml 恢复方案选项（中/西、简/繁等，含 ascii_mode）
+                sessionController.restorePersistedSchemaOptions()
+                updateUI()
+            } else {
+                debugLog("onStartInput: deployment in progress, skipping schema switch")
             }
-            sessionController.updateSchemaName()
-            
-            // 从 user.yaml 恢复方案选项（中/西、简/繁等，含 ascii_mode）
-            sessionController.restorePersistedSchemaOptions()
-            updateUI()
         }
 
         uiState.value = uiState.value.copy(

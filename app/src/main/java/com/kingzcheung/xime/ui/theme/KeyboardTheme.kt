@@ -58,9 +58,9 @@ data class KeyboardColorScheme(
     // 候选文字颜色
     val candidateTextColorLight: Color = Color(0xFF1A73E8),
     val candidateTextColorDark: Color = Color(0xFF8AB4F8),
-    // 候选选中文字颜色（未配置时回退到按键文字色）
-    val candidateSelectedTextColorLight: Color = Color(0xFF202124),
-    val candidateSelectedTextColorDark: Color = Color(0xFFE8EAED),
+    // 候选选中文字颜色（未配置时回退到主题强调色）
+    val candidateSelectedTextColorLight: Color = Color(0xFF8F73E2),
+    val candidateSelectedTextColorDark: Color = Color(0xFFD0BCFF),
     // 分隔线颜色
     val dividerColorLight: Color = Color(0xFFDADCE0),
     val dividerColorDark: Color = Color(0xFF3C4043),
@@ -142,8 +142,8 @@ object KeyboardThemes {
             ?: longToColor(global.candidateTextColor)
         val candColorDark = entry.candidateTextColorDark?.let { longToColor(it) }
             ?: longToColor(global.candidateTextColorDark)
-        val candSelectedLight = entry.candidateSelectedTextColor?.let { longToColor(it) } ?: txtColor
-        val candSelectedDark = entry.candidateSelectedTextColorDark?.let { longToColor(it) } ?: txtColorDark
+        val candSelectedLight = entry.candidateSelectedTextColor?.let { longToColor(it) } ?: cfgColor
+        val candSelectedDark = entry.candidateSelectedTextColorDark?.let { longToColor(it) } ?: lightened
 
         return KeyboardColorScheme(
             id = id,
@@ -362,11 +362,9 @@ object KeyboardThemes {
             candidateTextColorDark = entry.candidateTextColorDark?.let { longToColor(it) }
                 ?: longToColor(global.candidateTextColorDark),
             candidateSelectedTextColorLight = entry.candidateSelectedTextColor?.let { longToColor(it) }
-                ?: (entry.keyTextColor?.let { longToColor(it) }
-                    ?: scheme.candidateSelectedTextColorLight),
+                ?: cfgColor,
             candidateSelectedTextColorDark = entry.candidateSelectedTextColorDark?.let { longToColor(it) }
-                ?: (entry.keyTextColorDark?.let { longToColor(it) }
-                    ?: scheme.candidateSelectedTextColorDark),
+                ?: lightened,
             keyboardBackground = entry.keyboardBackground ?: scheme.keyboardBackground,
             keyBackground = entry.keyBackground ?: scheme.keyBackground,
             candidateBarBackground = entry.candidateBarBackground ?: scheme.candidateBarBackground,
