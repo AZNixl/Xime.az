@@ -143,6 +143,8 @@ fun KeyButton(
     val swipeDownThreshold = with(density) { 50.dp.toPx() }
     val bubbleShowThresholdUp = swipeUpThreshold
     val bubbleShowThresholdDown = swipeDownThreshold
+    // 水平位移超过该值视为横向手势（如键盘区滑动移动光标），不再触发点击
+    val horizontalClickCancelThreshold = with(density) { 30.dp.toPx() }
 
     val shadowModifier = remember(shadowEnabled, shadowElevation, shadowShapeRadius, density, backgroundColor) {
         if (shadowEnabled) {
@@ -189,7 +191,7 @@ fun KeyButton(
                             isSwipeDown = false
                         },
                         onDragEnd = {
-                            if (!hasTriggeredSwipeUp && !hasTriggeredSwipeDown) {
+                            if (!hasTriggeredSwipeUp && !hasTriggeredSwipeDown && abs(dragOffsetX) < horizontalClickCancelThreshold) {
                                 currentOnClick()
                             }
                             isPressed = false
@@ -205,9 +207,6 @@ fun KeyButton(
                             onSwipeStateChange?.invoke(SwipeState(false, null, false))
                         },
                         onDragCancel = {
-                            if (!hasTriggeredSwipeUp && !hasTriggeredSwipeDown) {
-                                currentOnClick()
-                            }
                             isPressed = false
                             currentOnRelease?.invoke()
                             dragOffsetX = 0f
@@ -403,6 +402,8 @@ fun SwipeableKeyButton(
     val swipeDownThreshold = with(density) { 50.dp.toPx() }
     val bubbleShowThresholdUp = swipeUpThreshold
     val bubbleShowThresholdDown = swipeDownThreshold
+    // 水平位移超过该值视为横向手势（如键盘区滑动移动光标），不再触发点击
+    val horizontalClickCancelThreshold = with(density) { 30.dp.toPx() }
 
     val shadowModifier = remember(shadowEnabled, shadowElevation, shadowShapeRadius, density, backgroundColor) {
         if (shadowEnabled) {
@@ -440,7 +441,7 @@ fun SwipeableKeyButton(
                         isSwipeDown = false
                     },
                     onDragEnd = {
-                        if (!hasTriggeredSwipeUp && !hasTriggeredSwipeDown) {
+                        if (!hasTriggeredSwipeUp && !hasTriggeredSwipeDown && abs(dragOffsetX) < horizontalClickCancelThreshold) {
                             currentOnClick()
                         }
                         isPressed = false
@@ -455,9 +456,6 @@ fun SwipeableKeyButton(
                         currentOnSwipeStateChange?.invoke(SwipeState(false, null, false, emptyList(), false, null), buttonBounds)
                     },
                     onDragCancel = {
-                        if (!hasTriggeredSwipeUp && !hasTriggeredSwipeDown) {
-                            currentOnClick()
-                        }
                         isPressed = false
                         currentOnRelease?.invoke()
                         dragOffsetX = 0f
@@ -963,6 +961,8 @@ fun SwipeableIconKeyButton(
     // 上滑清空/下滑撤回需要更大的滑动距离，防止误触
     val clearActionThreshold = with(density) { (-50).dp.toPx() }
     val undoActionThreshold = with(density) { 50.dp.toPx() }
+    // 水平位移超过该值视为横向手势（如键盘区滑动移动光标），不再触发点击
+    val horizontalClickCancelThreshold = with(density) { 30.dp.toPx() }
     
     LaunchedEffect(isLongPress) {
         if (isLongPress && onLongClick != null) {
@@ -1059,7 +1059,7 @@ fun SwipeableIconKeyButton(
                         } else if (dragOffsetY < swipeUpThreshold && !hasTriggeredSwipe && onSwipe != null) {
                             hasTriggeredSwipe = true
                             onSwipe()
-                        } else {
+                        } else if (!hasTriggeredSwipeLeft && abs(dragOffsetX) < horizontalClickCancelThreshold) {
                             currentOnClick()
                         }
                         dragActivated = false
@@ -1080,7 +1080,6 @@ fun SwipeableIconKeyButton(
                         onSwipeStateChange?.invoke(SwipeState(), buttonBounds)
                     },
                     onDragCancel = {
-                        currentOnClick()
                         dragActivated = false
                         isPressed = false
                         currentOnRelease?.invoke()
