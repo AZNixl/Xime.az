@@ -784,9 +784,12 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
                     )
                     // RIME composition 未被 selectCandidate 修改（已跳过），
                     // 直接发送剩余数字到 RIME 重建 composition。
+                    // 候选栏由 forceSendToRime 异步 post 刷新；此处不可同步调 updateUI，
+                    // 否则与 refreshOnBackground 竞争 rimeLock，空数据覆盖候选栏。
                     service.keyboardCallbacks?.onT9ForceSendToRime?.invoke()
+                } else {
+                    service.updateUI()
                 }
-                service.updateUI()
             }
         }
     }
