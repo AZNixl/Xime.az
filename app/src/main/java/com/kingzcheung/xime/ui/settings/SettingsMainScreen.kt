@@ -74,6 +74,7 @@ fun SettingsMainContent(
     onNavigateToLayoutDisplay: () -> Unit,
     onNavigateToDictionary: () -> Unit,
     onNavigateToPlugins: () -> Unit,
+    onNavigateToModelLocal: () -> Unit = {},
     onNavigateToSmartPrediction: () -> Unit,
     onNavigateToSpeechToText: () -> Unit,
     onNavigateToAbout: () -> Unit,
@@ -279,6 +280,18 @@ fun SettingsMainContent(
                         title = "插件管理",
                         subtitle = "管理已安装的插件",
                         onClick = onNavigateToPlugins,
+                        showArrow = true
+                    )
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = 56.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+                    SettingsItem(
+                        icon = Icons.TwoTone.Straighten,
+                        title = "模型管理",
+                        subtitle = "管理本地下载的智能模型",
+                        onClick = onNavigateToModelLocal,
                         showArrow = true
                     )
                 })
