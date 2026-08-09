@@ -207,7 +207,10 @@ object RimeConfigHelper {
         // assets 编译进 APK，同一 versionCode 内不会变化。记录上次同步的版本号，
         // 一致时跳过全量拷贝：避免每次启动都覆盖 default.yaml 等文件（assets 默认压缩，
         // openFd 抛异常导致 size 判断失效），从而保证部署 hash 稳定、不再每次启动全量重编译。
-        if (SettingsPreferences.getRimeAssetsVersion(context) == BuildConfig.VERSION_CODE) {
+        // 版本匹配时必须确认关键文件确实已落地：若上次拷贝失败（如 assets 缺失/为空），
+        // 仅记版本号而未拷入文件，覆盖安装后仍会误跳过导致方案文件永远缺失。
+        val versionMatched = SettingsPreferences.getRimeAssetsVersion(context) == BuildConfig.VERSION_CODE
+        if (versionMatched && File(targetDir, "default.yaml").exists()) {
             return false
         }
         val copied = try {
@@ -216,7 +219,10 @@ object RimeConfigHelper {
             Log.e(TAG, "Failed to copy assets", e)
             false
         }
-        SettingsPreferences.setRimeAssetsVersion(context, BuildConfig.VERSION_CODE)
+        // 仅当真正拷贝成功才记录版本，避免失败时留下"已同步"假象
+        if (copied) {
+            SettingsPreferences.setRimeAssetsVersion(context, BuildConfig.VERSION_CODE)
+        }
         return copied
     }
     
