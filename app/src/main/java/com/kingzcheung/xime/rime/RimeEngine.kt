@@ -423,6 +423,10 @@ class RimeEngine {
     }
 
     fun switchSchema(schemaId: String): Boolean {
+        // 部署/全量编译进行中（30s+）不阻塞等待：直接返回 false，避免主线程
+        // onStartInput/selectSchema 等路径 ANR。部署完成后的 initRimeEngine
+        // 流程会重新切换方案。非部署场景保持阻塞锁语义，保证切换可靠。
+        if (isMaintaining()) return false
         locked {
             if (!nativeHasSession()) return false
             // 在切换方案前，确保 T9 方案的 schema 补丁已注入
@@ -448,6 +452,35 @@ class RimeEngine {
             // 幂等：补丁已就位时 native 侧直接 skip，开销极小。
             ensureT9SchemaPatchesForDeployedSchemas(userDataDir)
             return nativeDeploy()
+        }
+    }
+
+    /**
+     * 增量维护部署：librime 根据文件时间戳只编译变更的 schema/dict，
+     * 避免配置小幅变化（如 custom.yaml 补丁）触发 60MB 词库全量重编译。
+     * 与 [deploy] 一样持 rimeLock 并等待维护完成，保证维护期间其他
+     * native 调用不会并发进入引擎。
+     */
+    fun deployIncremental(): Boolean {
+        if (!isInitialized) return false
+        locked {
+            ensureT9SchemaPatchesForDeployedSchemas(userDataDir)
+            if (!nativeStartMaintenance(false)) {
+                Log.w(TAG, "deployIncremental: startMaintenance returned false, falling back to full deploy")
+                return false
+            }
+            var waited = 0L
+            while (nativeIsMaintaining() && waited < 180_000L) {
+                Thread.sleep(100)
+                waited += 100
+            }
+            if (nativeIsMaintaining()) {
+                Log.w(TAG, "deployIncremental: maintenance timed out")
+                return false
+            }
+            // 维护完成后更新 last_build_time，避免下次启动增量检测误判需重编译
+            nativeUpdateLastBuildTime()
+            return true
         }
     }
 

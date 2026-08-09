@@ -47,6 +47,7 @@ fun SetupWizardScreen(
     var deployReminder by remember { mutableStateOf<String?>(null) }
 
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     // 从设置页返回后检查已启用的方案（初始为空，用户必须主动选择）
     val enabledSchemas = remember { mutableStateOf(if (hasBeenToSettings) SchemaManager.getEnabledSchemas(context) else emptyList()) }
@@ -101,8 +102,20 @@ fun SetupWizardScreen(
                         },
                         onNext = {
                             enabledSchemas.value = SchemaManager.getEnabledSchemas(context)
-                            if (enabledSchemas.value.isNotEmpty() && !RimeConfigHelper.isDeploymentComplete(context)) {
-                                deployReminder = "方案已选择，但尚未部署。请前往设置点击「部署」按钮编译词库"
+                            if (enabledSchemas.value.isNotEmpty()) {
+                                // isDeploymentComplete 内部计算部署 hash（读取大词库文件），
+                                // 移到 IO 线程避免主线程卡顿
+                                scope.launch {
+                                    val complete = withContext(Dispatchers.IO) {
+                                        RimeConfigHelper.isDeploymentComplete(context)
+                                    }
+                                    if (!complete) {
+                                        deployReminder = "方案已选择，但尚未部署。请前往设置点击「部署」按钮编译词库"
+                                    } else {
+                                        deployReminder = null
+                                        currentStep = SetupStep.SwitchToIme
+                                    }
+                                }
                             } else {
                                 deployReminder = null
                                 currentStep = SetupStep.SwitchToIme

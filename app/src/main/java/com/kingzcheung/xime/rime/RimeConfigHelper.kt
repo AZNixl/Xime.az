@@ -40,8 +40,8 @@ object RimeConfigHelper {
         SchemaManager.applyEnabledSchemasToDefaultYaml(context)
         // 为所有启用方案打个人词库补丁
         PersonalDictManager.ensureSchemaPacks(context)
-        invalidateBuildIfConfigChanged(context)
-        // 部署统一由 ensureDeployment() 在 engine 初始化后执行（本方法不持有 rimeLock）。
+        // 不再在初始化阶段删 build：build 是否重建统一由 ensureDeployment()
+        // 按增量优先策略决定，避免配置变化即全量重编译（60MB 词库持锁 30s+）。
         
         return Pair(rimeDir.absolutePath, rimeDir.absolutePath)
     }
@@ -49,11 +49,12 @@ object RimeConfigHelper {
     /**
      * 统一部署入口（进程内互斥）：
      * - 部署 hash 一致 → build 已是最新，对齐 deploymentDone 标记，跳过编译；
-     * - hash 缺失/不一致 → 清空 build 全量编译，成功后统一记录 hash 与 deploymentDone。
+     * - hash 缺失/不一致 → 优先增量维护（librime 按文件时间戳只编译变更），
+     *   仅当 build 缺失/为空或增量失败时才清空全量编译。
      *
      * 必须由调用方保证 engine 已 initialize（deploy() 未初始化时返回 false）。
      * 该入口被 Application 预初始化与输入法服务共享，配合 deploymentLock
-     * 避免两者并发触发两次 24 秒级别的全量编译。
+     * 避免两者并发触发两次全量编译。
      */
     fun ensureDeployment(context: Context): Boolean {
         synchronized(deploymentLock) {
@@ -62,13 +63,29 @@ object RimeConfigHelper {
                 SettingsPreferences.setDeploymentDone(context, true)
                 return true
             }
-            Log.i(TAG, "Deployment hash mismatch or missing, clearing build for full deploy")
+            Log.i(TAG, "Deployment hash mismatch or missing")
             val buildDir = File(context.filesDir, "rime/build")
-            if (buildDir.exists()) {
-                buildDir.deleteRecursively()
+            val buildExists = buildDir.exists() && buildDir.listFiles()?.isNotEmpty() == true
+            val engine = RimeEngine.getInstance()
+            val deployed: Boolean
+            if (buildExists) {
+                // build 已就位但配置有变化：增量维护，只编译变更的 schema/dict，
+                // 避免 custom.yaml 补丁等小幅改动触发 60MB 词库全量重编译（持锁 30s+）。
+                Log.i(TAG, "Build exists, running incremental maintenance")
+                if (engine.deployIncremental()) {
+                    deployed = true
+                } else {
+                    Log.w(TAG, "Incremental maintenance failed, falling back to full deploy")
+                    buildDir.deleteRecursively()
+                    buildDir.mkdirs()
+                    deployed = engine.deploy()
+                }
+            } else {
+                Log.i(TAG, "Build directory missing or empty, running full deploy")
                 buildDir.mkdirs()
+                deployed = engine.deploy()
             }
-            if (RimeEngine.getInstance().deploy()) {
+            if (deployed) {
                 storeDeploymentHash(context)
                 SettingsPreferences.setDeploymentDone(context, true)
                 return true
@@ -90,7 +107,7 @@ object RimeConfigHelper {
         // F1: 同步初始化路径也写回 default.yaml 的 schema_list
         SchemaManager.applyEnabledSchemasToDefaultYaml(context)
         runBlocking { PersonalDictManager.ensureSchemaPacks(context) }
-        invalidateBuildIfConfigChanged(context)
+        // build 重建统一由 ensureDeployment() 增量优先决策，此处不删 build
         
         return Pair(rimeDir.absolutePath, rimeDir.absolutePath)
     }
@@ -186,19 +203,6 @@ object RimeConfigHelper {
         return digest.digest().joinToString("") { String.format("%02x", it) }
     }
 
-    private fun invalidateBuildIfConfigChanged(context: Context) {
-        val rimeDir = File(context.filesDir, "rime")
-        val buildDir = File(rimeDir, "build")
-        if (!buildDir.exists()) return
-        val currentHash = computeDeploymentHash(context)
-        val storedHash = SettingsPreferences.getDeploymentHash(context)
-        if (!currentHash.isNullOrEmpty() && currentHash != storedHash) {
-            Log.i(TAG, "Config hash changed, clearing build dir for fresh deploy")
-            buildDir.deleteRecursively()
-            buildDir.mkdirs()
-        }
-    }
-    
     private fun copyAssetsToRimeDir(context: Context, targetDir: File): Boolean {
         // assets 编译进 APK，同一 versionCode 内不会变化。记录上次同步的版本号，
         // 一致时跳过全量拷贝：避免每次启动都覆盖 default.yaml 等文件（assets 默认压缩，

@@ -273,7 +273,13 @@ internal class ImeSchemaController(private val service: XimeInputMethodService) 
             SettingsPreferences.setCurrentSchema(service, schemaId)
             // 用户自定义候选词数：先写 custom.yaml 再切方案，Rime 会自动加载
             applyPageSizeSetting(schemaId)
-            service.rimeEngine.switchSchema(schemaId)
+            // 部署/编译进行中 switchSchema 返回 false（不阻塞等待），
+            // 此时不应继续触发其他 native 调用进入编译中的引擎
+            if (!service.rimeEngine.switchSchema(schemaId)) {
+                Log.w(XimeInputMethodService.TAG, "switchSchema skipped: deployment in progress")
+                Toast.makeText(service, "词库部署中，请稍后再切换方案", Toast.LENGTH_SHORT).show()
+                return
+            }
             if (!service.rimeEngine.isAsciiMode()) {
                 service.rimeEngine.setOption("ascii_punct", false)
             }
