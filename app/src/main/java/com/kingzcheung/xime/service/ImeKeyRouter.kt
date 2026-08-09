@@ -110,12 +110,17 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
                     //（composing 区），candState.inputText 与它是同一份内容，再拼接会重复
                     //（如 "ji hua"+"ji hua"="ji huaji hua"）；候选栏模式输入框只有已上屏文本，
                     // 才需补上候选栏中的编码 candState.inputText。
+                    // 英文输入时文本在 pendingEnglishText（composing 区），getTextBeforeCursor
+                    // 取不到，需显式拼接以支持 undo_clear 恢复。
                     val codeInInputBox = SettingsPreferences.getInputTextLocation(service) ==
                         SettingsPreferences.INPUT_TEXT_INPUT_BOX
                     val inputFieldText = withContext(Dispatchers.Main) {
                         service.currentInputConnection?.getTextBeforeCursor(XimeInputMethodService.SAFE_TEXT_LIMIT, 0)?.toString() ?: ""
                     }
-                    service.lastClearedText = if (codeInInputBox) inputFieldText else inputFieldText + candState.inputText
+                    service.lastClearedText = when {
+                        codeInInputBox -> inputFieldText + candState.pendingEnglishText
+                        else -> inputFieldText + candState.inputText + candState.pendingEnglishText
+                    }
                     // 清空 partial commit 累积：否则残留的已选词（如右选"几乎"）会在下一轮输入
                     // 被 buildT9DisplayState 拼进 preedit（"几乎ji hua"）。
                     service.t9PartialCommitTexts.clear()

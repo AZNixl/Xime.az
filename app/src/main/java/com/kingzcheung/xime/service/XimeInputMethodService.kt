@@ -1412,9 +1412,14 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         endComposingInputBox()
     }
 
-    /** 结束输入框中的 composing span，先清空内容再结束，避免转为 committed text。 */
+    /**
+     * 结束输入框中的 composing span，先清空内容再结束，避免转为 committed text。
+     *
+     * 无论输入位置设置（输入框/候选栏）都执行：英文输入（pendingEnglishText）始终通过
+     * setComposingText 写入编辑器，清空时若跳过会残留英文 composing 文本。
+     * 中文候选栏模式下编辑器无 composing 文本，本方法为空操作。
+     */
     internal fun endComposingInputBox() {
-        if (SettingsPreferences.getInputTextLocation(this) != SettingsPreferences.INPUT_TEXT_INPUT_BOX) return
         currentInputConnection?.let {
             it.setComposingText("", 0)
             it.finishComposingText()
