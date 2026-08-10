@@ -267,7 +267,91 @@ val buildTrie by tasks.registering {
     }
 }
 
+// kaldi-native-fbank + kissfft are fetched into jni/third_party/knf (gitignored)
+// at build time, then consumed by CMake as local source dirs. Reference:
+//   - KNF: https://github.com/csukuangfj/kaldi-native-fbank (Apache-2.0)
+//   - kissfft: https://github.com/mborgerding/kissfft (BSD)
+val downloadKnf by tasks.registering {
+    val knfVersion = "1.22.3"
+    val kissfftTag = "131.2.0"
+    val knfRoot = file("src/main/jni/third_party/knf")
+    val knfSrc = file("$knfRoot/kaldi-native-fbank-${knfVersion}")
+    val kissfftSrc = file("$knfRoot/kissfft")
+
+    val knfCmake = file("$knfSrc/CMakeLists.txt")
+    val kissfftCmake = file("$kissfftSrc/CMakeLists.txt")
+    // 用关键文件而非目录做 up-to-date 判断：目录可能残留残缺/不完整内容
+    //（例如被 CI 缓存恢复），但缺少 CMakeLists.txt 会导致 CMake 配置失败。
+    outputs.file(knfCmake)
+    outputs.file(kissfftCmake)
+
+    doLast {
+        fun isZip(f: File): Boolean {
+            return try {
+                val b = f.readBytes()
+                b.size >= 4 && b[0] == 0x50.toByte() && b[1] == 0x4b.toByte() &&
+                    b[2] == 0x03.toByte() && b[3] == 0x04.toByte()
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        // Download and verify a valid zip, retrying a few times (github archive
+        // can return an error page that downloadWithMirrors treats as success).
+        fun downloadZip(urls: List<String>, target: File, workDir: File, desc: String): Boolean {
+            repeat(5) {
+                if (downloadWithMirrors(urls, target, workDir, desc)) {
+                    if (target.exists() && isZip(target)) return true
+                    target.delete()
+                }
+            }
+            return false
+        }
+
+        knfRoot.mkdirs()
+
+        if (!knfCmake.exists()) {
+            knfSrc.deleteRecursively()
+            val zip = File(buildDir, "kaldi-native-fbank-${knfVersion}.zip")
+            val url = "https://github.com/csukuangfj/kaldi-native-fbank/archive/refs/tags/v${knfVersion}.zip"
+            if (!downloadZip(listOf(url), zip, buildDir, "kaldi-native-fbank")) {
+                throw GradleException("Failed to download a valid kaldi-native-fbank zip")
+            }
+            copy {
+                from(zipTree(zip))
+                into(knfRoot)
+            }
+            if (!knfSrc.exists()) {
+                throw GradleException("kaldi-native-fbank extract dir not found under $knfRoot")
+            }
+            println("kaldi-native-fbank downloaded to $knfSrc")
+        }
+
+        if (!kissfftCmake.exists()) {
+            kissfftSrc.deleteRecursively()
+            val kzip = File(buildDir, "kissfft.zip")
+            val kurl = "https://github.com/mborgerding/kissfft/archive/refs/tags/${kissfftTag}.zip"
+            if (!downloadZip(listOf(kurl), kzip, buildDir, "kissfft")) {
+                throw GradleException("Failed to download a valid kissfft zip")
+            }
+            copy {
+                from(zipTree(kzip))
+                into(knfRoot)
+            }
+            val extracted = file("$knfRoot/kissfft-${kissfftTag}")
+            if (extracted.exists()) extracted.renameTo(kissfftSrc)
+            if (!kissfftSrc.exists()) {
+                throw GradleException("kissfft extract dir not found under $knfRoot")
+            }
+            println("kissfft downloaded to $kissfftSrc")
+        }
+    }
+}
+
+// 离线 ASR 已集成进主版本，KNF 源码始终需要，preBuild 直接依赖 downloadKnf。
+
 tasks.named("preBuild").configure {
     dependsOn(downloadOnnx)
+    dependsOn(downloadKnf)
     dependsOn(buildTrie)
 }

@@ -63,6 +63,7 @@ import com.kingzcheung.xime.plugin.core.model.PluginCategory
 import com.kingzcheung.xime.plugin.core.api.AsrInputMode
 import com.kingzcheung.xime.plugin.core.api.AsrPlugin
 import com.kingzcheung.xime.plugin.core.runtime.PluginManager
+import com.kingzcheung.xime.speech.AsrBackendFactory
 import com.kingzcheung.xime.settings.SettingsPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -92,6 +93,10 @@ fun SpeechToTextSettingsContent(
 
     var activeAsrPluginId by remember {
         mutableStateOf(SettingsPreferences.getSttOnlinePluginId(context))
+    }
+
+    var useLocal by remember {
+        mutableStateOf(OfflineAsrSettings.isSupported() && SettingsPreferences.isSttUseLocal(context))
     }
 
     val onlineProviders = remember(activeAsrPluginId) {
@@ -163,33 +168,65 @@ fun SpeechToTextSettingsContent(
             Spacer(modifier = Modifier.height(8.dp))
 
             val scope = rememberCoroutineScope()
-            OnlineAsrTab(
-                providers = onlineProviders,
-                onProviderClick = { provider ->
-                    if (provider.isActive) {
-                        onNavigateToPluginSettings(provider.id)
-                        return@OnlineAsrTab
-                    }
-                    val wasConfigured = provider.isConfigured
-                    scope.launch(Dispatchers.IO) {
-                        // 单选激活：同一时间只能使用 1 个在线 ASR 插件
-                        ExtensionManager.getAllInstalledPlugins()
-                            .filter { it.category == PluginCategory.ASR && it.id != provider.id }
-                            .forEach { SettingsPreferences.setPluginEnabled(context, it.id, false) }
-                        SettingsPreferences.setSttOnlinePluginId(context, provider.id)
-                        SettingsPreferences.setPluginEnabled(context, provider.id, true)
-                        PluginManager.launchPlugin(provider.id)
-                        activeAsrPluginId = provider.id
-                        if (!wasConfigured) {
-                            withContext(Dispatchers.Main) {
-                                onNavigateToPluginSettings(provider.id)
+
+            if (OfflineAsrSettings.isSupported()) {
+                // 本地/在线引擎切换开关
+                OfflineAsrSettings.EngineSelector(
+                    useLocal = useLocal,
+                    onUseLocalChange = {
+                        useLocal = it
+                        SettingsPreferences.setSttUseLocal(context, it)
+                        if (it) {
+                            // 打开本地识别：预热模型并常驻，避免语音时加载延迟丢开头音频
+                            scope.launch(Dispatchers.IO) {
+                                AsrBackendFactory.warmup(context)
+                            }
+                        } else {
+                            // 关闭本地识别：卸载常驻模型
+                            scope.launch(Dispatchers.IO) {
+                                AsrBackendFactory.releaseModel()
                             }
                         }
                     }
-                },
-                onManagePlugins = onNavigateToPlugins,
-                onSettings = onNavigateToPluginSettings
-            )
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                if (useLocal) {
+                    // 本地模型下载/管理卡片
+                    OfflineAsrSettings.ModelSection()
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+            }
+
+            if (!useLocal) {
+                OnlineAsrTab(
+                    providers = onlineProviders,
+                    onProviderClick = { provider ->
+                        if (provider.isActive) {
+                            onNavigateToPluginSettings(provider.id)
+                            return@OnlineAsrTab
+                        }
+                        val wasConfigured = provider.isConfigured
+                        scope.launch(Dispatchers.IO) {
+                            // 单选激活：同一时间只能使用 1 个在线 ASR 插件
+                            ExtensionManager.getAllInstalledPlugins()
+                                .filter { it.category == PluginCategory.ASR && it.id != provider.id }
+                                .forEach { SettingsPreferences.setPluginEnabled(context, it.id, false) }
+                            SettingsPreferences.setSttOnlinePluginId(context, provider.id)
+                            SettingsPreferences.setPluginEnabled(context, provider.id, true)
+                            PluginManager.launchPlugin(provider.id)
+                            activeAsrPluginId = provider.id
+                            if (!wasConfigured) {
+                                withContext(Dispatchers.Main) {
+                                    onNavigateToPluginSettings(provider.id)
+                                }
+                            }
+                        }
+                    },
+                    onManagePlugins = onNavigateToPlugins,
+                    onSettings = onNavigateToPluginSettings
+                )
+            }
         }
     }
 }

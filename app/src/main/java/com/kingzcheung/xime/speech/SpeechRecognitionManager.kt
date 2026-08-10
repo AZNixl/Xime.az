@@ -85,7 +85,7 @@ class SpeechRecognitionManager(private val context: Context) {
                     val ok = preload()
                     if (!ok || synchronized(preloadLock) { backend } == null) {
                         mainHandler.post {
-                            errorCallback?.invoke("无法初始化语音引擎，请确认已安装并启用在线语音识别插件")
+                            errorCallback?.invoke("无法初始化语音引擎，请检查本地模型或在线语音插件配置")
                             stateCallback?.invoke(RecognitionState.ERROR)
                         }
                         return@Thread
@@ -317,7 +317,13 @@ class SpeechRecognitionManager(private val context: Context) {
     }
 
     private fun createBackend(): AsrBackend? {
-        return createOnlineAsrBackend()
+        // 用户开启"本地识别"时才使用离线后端，否则走在线插件
+        val useLocal = SettingsPreferences.isSttUseLocal(context)
+        return if (useLocal) {
+            AsrBackendFactory.create(context) ?: createOnlineAsrBackend()
+        } else {
+            createOnlineAsrBackend()
+        }
     }
 
     private fun createOnlineAsrBackend(): AsrBackend? {
@@ -389,6 +395,13 @@ class SpeechRecognitionManager(private val context: Context) {
             val buffer = ShortArray((SAMPLE_RATE * BUFFER_SIZE_SECONDS).toInt())
             val byteBuffer = ByteArray(buffer.size * 2)
             var speechDetected = false
+            // 语音前缓冲：保存检测到语音前的若干块，检测到后一起送入 ASR，
+            // 避免"你/觉"等弱开头的语音块因音量低于阈值被当作静音丢弃
+            val preSpeechBuffer = ArrayDeque<ByteArray>()
+            val maxPreSpeechChunks = 4  // 0.4s 语音前缓冲
+            // 调试：本次会话录音直接写入文件，便于核对录音质量
+            val audioSink = AudioSink(context)
+            audioSink.start()
 
             try {
                 while (!interrupted()) {
@@ -400,10 +413,22 @@ class SpeechRecognitionManager(private val context: Context) {
                             byteBuffer[i * 2 + 1] = ((s shr 8) and 0xFF).toByte()
                         }
                         val chunk = byteBuffer.copyOf(nread * 2)
+                        audioSink.write(chunk)
                         if (!speechDetected) {
-                            if (isSpeech(chunk)) {
+                            preSpeechBuffer.addLast(chunk)
+                            // 缓冲满仍未检测到语音：放弃 VAD，直接开始识别，
+                            // 保证整段弱音内容也能送入 ASR（开头静音已被缓冲丢弃）
+                            if (preSpeechBuffer.size >= maxPreSpeechChunks) {
                                 speechDetected = true
-                                currentBackend.processAudioChunk(chunk)
+                                while (preSpeechBuffer.isNotEmpty()) {
+                                    currentBackend.processAudioChunk(preSpeechBuffer.removeFirst())
+                                }
+                            } else if (isSpeech(chunk)) {
+                                speechDetected = true
+                                // 把语音前缓冲的块按顺序送入 ASR，保证开头不丢失
+                                while (preSpeechBuffer.isNotEmpty()) {
+                                    currentBackend.processAudioChunk(preSpeechBuffer.removeFirst())
+                                }
                             }
                         } else {
                             currentBackend.processAudioChunk(chunk)
@@ -414,6 +439,7 @@ class SpeechRecognitionManager(private val context: Context) {
                 }
             } catch (_: Exception) {
             } finally {
+                audioSink.stop()
                 audioRecord.stop()
                 audioRecord.release()
             }

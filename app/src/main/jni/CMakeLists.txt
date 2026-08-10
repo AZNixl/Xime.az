@@ -191,4 +191,26 @@ target_link_libraries(handwriting_jni
 
 target_link_options(handwriting_jni PRIVATE "-Wl,-z,max-page-size=16384")
 
-target_link_options(onnx_jni PRIVATE "-Wl,-z,max-page-size=16384")
+# 离线语音识别（zipformer2）：已集成进主版本，始终编译
+set(ASR_SRC_DIR "${CMAKE_SOURCE_DIR}")
+set(KNF_ROOT "${ASR_SRC_DIR}/third_party/knf")
+set(KNF_LOCAL_DIR "${KNF_ROOT}/kaldi-native-fbank-1.22.3")
+set(FETCHCONTENT_SOURCE_DIR_KISSFFT "${KNF_ROOT}/kissfft")
+add_subdirectory(${KNF_LOCAL_DIR} knf_build)
+
+add_library(asr_jni SHARED
+    ${ASR_SRC_DIR}/asr/asr_jni.cc
+    ${ASR_SRC_DIR}/asr/zipformer2_model.cc
+    ${ASR_SRC_DIR}/asr/feature_extractor.cc
+    ${ASR_SRC_DIR}/asr/streaming_recognizer.cc
+)
+target_include_directories(asr_jni PRIVATE
+    ${ONNXRUNTIME_DIR}/include
+    ${KNF_LOCAL_DIR}
+)
+target_link_libraries(asr_jni
+    onnxruntime
+    kaldi-native-fbank-core
+    log
+)
+target_link_options(asr_jni PRIVATE "-Wl,-z,max-page-size=16384")

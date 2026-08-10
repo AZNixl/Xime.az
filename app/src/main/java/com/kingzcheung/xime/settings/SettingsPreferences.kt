@@ -26,6 +26,8 @@ object SettingsPreferences {
     
     const val KEY_STT_ENABLED = "stt_enabled"
     const val KEY_STT_ONLINE_PLUGIN_ID = "stt_online_plugin_id"
+    const val KEY_STT_USE_LOCAL = "stt_use_local"
+    const val KEY_STT_DEBUG_RECORD = "stt_debug_record"
     
     /** 默认主题 ID，可从 xime.yaml 的 style.color_scheme 初始化。 */
     @JvmStatic
@@ -358,6 +360,24 @@ object SettingsPreferences {
 
     fun setSttOnlinePluginId(context: Context, pluginId: String) {
         getPrefs(context).edit().putString(KEY_STT_ONLINE_PLUGIN_ID, pluginId).apply()
+    }
+
+    /** 语音转文本是否使用本地（离线）识别引擎。 */
+    fun isSttUseLocal(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_STT_USE_LOCAL, false)
+    }
+
+    fun setSttUseLocal(context: Context, useLocal: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_STT_USE_LOCAL, useLocal).apply()
+    }
+
+    /** 是否把语音识别期间的录音写入文件（调试用）。 */
+    fun isSttDebugRecord(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_STT_DEBUG_RECORD, false)
+    }
+
+    fun setSttDebugRecord(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_STT_DEBUG_RECORD, enabled).apply()
     }
 
     // ---- 插件网络授权（per plugin per host） ----
