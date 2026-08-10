@@ -815,7 +815,34 @@ object KeysConfigHelper {
     ): Map<String, ColorSchemeEntry>? {
         if (custom == null) return default
         if (default == null) return custom
-        return default + custom
+        // 字段级深合并：custom 只覆盖显式配置的字段，同名主题其余字段保留内置值。
+        // 例如 custom 只写 primary_color 时，内置主题的 keyboard_background 不会被清掉。
+        val result = default.toMutableMap()
+        for ((id, customEntry) in custom) {
+            val base = default[id] ?: run {
+                result[id] = customEntry
+                continue
+            }
+            result[id] = base.copy(
+                name = customEntry.name.ifEmpty { base.name },
+                primaryColor = customEntry.primaryColor.takeIf { it != 0L } ?: base.primaryColor,
+                keyboardBgColor = customEntry.keyboardBgColor ?: base.keyboardBgColor,
+                keyBgColor = customEntry.keyBgColor ?: base.keyBgColor,
+                keyBgColorDark = customEntry.keyBgColorDark ?: base.keyBgColorDark,
+                specialKeyBgColor = customEntry.specialKeyBgColor ?: base.specialKeyBgColor,
+                candidateBarBgColor = customEntry.candidateBarBgColor ?: base.candidateBarBgColor,
+                keyTextColor = customEntry.keyTextColor ?: base.keyTextColor,
+                keyTextColorDark = customEntry.keyTextColorDark ?: base.keyTextColorDark,
+                candidateTextColor = customEntry.candidateTextColor ?: base.candidateTextColor,
+                candidateTextColorDark = customEntry.candidateTextColorDark ?: base.candidateTextColorDark,
+                candidateSelectedTextColor = customEntry.candidateSelectedTextColor ?: base.candidateSelectedTextColor,
+                candidateSelectedTextColorDark = customEntry.candidateSelectedTextColorDark ?: base.candidateSelectedTextColorDark,
+                keyboardBackground = customEntry.keyboardBackground ?: base.keyboardBackground,
+                keyBackground = customEntry.keyBackground ?: base.keyBackground,
+                candidateBarBackground = customEntry.candidateBarBackground ?: base.candidateBarBackground,
+            )
+        }
+        return result
     }
 
     private fun readAssetText(context: Context, fileName: String): String? {
