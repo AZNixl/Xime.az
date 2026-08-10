@@ -19,6 +19,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -28,7 +29,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.kingzcheung.xime.model.ModelManager
 import com.kingzcheung.xime.speech.AsrModelManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * 集成在语音转文本设置页内的离线模型状态卡片。
@@ -44,8 +48,15 @@ internal fun OfflineModelCard() {
         mutableStateOf(modelManager.getSelectedModelId())
     }
 
-    val model = AsrModelManager.AVAILABLE_MODELS.firstOrNull { it.id == selectedModelId }
-        ?: AsrModelManager.AVAILABLE_MODELS.first()
+    // 模型信息来自"模型中心"远程索引；进入本页时确保索引已加载
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            ModelManager.loadFromRemote(context)
+        }
+    }
+
+    val model = modelManager.getSelectedModelInfo()
+        ?: AsrModelManager.DEFAULT_MODEL
     val downloaded = modelManager.isModelReady()
 
     Card(

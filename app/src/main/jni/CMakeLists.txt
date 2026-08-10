@@ -206,10 +206,12 @@ add_library(asr_jni SHARED
 )
 target_include_directories(asr_jni PRIVATE
     ${ONNXRUNTIME_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}
     ${KNF_LOCAL_DIR}
 )
 target_link_libraries(asr_jni
     onnxruntime
+    onnx_env
     kaldi-native-fbank-core
     log
 )

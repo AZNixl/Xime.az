@@ -13,7 +13,10 @@
 #include <numeric>
 #include <sstream>
 
+#include "onnx_env.h"
+
 #define LOG_TAG "Zipformer2Model"
+#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
 namespace xime_asr {
@@ -122,12 +125,18 @@ Ort::Value Cat(OrtAllocator *alloc, const std::vector<Ort::Value *> &ins,
 Zipformer2Model::Zipformer2Model(const AsrModelPaths &paths,
                                  int32_t num_threads)
     : env_(ORT_LOGGING_LEVEL_WARNING, "xime-asr"), allocator_{} {
-  encoder_sess_opts_.SetIntraOpNumThreads(num_threads);
-  encoder_sess_opts_.SetInterOpNumThreads(1);
-  decoder_sess_opts_.SetIntraOpNumThreads(num_threads);
-  decoder_sess_opts_.SetInterOpNumThreads(1);
-  joiner_sess_opts_.SetIntraOpNumThreads(num_threads);
-  joiner_sess_opts_.SetInterOpNumThreads(1);
+  // 纯 CPU 推理。zipformer2 为 int8 + 动态 shape 的流式模型，NNAPI 支持率
+  // 不足 5%（且多为 CPU reference 驱动），切图开销大于收益，故不启用硬件 EP。
+  OnnxGetApi();  // 初始化 C API
+
+  auto configure = [this, num_threads](Ort::SessionOptions &opts) {
+    opts.SetIntraOpNumThreads(num_threads);
+    opts.SetInterOpNumThreads(1);
+    OnnxTryEnableCpuFallback(opts);
+  };
+  configure(encoder_sess_opts_);
+  configure(decoder_sess_opts_);
+  configure(joiner_sess_opts_);
 
   LoadEncoderSession(paths.encoder);
   LoadDecoderSession(paths.decoder);
