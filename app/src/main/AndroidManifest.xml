@@ -70,6 +70,12 @@
             android:exported="false"
             android:process=":inference" />
         
+        <!-- 离线语音识别服务（独立进程，模型推理不占用输入法进程内存） -->
+        <service
+            android:name=".service.AsrInferenceService"
+            android:exported="false"
+            android:process=":asr" />
+        
     </application>
 
 </manifest>

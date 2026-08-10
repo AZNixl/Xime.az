@@ -6,6 +6,7 @@ import android.os.Looper
 import android.util.Log
 import android.view.inputmethod.InputConnection
 import com.kingzcheung.xime.plugin.ExtensionManager
+import com.kingzcheung.xime.speech.AsrBackendFactory
 import com.kingzcheung.xime.speech.RecognitionState
 import com.kingzcheung.xime.speech.SpeechRecognitionManager
 import com.kingzcheung.xime.settings.SettingsPreferences
@@ -54,8 +55,17 @@ class VoiceRecognitionHandler(
         val providerName = resolveProviderName()
 
         onStateChanged(getState().copy(voicePluginName = providerName))
-        FileLogger.i(TAG, "STT provider: online")
-        // ASR 插件按需加载：服务启动时不预加载，首次语音时由 startRecognition() 加载。
+        FileLogger.i(TAG, "STT provider: $providerName")
+
+        // 若"使用本地模型"开关已开启，启动时即加载模型并常驻，
+        // 保证语音时绝不现场加载模型（避免丢开头音频）
+        if (SettingsPreferences.isSttUseLocal(context) &&
+            AsrBackendFactory.getLocalName() != null
+        ) {
+            Thread {
+                AsrBackendFactory.warmup(context)
+            }.start()
+        }
     }
 
     private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
@@ -113,6 +123,11 @@ class VoiceRecognitionHandler(
     fun isInitialized(): Boolean = ::speechRecognitionManager.isInitialized
 
     private fun resolveProviderName(): String {
+        // 用户开启"本地识别"且当前构建支持离线语音时，优先显示本地引擎名
+        if (SettingsPreferences.isSttUseLocal(context)) {
+            val localName = AsrBackendFactory.getLocalName()
+            if (localName != null) return localName
+        }
         val enabledPlugins = ExtensionManager.getEnabledAsrPlugins(context)
         if (enabledPlugins.isNotEmpty()) {
             val selectedId = SettingsPreferences.getSttOnlinePluginId(context)

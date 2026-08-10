@@ -129,6 +129,9 @@ internal fun rememberImeKeyboardCallbacks(
                     service.isTrackingVoiceButtons = true
                     service.keyboardContainer.enableVoiceButtonTracking()
                     service.voiceRecordingStarted = true
+                    // 立即提前启动麦克风录音（等 150ms 的话模型常驻时加载极快，
+                    // preStarted 可能还没创建好就被 startRecording 跳过，导致开头丢失）
+                    service.voiceRecognitionHandler.startDelayedPreStart(0)
                     service.voiceRecognitionHandler.startRecognition()
                 } else {
                     // 长按抬起：先立即提交当前已识别文本，再结束识别
