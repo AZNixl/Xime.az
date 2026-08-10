@@ -693,9 +693,9 @@ fun SwipeableKeyButton(
                             val displayText = if (swipeDownHint.length <= 12) swipeDownHint else swipeDownHint.take(12)
                             Text(
                                 text = displayText,
-                                color = textColor.copy(alpha = 0.5f),
+                                color = textColor.copy(alpha = 0.7f),
                                 fontSize = adjustedFontSize,
-                                fontWeight = FontWeight.Normal,
+                                fontWeight = FontWeight.Medium,
                                 textAlign = TextAlign.Right,
                                 maxLines = 3,
                                 lineHeight = adjustedFontSize,
