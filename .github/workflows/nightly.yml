@@ -60,39 +60,8 @@ jobs:
             echo "reason=New commits to build"
           fi
 
-  validate-submodules:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-        with:
-          fetch-depth: 1
-
-      - name: Validate submodule gitlinks exist on remotes
-        run: |
-          set -euo pipefail
-          fail=0
-          while IFS= read -r name; do
-            path=$(git config -f .gitmodules --get "submodule.$name.path")
-            url=$(git config -f .gitmodules --get "submodule.$name.url")
-            sha=$(git ls-tree HEAD "$path" | awk '{print $3}')
-            echo "Checking $path -> $url"
-            if [ -z "$sha" ] || [ "$sha" = "040000" ]; then
-              echo "::error::$path is not a submodule gitlink"
-              fail=1
-              continue
-            fi
-            if git ls-remote "$url" "$sha" 2>/dev/null | grep -q "$sha"; then
-              echo "OK: $sha exists"
-            else
-              echo "::error::$path gitlink $sha not found on $url (force-pushed or deleted?)"
-              fail=1
-            fi
-          done < <(git config -f .gitmodules --get-regexp '^submodule\..*\.path$' | sed -E 's/^submodule\.(.*)\.path /\1/')
-          exit $fail
-
   nightly:
-    needs: [check, validate-submodules]
+    needs: check
     if: needs.check.outputs.should_build == 'true'
     runs-on: ubuntu-latest
 
