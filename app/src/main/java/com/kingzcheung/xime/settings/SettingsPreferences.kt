@@ -83,7 +83,7 @@ object SettingsPreferences {
     private const val KEY_CANDIDATE_TEXT_SIZE = "candidate_text_size"
     const val INPUT_TEXT_INPUT_BOX = "input_box"
     const val INPUT_TEXT_CANDIDATE_BAR = "candidate_bar"
-    const val DEFAULT_PAGE_SIZE = 0 // 0 表示使用 Rime schema 默认值
+    const val DEFAULT_PAGE_SIZE = 20 // 手机候选栏每页候选词数；schema 里的 page_size 来自 PC 版（5），太短，默认用 20
 
     fun isCompactModeEnabled(context: Context): Boolean {
         return getPrefs(context).getBoolean(KEY_COMPACT_MODE, true)
