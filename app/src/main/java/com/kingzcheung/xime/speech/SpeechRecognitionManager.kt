@@ -399,9 +399,6 @@ class SpeechRecognitionManager(private val context: Context) {
             // 避免"你/觉"等弱开头的语音块因音量低于阈值被当作静音丢弃
             val preSpeechBuffer = ArrayDeque<ByteArray>()
             val maxPreSpeechChunks = 4  // 0.4s 语音前缓冲
-            // 调试：本次会话录音直接写入文件，便于核对录音质量
-            val audioSink = AudioSink(context)
-            audioSink.start()
 
             try {
                 while (!interrupted()) {
@@ -413,7 +410,6 @@ class SpeechRecognitionManager(private val context: Context) {
                             byteBuffer[i * 2 + 1] = ((s shr 8) and 0xFF).toByte()
                         }
                         val chunk = byteBuffer.copyOf(nread * 2)
-                        audioSink.write(chunk)
                         if (!speechDetected) {
                             preSpeechBuffer.addLast(chunk)
                             // 缓冲满仍未检测到语音：放弃 VAD，直接开始识别，
@@ -439,7 +435,6 @@ class SpeechRecognitionManager(private val context: Context) {
                 }
             } catch (_: Exception) {
             } finally {
-                audioSink.stop()
                 audioRecord.stop()
                 audioRecord.release()
             }
