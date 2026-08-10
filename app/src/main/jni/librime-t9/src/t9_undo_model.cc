@@ -516,14 +516,31 @@ bool T9UndoModel::UndoOp(const T9SegmentOp& op) {
             return true;
         }
         case T9SegmentOp::kTailConsume: {
-            // 恢复被消费的 tail 部分（仅该次消费的数字，放回 tail 开头）。
-            // 修复（2026-08-05，设备实证）：不能完整恢复 prev_tail——多次 tail 消费
-            // （如右选"几 ji"+"股 gu"各消费 2 位）时，后 undo 完整恢复会重复恢复
-            // 已删除的早期数字（回退次数 10 vs 设计 7）。消费的数字 = prev_tail 开头 n 位
-            // （ConsumeTail 总是从 tail 开头消费）。
+            // 恢复被消费的 tail 数字到开头。
+            // 修复（2026-08-09）：undo TC 前若存在 undo LC 残留的 unassigned 段，
+            // 其数字一并并入 tail；段数字是 prev_tail 剩余部分的后缀（原位置在被
+            // 恢复数字之后）→ 顺序 = consumed + 段数字，否则段数字 + consumed，
+            // 避免派生 unassigned 顺序错乱（'34' 而非 '43'，预编辑 "k di" 异常）。
             std::string consumed =
                 op.prev_tail.substr(0, static_cast<size_t>(op.tail_consumed));
-            tail_digits_ = consumed + tail_digits_;
+            std::string remaining =
+                op.prev_tail.substr(static_cast<size_t>(op.tail_consumed));
+            std::string seg_digits;
+            for (auto& seg : segments_) {
+                if (seg.phase == T9Segment::kUnassigned && !seg.digits.empty()) {
+                    seg_digits += seg.digits;
+                    seg.digits.clear();
+                }
+            }
+            std::string restored;
+            if (remaining.size() >= seg_digits.size() &&
+                remaining.compare(remaining.size() - seg_digits.size(),
+                                  seg_digits.size(), seg_digits) == 0) {
+                restored = consumed + seg_digits;
+            } else {
+                restored = seg_digits + consumed;
+            }
+            tail_digits_ = restored + tail_digits_;
             undone_commit_count_++;  // 撤销一个 commit 操作（供 Kotlin 同步）
             return true;
         }

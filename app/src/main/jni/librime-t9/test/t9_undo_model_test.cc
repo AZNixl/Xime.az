@@ -1072,6 +1072,62 @@ TEST(T9UndoModelTest, Scenario33_5143_KHe_KouHao_D_PartialConsume) {
     EXPECT_TRUE(m.IsEmpty());
 }
 
+// 用户实测（2026-08-09）：5143 左选 k → 右选"客户 ke hu"（简拼 k h：commit k 段 +
+// TC 消费 tail '4'，linked）→ 左选 e（消费剩余 '3'）→ ⌫1 undo e → ⌫2 undo 客户。
+// 修复前：undo 客户 后 tail='4'、e 段 digits='3' 残留 → 派生 unassigned='34'（预编辑
+// "k di"，异常字符 'i'）；期望派生 unassigned='43'（"k he/ge"）。
+// 根因：UndoOp(kTailConsume) 恢复 tail 时假设"剩余 tail 数字都在 tail_digits_ 中"，
+// 但 undo LC 残留的 unassigned 段数字（原输入位置在被恢复数字之后）打破了该假设。
+// 修复：undo TC 恢复 tail 时把 undo LC 残留的 unassigned 段数字一并并入 tail。
+TEST(T9UndoModelTest, Scenario5143_K_KeHu_E_UndoKeHu_TailOrder) {
+    T9UndoModel m;
+    for (char d : std::string("543")) m.DigitPressed(d);
+    m.SeparatorPressed(1);  // 分词键 1（'5' 与 '4' 之间）
+    m.LeftChoice(SyllableOption("k", 1));
+    // 右选"客户 ke hu"：commit k 段 + TC 消费 tail '4'（linked）
+    m.SyncRightCommit(
+        T9Buffer("543", {SyllableOption("k", 1)}, 1, 4),
+        T9Buffer("3", {}, 0, 4));
+    ASSERT_EQ(1u, m.segments().size());
+    EXPECT_EQ(T9Segment::kCommitted, m.segments()[0].phase);
+    EXPECT_EQ("3", m.tail_digits());
+    // 左选 e → 从 tail 消费剩余 '3'
+    m.LeftChoice(SyllableOption("e", 1));
+    ASSERT_EQ(2u, m.segments().size());
+    EXPECT_EQ(T9Segment::kSelected, m.segments()[1].phase);
+    EXPECT_EQ("3", m.segments()[1].digits);
+    EXPECT_EQ("", m.tail_digits());
+    // ⌫1: undo e（数字保留在段，等待数字区删除）
+    EXPECT_TRUE(m.Backspace());
+    EXPECT_EQ(T9Segment::kUnassigned, m.segments()[1].phase);
+    EXPECT_EQ("3", m.segments()[1].digits);
+    // ⌫2: undo 客户（RC+TC linked 整体撤销）→ tail 恢复 '43'（'4' 在 '3' 前）
+    EXPECT_TRUE(m.Backspace());
+    EXPECT_EQ(T9Segment::kSelected, m.segments()[0].phase);
+    EXPECT_EQ("43", m.tail_digits());
+    // e 段残留空段（数字已收拢回 tail，保持原始顺序）
+    EXPECT_EQ("", m.segments()[1].digits);
+    // 派生 buffer：unassigned='43'（修复前 '34' → 预编辑 "k di"）
+    T9Buffer buf = m.ToBuffer();
+    EXPECT_EQ("543", buf.digit_sequence);
+    EXPECT_EQ(1, buf.consumed_count);
+    EXPECT_EQ("43", buf.unassigned());
+    // 后续回退：删 3,4（tail 末位）→ undo k → 删分词键 → 删 5
+    // （e 段数字已收拢回 tail 并删除 → 残留空段无操作可撤销，自然跳过）
+    EXPECT_TRUE(m.Backspace());
+    EXPECT_EQ("4", m.tail_digits());
+    EXPECT_TRUE(m.Backspace());
+    EXPECT_EQ("", m.tail_digits());
+    EXPECT_TRUE(m.Backspace());  // undo k → k 回 unassigned
+    EXPECT_EQ(T9Segment::kUnassigned, m.segments()[0].phase);
+    EXPECT_TRUE(m.Backspace());  // 删分词键 1
+    EXPECT_TRUE(m.separator_positions().empty());
+    EXPECT_TRUE(m.Backspace());  // 删 '5'
+    EXPECT_EQ("", m.segments()[0].digits);
+    EXPECT_FALSE(m.Backspace());
+    EXPECT_TRUE(m.IsEmpty());
+}
+
 // 场景：54482 无左选，纯右选"几"（ji 54）、"股"（gu 48）→ 回退 = 7 次。
 // 回归（2026-08-05）：undo kTailConsume 曾完整恢复 prev_tail，嵌套消费（两次
 // ConsumeTail）时 undo 几 重复恢复已删的 482 → 次数 10 vs 设计 7。
