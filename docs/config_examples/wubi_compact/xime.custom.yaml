@@ -74,33 +74,7 @@ color_schemes:
 #   # 也支持字符串简写：
 #   long_press: { display: "bubble", values: ["q", "Q"] }
 keyboard:
-  # ── 键盘颜色配置（可选，不设置则使用内置默认值）──
-  # keyboard_bg_color        - 键盘背景色（亮色）
-  # keyboard_bg_color_dark   - 键盘背景色（暗色）
-  # key_bg_color             - 按键背景色（亮色）
-  # key_bg_color_dark        - 按键背景色（暗色）
-  # special_key_bg_color     - 特殊按键背景色（亮色）
-  # special_key_bg_color_dark- 特殊按键背景色（暗色）
-  # candidate_bar_bg_color   - 候选栏背景色（亮色）
-  # candidate_bar_bg_color_dark- 候选栏背景色（暗色）
-  # key_text_color           - 按键文字颜色（亮色）
-  # key_text_color_dark      - 按键文字颜色（暗色）
-  # candidate_text_color     - 候选文字颜色（亮色）
-  # candidate_text_color_dark- 候选文字颜色（暗色）
-  colors:
-    keyboard_bg_color: 0xE3E4E8
-    keyboard_bg_color_dark: 0x202020
-    key_bg_color: 0xFFFFFF
-    key_bg_color_dark: 0x4A4A4A
-    # special_key_bg_color: 0x9fef86 #不设置时默认取主题色
-    # special_key_bg_color_dark: 0x4A4A4A #不设置时默认取主题色
-    candidate_bar_bg_color: 0xE3E4E8
-    candidate_bar_bg_color_dark: 0x202020
-    key_text_color: 0x202124
-    key_text_color_dark: 0xE8EAED
-    candidate_text_color: 0x202124
-    candidate_text_color_dark: 0xE8EAED
-  
+
   # ── 按键配置（可选，不设置则使用默认值）──
   # corner_radius:      按键圆角半径（dp，默认 8）
   key:
