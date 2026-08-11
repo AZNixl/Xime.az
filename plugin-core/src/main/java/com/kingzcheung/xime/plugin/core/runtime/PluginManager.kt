@@ -39,6 +39,17 @@ object PluginManager {
     @Volatile
     var wsHostApiFactory: ((pluginId: String) -> com.kingzcheung.xime.plugin.core.lua.ws.WsHostApi)? = null
 
+    /**
+     * 宿主 HTTP 白名单 API 提供者（app 层注入，剪贴板同步等插件使用）。
+     * 工厂参数为插件 id，宿主据此校验域名白名单与用户授权。
+     */
+    @Volatile
+    var httpHostApiFactory: ((pluginId: String) -> com.kingzcheung.xime.plugin.core.lua.http.HttpHostApi)? = null
+
+    /** 宿主加密/编码原语提供者（S3 SigV4 签名等，app 层注入）。 */
+    @Volatile
+    var cryptoHostApiFactory: (() -> com.kingzcheung.xime.plugin.core.lua.crypto.CryptoHostApi)? = null
+
     private var frameworkContext: PluginFrameworkContext? = null
     private val _loadedPluginsFlow = MutableStateFlow<Map<String, LoadedPluginInfo>>(emptyMap())
     private val _pluginInstancesFlow = MutableStateFlow<Map<String, IPluginEntryClass>>(emptyMap())

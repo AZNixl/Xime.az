@@ -67,6 +67,9 @@ class XmlManager(private val context: Application) {
                     if (plugin.declaredHosts.isNotEmpty()) {
                         writer.write("    <networkHosts>${escapeXml(plugin.declaredHosts.joinToString(","))}</networkHosts>\n")
                     }
+                    if (plugin.allowCustomHosts) {
+                        writer.write("    <allowCustomHosts>true</allowCustomHosts>\n")
+                    }
                     writer.write("  </plugin>\n")
                 }
                 writer.write("</plugins>\n")
@@ -114,6 +117,7 @@ class XmlManager(private val context: Application) {
                 ?.map { it.trim() }
                 ?.filter { it.isNotBlank() }
                 ?: emptyList()
+            val allowCustomHosts = extractTag(pluginContent, "allowCustomHosts")?.toBoolean() ?: false
             val trustLevel = com.kingzcheung.xime.plugin.core.util.PluginSignatureUtil.classifyLuaPlugin(source)
 
             if (id != null && path != null) {
@@ -133,7 +137,8 @@ class XmlManager(private val context: Application) {
                     maxHostVersion = maxHostVersion,
                     trustLevel = trustLevel,
                     entryScript = entryScript,
-                    declaredHosts = networkHosts
+                    declaredHosts = networkHosts,
+                    allowCustomHosts = allowCustomHosts
                 )
             }
         }

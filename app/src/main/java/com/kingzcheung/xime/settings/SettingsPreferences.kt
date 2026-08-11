@@ -589,4 +589,14 @@ object SettingsPreferences {
             getPrefs(context).edit().putStringSet(KEY_INSTALLED_MARKET_IDS, cur).apply()
         }
     }
+
+    private const val KEY_CLIPBOARD_SYNC_ENABLED = "clipboard_sync_enabled"
+
+    fun isClipboardSyncEnabled(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_CLIPBOARD_SYNC_ENABLED, false)
+    }
+
+    fun setClipboardSyncEnabled(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_CLIPBOARD_SYNC_ENABLED, enabled).apply()
+    }
 }

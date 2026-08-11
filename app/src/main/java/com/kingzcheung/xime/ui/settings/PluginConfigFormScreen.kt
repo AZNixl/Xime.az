@@ -42,6 +42,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -58,6 +59,7 @@ import com.kingzcheung.xime.plugin.core.config.PluginConfigStore
 import com.kingzcheung.xime.plugin.core.config.PluginFieldType
 import com.kingzcheung.xime.plugin.core.config.PluginSettingField
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -130,7 +132,8 @@ fun PluginConfigFormScreen(
                                         configStore = configStore,
                                         options = field.options.ifEmpty {
                                             dynamicOptions[field.key].orEmpty()
-                                        }
+                                        },
+                                        plugin = plugin
                                     )
                                 }
                             }
@@ -174,8 +177,12 @@ fun PluginConfigFormScreen(
 private fun PluginSettingFieldEditor(
     field: PluginSettingField,
     configStore: PluginConfigStore,
-    options: List<String>
+    options: List<String>,
+    plugin: IPluginConfigurable
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var buttonBusy by remember(field.key) { mutableStateOf(false) }
     var value by rememberSaveable(field.key) {
         mutableStateOf(configStore.get(field.key) ?: field.defaultValue ?: "")
     }
@@ -366,6 +373,38 @@ private fun PluginSettingFieldEditor(
                         }
                     }
                 }
+            }
+        }
+
+        PluginFieldType.BUTTON -> {
+            Button(
+                onClick = {
+                    val action = field.action
+                    if (action.isNullOrBlank()) {
+                        Toast.makeText(context, "未配置动作", Toast.LENGTH_SHORT).show()
+                        return@Button
+                    }
+                    buttonBusy = true
+                    scope.launch {
+                        val error = withContext(Dispatchers.IO) {
+                            runCatching { plugin.onAction(action) }.getOrNull()
+                        }
+                        buttonBusy = false
+                        if (error.isNullOrBlank()) {
+                            Toast.makeText(context, "成功", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, error, Toast.LENGTH_LONG).show()
+                        }
+                    }
+                },
+                enabled = !buttonBusy,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                )
+            ) {
+                Text(if (buttonBusy) "处理中…" else field.label)
             }
         }
     }

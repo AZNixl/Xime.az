@@ -80,6 +80,7 @@ import com.kingzcheung.xime.viewmodel.KeyboardUiState
 import com.kingzcheung.xime.viewmodel.KeyboardViewModel
 import com.kingzcheung.xime.association.AssociationService
 import com.kingzcheung.xime.clipboard.ClipboardManager
+import com.kingzcheung.xime.clipboard.sync.ClipboardSyncBridge
 import com.kingzcheung.xime.plugin.ExtensionManager
 import com.kingzcheung.xime.speech.RecognitionState
 import com.kingzcheung.xime.rime.RimeConfigHelper
@@ -164,6 +165,8 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     internal val rimeEngine = RimeEngine.getInstance()
     
     internal lateinit var clipboardManager: ClipboardManager
+
+    private var clipboardSyncBridge: ClipboardSyncBridge? = null
     
     internal lateinit var keyboardContainer: VoiceKeyboardContainer
     
@@ -598,10 +601,34 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                     quickSendItemsState.value = items
                 }
             }
+            startClipboardSyncIfEnabled()
             Log.d(TAG, "initClipboardManager: Clipboard manager initialized successfully")
         } catch (e: Exception) {
             Log.e(TAG, "initClipboardManager: Failed to initialize clipboard manager", e)
         }
+    }
+
+    private fun startClipboardSyncIfEnabled() {
+        if (clipboardSyncBridge != null) return
+        try {
+            val enabled = com.kingzcheung.xime.plugin.ExtensionManager.getEnabledClipboardSyncPlugins(this)
+            val first = enabled.firstOrNull() ?: return
+            val plugin = first.second
+            if (!SettingsPreferences.isClipboardSyncEnabled(this)) {
+                Log.d(TAG, "Clipboard sync disabled in settings")
+                return
+            }
+            clipboardSyncBridge = ClipboardSyncBridge(this, clipboardManager, plugin)
+            clipboardSyncBridge?.start()
+            Log.d(TAG, "Clipboard sync started: ${first.first}")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start clipboard sync", e)
+        }
+    }
+
+    private fun stopClipboardSync() {
+        clipboardSyncBridge?.release()
+        clipboardSyncBridge = null
     }
 
     private fun ensureClipboardManagerInitialized() {
@@ -1432,6 +1459,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             SettingsPreferences.getPrefsPublic(this).unregisterOnSharedPreferenceChangeListener(it)
         }
         RimeEngine.setDeploymentCallback { _, _ -> }
+        stopClipboardSync()
         if (::clipboardManager.isInitialized) {
             clipboardManager.release()
         }

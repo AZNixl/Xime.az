@@ -20,6 +20,7 @@ class ManifestParseTest {
             network:
               hosts:
                 - dashscope.aliyuncs.com
+              allowCustomHosts: true
         """.trimIndent()
 
         val result = InstallerManager.parseManifestContent(content)
@@ -32,6 +33,7 @@ class ManifestParseTest {
         assertEquals("2.6.0", config.minHostVersion)
         assertEquals("3.0.0", config.maxHostVersion)
         assertEquals(listOf("dashscope.aliyuncs.com"), config.declaredHosts)
+        assertTrue("allowCustomHosts 应解析为 true", config.allowCustomHosts)
     }
 
     @Test

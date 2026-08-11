@@ -34,9 +34,18 @@ open class LuaPluginAdapter(
                 options = stringList(map["options"] ?: LuaValue.NIL),
                 helpText = map["helpText"]?.tojstring(),
                 section = map["section"]?.tojstring(),
-                required = map["required"]?.toboolean() ?: true
+                required = map["required"]?.toboolean() ?: true,
+                action = map["action"]?.tojstring()
             )
         }
+    }
+
+    override suspend fun onAction(action: String): String? {
+        if (action.isBlank()) return "未知操作"
+        val result = runtime.call(action)
+        if (result.isnil()) return null
+        val msg = result.tojstring()
+        return if (msg.isBlank()) null else msg
     }
 
     override fun getOptions(key: String): List<String>? {
@@ -51,6 +60,7 @@ open class LuaPluginAdapter(
         "multi_select" -> PluginFieldType.MULTI_SELECT
         "switch" -> PluginFieldType.SWITCH
         "number" -> PluginFieldType.NUMBER
+        "button" -> PluginFieldType.BUTTON
         else -> PluginFieldType.TEXT
     }
 

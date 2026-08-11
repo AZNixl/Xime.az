@@ -68,6 +68,12 @@ class XimeApplication : Application(), ImageLoaderFactory {
         PluginManager.wsHostApiFactory = { pluginId ->
             com.kingzcheung.xime.plugin.ws.WsHostApiImpl(this, pluginId)
         }
+        PluginManager.httpHostApiFactory = { pluginId ->
+            com.kingzcheung.xime.plugin.http.HttpHostApiImpl(this, pluginId)
+        }
+        PluginManager.cryptoHostApiFactory = {
+            com.kingzcheung.xime.plugin.crypto.CryptoHostApiImpl()
+        }
         PluginManager.initialize(this) {
             if (isDebug) {
                 PluginManager.installPluginsFromAssetsForDebug("plugins")

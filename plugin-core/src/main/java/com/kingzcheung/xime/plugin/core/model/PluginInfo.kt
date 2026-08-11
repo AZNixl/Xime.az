@@ -30,7 +30,10 @@ data class PluginInfo(
     /** Lua 入口脚本路径（相对插件包目录）。插件逻辑全部由该脚本导出。 */
     val entryScript: String? = null,
     /** 插件声明需要访问的域名（manifest.network.hosts）。联网时需命中可信池或获用户授权。 */
-    val declaredHosts: List<String> = emptyList()
+    val declaredHosts: List<String> = emptyList(),
+    /** 是否接受用户自定义服务器地址（manifest.network.allowCustomHosts）。为 true 时，
+     *  插件配置中用户填写的 URL 域名自动获得联网授权（剪贴板同步等服务器地址场景）。 */
+    val allowCustomHosts: Boolean = false
 ) {
     val version: String get() = versionName
     val category: PluginCategory get() = PluginCategory.fromId(type)
