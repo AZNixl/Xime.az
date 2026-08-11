@@ -8,8 +8,8 @@ static std::mutex g_env_mutex;
 static bool g_env_created = false;
 static OrtThreadingOptions* g_threading_options = nullptr;
 
-// 共享 intra-op 线程池：所有 ONNX 模型（联想/标点/手写）共用一个 env，
-// 因此共用一个线程池，避免每个 session 各自创建线程导致资源/内存浪费。
+// 共享 intra-op 线程池：所有 ONNX 模型（联想/标点/手写/离线语音 ASR）共用一个
+// env，因此共用一个线程池，避免每个 session 各自创建线程导致资源/内存浪费。
 #define ONNX_INTRA_OP_THREADS 2
 
 #define LOG_TAG "OnnxEnv"

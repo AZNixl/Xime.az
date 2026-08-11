@@ -20,7 +20,7 @@ namespace xime_asr {
 class StreamingRecognizer {
  public:
   StreamingRecognizer(const AsrModelPaths &paths,
-                      const std::string &tokens_path, int32_t num_threads = 2);
+                      const std::string &tokens_path);
 
   bool LoadOk() const { return loaded_; }
 

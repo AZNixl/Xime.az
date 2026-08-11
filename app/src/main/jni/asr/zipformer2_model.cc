@@ -12,6 +12,7 @@
 #include <map>
 #include <numeric>
 #include <sstream>
+#include <stdexcept>
 
 #include "onnx_env.h"
 
@@ -122,16 +123,15 @@ Ort::Value Cat(OrtAllocator *alloc, const std::vector<Ort::Value *> &ins,
 
 }  // namespace
 
-Zipformer2Model::Zipformer2Model(const AsrModelPaths &paths,
-                                 int32_t num_threads)
-    : env_(ORT_LOGGING_LEVEL_WARNING, "xime-asr"), allocator_{} {
+Zipformer2Model::Zipformer2Model(const AsrModelPaths &paths) : allocator_{} {
   // 纯 CPU 推理。zipformer2 为 int8 + 动态 shape 的流式模型，NNAPI 支持率
   // 不足 5%（且多为 CPU reference 驱动），切图开销大于收益，故不启用硬件 EP。
   OnnxGetApi();  // 初始化 C API
 
-  auto configure = [this, num_threads](Ort::SessionOptions &opts) {
-    opts.SetIntraOpNumThreads(num_threads);
-    opts.SetInterOpNumThreads(1);
+  // 复用全局共享 env 的 intra-op 线程池（2 线程），而非每个 session 自建
+  // 线程池。此前 3 个 session × 4 线程 = 12 个常驻线程，是模型驻留期间
+  // 待机发热的主要来源（线程池空闲时仍周期性 spin-wait）。
+  auto configure = [](Ort::SessionOptions &opts) {
     OnnxTryEnableCpuFallback(opts);
   };
   configure(encoder_sess_opts_);
@@ -144,30 +144,71 @@ Zipformer2Model::Zipformer2Model(const AsrModelPaths &paths,
 }
 
 void Zipformer2Model::LoadEncoderSession(const std::string &path) {
-  encoder_sess_ = std::make_unique<Ort::Session>(env_, path.c_str(),
-                                                 encoder_sess_opts_);
-  encoder_input_names_ = GetInputNames(encoder_sess_.get());
-  encoder_output_names_ = GetOutputNames(encoder_sess_.get());
+  const OrtApi *api = OnnxGetApi();
+  OrtEnv *env = OnnxGetSharedEnv();
+  if (!api || !env) {
+    throw std::runtime_error("ONNX Runtime env not available");
+  }
+  OrtSession *raw = nullptr;
+  OrtStatus *status = api->CreateSession(env, path.c_str(), encoder_sess_opts_, &raw);
+  if (status) {
+    LOGE("Failed to create encoder session: %s", api->GetErrorMessage(status));
+    api->ReleaseStatus(status);
+    throw std::runtime_error("Create encoder session failed");
+  }
+  encoder_sess_ = Ort::UnownedSession{raw};
+  encoder_input_names_ = GetInputNames(&encoder_sess_);
+  encoder_output_names_ = GetOutputNames(&encoder_sess_);
   ReadEncoderMetadata();
 }
 
 void Zipformer2Model::LoadDecoderSession(const std::string &path) {
-  decoder_sess_ = std::make_unique<Ort::Session>(env_, path.c_str(),
-                                                 decoder_sess_opts_);
-  decoder_input_names_ = GetInputNames(decoder_sess_.get());
-  decoder_output_names_ = GetOutputNames(decoder_sess_.get());
+  const OrtApi *api = OnnxGetApi();
+  OrtEnv *env = OnnxGetSharedEnv();
+  if (!api || !env) {
+    throw std::runtime_error("ONNX Runtime env not available");
+  }
+  OrtSession *raw = nullptr;
+  OrtStatus *status = api->CreateSession(env, path.c_str(), decoder_sess_opts_, &raw);
+  if (status) {
+    LOGE("Failed to create decoder session: %s", api->GetErrorMessage(status));
+    api->ReleaseStatus(status);
+    throw std::runtime_error("Create decoder session failed");
+  }
+  decoder_sess_ = Ort::UnownedSession{raw};
+  decoder_input_names_ = GetInputNames(&decoder_sess_);
+  decoder_output_names_ = GetOutputNames(&decoder_sess_);
   ReadDecoderMetadata();
 }
 
 void Zipformer2Model::LoadJoinerSession(const std::string &path) {
-  joiner_sess_ = std::make_unique<Ort::Session>(env_, path.c_str(),
-                                                joiner_sess_opts_);
-  joiner_input_names_ = GetInputNames(joiner_sess_.get());
-  joiner_output_names_ = GetOutputNames(joiner_sess_.get());
+  const OrtApi *api = OnnxGetApi();
+  OrtEnv *env = OnnxGetSharedEnv();
+  if (!api || !env) {
+    throw std::runtime_error("ONNX Runtime env not available");
+  }
+  OrtSession *raw = nullptr;
+  OrtStatus *status = api->CreateSession(env, path.c_str(), joiner_sess_opts_, &raw);
+  if (status) {
+    LOGE("Failed to create joiner session: %s", api->GetErrorMessage(status));
+    api->ReleaseStatus(status);
+    throw std::runtime_error("Create joiner session failed");
+  }
+  joiner_sess_ = Ort::UnownedSession{raw};
+  joiner_input_names_ = GetInputNames(&joiner_sess_);
+  joiner_output_names_ = GetOutputNames(&joiner_sess_);
+}
+
+Zipformer2Model::~Zipformer2Model() {
+  const OrtApi *api = OnnxGetApi();
+  if (!api) return;
+  if (encoder_sess_) api->ReleaseSession(encoder_sess_);
+  if (decoder_sess_) api->ReleaseSession(decoder_sess_);
+  if (joiner_sess_) api->ReleaseSession(joiner_sess_);
 }
 
 std::vector<std::string> Zipformer2Model::GetInputNames(
-    const Ort::Session *sess) const {
+    const Ort::UnownedSession *sess) const {
   std::vector<std::string> names;
   size_t n = sess->GetInputCount();
   names.reserve(n);
@@ -179,7 +220,7 @@ std::vector<std::string> Zipformer2Model::GetInputNames(
 }
 
 std::vector<std::string> Zipformer2Model::GetOutputNames(
-    const Ort::Session *sess) const {
+    const Ort::UnownedSession *sess) const {
   std::vector<std::string> names;
   size_t n = sess->GetOutputCount();
   names.reserve(n);
@@ -191,7 +232,7 @@ std::vector<std::string> Zipformer2Model::GetOutputNames(
 }
 
 void Zipformer2Model::ReadEncoderMetadata() {
-  auto meta = encoder_sess_->GetModelMetadata();
+  auto meta = encoder_sess_.GetModelMetadata();
   auto lookup = [&](const char *key) -> std::string {
     auto v = meta.LookupCustomMetadataMapAllocated(key, allocator_);
     return v.get();
@@ -224,7 +265,7 @@ void Zipformer2Model::ReadEncoderMetadata() {
 }
 
 void Zipformer2Model::ReadDecoderMetadata() {
-  auto meta = decoder_sess_->GetModelMetadata();
+  auto meta = decoder_sess_.GetModelMetadata();
   auto lookup = [&](const char *key) -> std::string {
     auto v = meta.LookupCustomMetadataMapAllocated(key, allocator_);
     return v.get();
@@ -252,7 +293,7 @@ Zipformer2Model::RunEncoder(Ort::Value features, std::vector<Ort::Value> states,
   in_vals.push_back(std::move(features));
   for (auto &v : states) in_vals.push_back(std::move(v));
 
-  auto out = encoder_sess_->Run(Ort::RunOptions{nullptr}, in_names.data(),
+  auto out = encoder_sess_.Run(Ort::RunOptions{nullptr}, in_names.data(),
                                 in_vals.data(), in_vals.size(),
                                 out_names.data(), out_names.size());
 
@@ -267,7 +308,7 @@ Ort::Value Zipformer2Model::RunDecoder(Ort::Value decoder_input) {
   for (auto &s : decoder_input_names_) in_names.push_back(s.c_str());
   std::vector<const char *> out_names;
   for (auto &s : decoder_output_names_) out_names.push_back(s.c_str());
-  auto out = decoder_sess_->Run(Ort::RunOptions{nullptr}, in_names.data(),
+  auto out = decoder_sess_.Run(Ort::RunOptions{nullptr}, in_names.data(),
                                 &decoder_input, 1, out_names.data(),
                                 out_names.size());
   return std::move(out[0]);
@@ -292,7 +333,7 @@ Ort::Value Zipformer2Model::RunJoiner(Ort::Value encoder_out,
     in_vals.push_back(std::move(decoder_out));
     in_vals.push_back(std::move(encoder_out));
   }
-  auto out = joiner_sess_->Run(Ort::RunOptions{nullptr}, in_names.data(),
+  auto out = joiner_sess_.Run(Ort::RunOptions{nullptr}, in_names.data(),
                                in_vals.data(), in_vals.size(), out_names.data(),
                                out_names.size());
   return std::move(out[0]);
@@ -303,7 +344,7 @@ std::vector<Ort::Value> Zipformer2Model::GetEncoderInitStates() {
   // 第一个 encoder 输入是特征 x，其余为状态。逐个按模型声明的期望形状
   // 生成零状态（float/int64 依元素类型），避免对模型输入顺序/形状的硬编码。
   for (size_t i = 1; i < encoder_input_names_.size(); ++i) {
-    auto info = encoder_sess_->GetInputTypeInfo(i).GetTensorTypeAndShapeInfo();
+    auto info = encoder_sess_.GetInputTypeInfo(i).GetTensorTypeAndShapeInfo();
     auto shape = info.GetShape();
     for (auto &d : shape) {
       if (d == -1) d = 1;  // dynamic dim -> 1

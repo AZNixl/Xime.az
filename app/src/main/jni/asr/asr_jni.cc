@@ -53,7 +53,7 @@ Java_com_kingzcheung_xime_speech_AsrNative_nativeCreate(JNIEnv *env, jobject,
 
   auto *holder = new (std::nothrow) RecognizerHolder();
   if (!holder) return 0;
-  holder->rec = std::make_unique<StreamingRecognizer>(paths, tokens, 4);
+  holder->rec = std::make_unique<StreamingRecognizer>(paths, tokens);
   if (!holder->rec->LoadOk()) {
     LOGE("nativeCreate: failed to load ASR model");
     delete holder;
