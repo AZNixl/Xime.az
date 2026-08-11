@@ -12,8 +12,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Visibility
@@ -68,7 +70,8 @@ fun PluginConfigFormScreen(
     pluginId: String,
     plugin: IPluginConfigurable,
     pluginName: String,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    embedded: Boolean = false
 ) {
     val context = LocalContext.current
     val configStore = remember(pluginId) {
@@ -88,84 +91,108 @@ fun PluginConfigFormScreen(
             }
     }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.surface,
-        topBar = {
-            TopAppBar(
-                title = { Text(pluginName) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回"
+    @Composable
+    fun sectionContent(section: String, sectionFields: List<PluginSettingField>) {
+        SettingsSection(
+            title = section.ifBlank { "插件配置" },
+            content = {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    sectionFields.forEach { field ->
+                        PluginSettingFieldEditor(
+                            field = field,
+                            configStore = configStore,
+                            options = field.options.ifEmpty {
+                                dynamicOptions[field.key].orEmpty()
+                            },
+                            plugin = plugin
                         )
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface
-                ),
-            )
-        }
-    ) { padding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 16.dp)
-                .imePadding(),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp)
-        ) {
-            groupedFields.forEach { (section, sectionFields) ->
-                item {
-                    SettingsSection(
-                        title = section.ifBlank { "插件配置" },
-                        content = {
-                            Column(
-                                modifier = Modifier.padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                sectionFields.forEach { field ->
-                                    PluginSettingFieldEditor(
-                                        field = field,
-                                        configStore = configStore,
-                                        options = field.options.ifEmpty {
-                                            dynamicOptions[field.key].orEmpty()
-                                        },
-                                        plugin = plugin
-                                    )
-                                }
-                            }
-                        }
-                    )
                 }
             }
+        )
+    }
 
-            item {
-                Button(
-                    onClick = {
-                        var allValid = true
-                        fields.forEach { field ->
-                            if (field.type == PluginFieldType.SECRET && field.required) {
-                                val current = configStore.get(field.key)
-                                if (current.isNullOrBlank()) allValid = false
-                            }
+    @Composable
+    fun saveButton() {
+        Button(
+            onClick = {
+                var allValid = true
+                fields.forEach { field ->
+                    if (field.type == PluginFieldType.SECRET && field.required) {
+                        val current = configStore.get(field.key)
+                        if (current.isNullOrBlank()) allValid = false
+                    }
+                }
+                if (!allValid) {
+                    Toast.makeText(context, "请填写必填配置", Toast.LENGTH_SHORT).show()
+                    return@Button
+                }
+                Toast.makeText(context, "配置已保存", Toast.LENGTH_SHORT).show()
+                if (!embedded) onBack()
+            },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary
+            )
+        ) {
+            Text("保存")
+        }
+    }
+
+    if (embedded) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            groupedFields.forEach { (section, sectionFields) ->
+                sectionContent(section, sectionFields)
+            }
+            saveButton()
+        }
+    } else {
+        Scaffold(
+            containerColor = MaterialTheme.colorScheme.surface,
+            topBar = {
+                TopAppBar(
+                    title = { Text(pluginName) },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "返回"
+                            )
                         }
-                        if (!allValid) {
-                            Toast.makeText(context, "请填写必填配置", Toast.LENGTH_SHORT).show()
-                            return@Button
-                        }
-                        Toast.makeText(context, "配置已保存", Toast.LENGTH_SHORT).show()
-                        onBack()
                     },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary
-                    )
-                ) {
-                    Text("保存")
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        titleContentColor = MaterialTheme.colorScheme.onSurface
+                    ),
+                )
+            }
+        ) { padding ->
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .padding(horizontal = 16.dp)
+                    .imePadding(),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp)
+            ) {
+                groupedFields.forEach { (section, sectionFields) ->
+                    item {
+                        sectionContent(section, sectionFields)
+                    }
+                }
+
+                item {
+                    saveButton()
                 }
             }
         }

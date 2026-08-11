@@ -82,6 +82,7 @@ import com.kingzcheung.xime.association.AssociationService
 import com.kingzcheung.xime.clipboard.ClipboardManager
 import com.kingzcheung.xime.clipboard.sync.ClipboardSyncBridge
 import com.kingzcheung.xime.plugin.ExtensionManager
+import com.kingzcheung.xime.plugin.core.runtime.PluginManager
 import com.kingzcheung.xime.speech.RecognitionState
 import com.kingzcheung.xime.rime.RimeConfigHelper
 import com.kingzcheung.xime.rime.RimeEngine
@@ -353,6 +354,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                     uiState.value = uiState.value.copy(isSttEnabled = SettingsPreferences.isSttEnabled(this@XimeInputMethodService))
                 }
                 SettingsPreferences.KEY_SMART_PREDICTION_ENABLED -> onPredictionSettingChanged()
+                SettingsPreferences.KEY_CLIPBOARD_SYNC_ENABLED -> updateClipboardSync()
             }
         }
         prefs.registerOnSharedPreferenceChangeListener(sharedPrefsListener)
@@ -602,6 +604,11 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                 }
             }
             startClipboardSyncIfEnabled()
+            serviceScope.launch {
+                PluginManager.pluginInstancesFlow.collect {
+                    updateClipboardSync()
+                }
+            }
             Log.d(TAG, "initClipboardManager: Clipboard manager initialized successfully")
         } catch (e: Exception) {
             Log.e(TAG, "initClipboardManager: Failed to initialize clipboard manager", e)
@@ -611,7 +618,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     private fun startClipboardSyncIfEnabled() {
         if (clipboardSyncBridge != null) return
         try {
-            val enabled = com.kingzcheung.xime.plugin.ExtensionManager.getEnabledClipboardSyncPlugins(this)
+            val enabled = ExtensionManager.getEnabledClipboardSyncPlugins(this)
             val first = enabled.firstOrNull() ?: return
             val plugin = first.second
             if (!SettingsPreferences.isClipboardSyncEnabled(this)) {
@@ -629,6 +636,19 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     private fun stopClipboardSync() {
         clipboardSyncBridge?.release()
         clipboardSyncBridge = null
+    }
+
+    /** 剪贴板同步设置或插件状态变化时调用，按条件动态启停。 */
+    private fun updateClipboardSync() {
+        if (!::clipboardManager.isInitialized) return
+        if (clipboardSyncBridge == null) {
+            startClipboardSyncIfEnabled()
+        } else if (
+            !SettingsPreferences.isClipboardSyncEnabled(this) ||
+            ExtensionManager.getEnabledClipboardSyncPlugins(this).isEmpty()
+        ) {
+            stopClipboardSync()
+        }
     }
 
     private fun ensureClipboardManagerInitialized() {

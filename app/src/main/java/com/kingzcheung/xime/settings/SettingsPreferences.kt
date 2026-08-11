@@ -590,7 +590,7 @@ object SettingsPreferences {
         }
     }
 
-    private const val KEY_CLIPBOARD_SYNC_ENABLED = "clipboard_sync_enabled"
+    const val KEY_CLIPBOARD_SYNC_ENABLED = "clipboard_sync_enabled"
 
     fun isClipboardSyncEnabled(context: Context): Boolean {
         return getPrefs(context).getBoolean(KEY_CLIPBOARD_SYNC_ENABLED, false)
