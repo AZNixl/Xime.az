@@ -34,6 +34,7 @@ import androidx.compose.material.icons.twotone.KeyboardAlt
 import androidx.compose.material.icons.twotone.Palette
 import androidx.compose.material.icons.twotone.Storefront
 import androidx.compose.material.icons.twotone.Straighten
+import androidx.compose.material.icons.twotone.Sync
 import androidx.compose.material.icons.twotone.TableChart
 import androidx.compose.material.icons.twotone.ToggleOn
 import androidx.compose.material.icons.twotone.TypeSpecimen
@@ -78,7 +79,8 @@ fun SettingsMainContent(
     onNavigateToSmartPrediction: () -> Unit,
     onNavigateToSpeechToText: () -> Unit,
     onNavigateToAbout: () -> Unit,
-    onNavigateToWebDav: () -> Unit = {}
+    onNavigateToWebDav: () -> Unit = {},
+    onNavigateToClipboardSync: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
@@ -330,12 +332,19 @@ fun SettingsMainContent(
             }
 
             item {
-                SettingsSection(title = "同步与备份", content = {
+                SettingsSection(                title = "同步与备份", content = {
                     SettingsItem(
                         icon = Icons.TwoTone.CloudSync,
                         title = "WebDAV 同步",
                         subtitle = "通过 WebDAV 备份和恢复输入方案与配置",
                         onClick = onNavigateToWebDav,
+                        showArrow = true
+                    )
+                    SettingsItem(
+                        icon = Icons.TwoTone.Sync,
+                        title = "剪贴板同步",
+                        subtitle = "通过插件将剪贴板与远端设备双向同步",
+                        onClick = onNavigateToClipboardSync,
                         showArrow = true
                     )
                 })

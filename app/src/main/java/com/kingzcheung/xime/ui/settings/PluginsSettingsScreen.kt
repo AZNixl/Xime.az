@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.twotone.Storefront
@@ -792,6 +793,7 @@ private fun getCategoryIcon(category: PluginCategory): ImageVector = when (categ
     PluginCategory.EMOJI -> Icons.Default.Face
     PluginCategory.ASR -> Icons.Default.Mic
     PluginCategory.PREDICTION -> Icons.Default.AutoAwesome
+    PluginCategory.CLIPBOARD_SYNC -> Icons.Default.Sync
     PluginCategory.UNKNOWN -> Icons.Default.Extension
 }
 

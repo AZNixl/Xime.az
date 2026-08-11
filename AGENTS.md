@@ -13,7 +13,7 @@
 - [插件开发指南](https://ime.ximei.me/plugins/PLUGIN_DEVELOPMENT_GUIDE) - 开发插件时必读
 
 ## 硬性规则（必须遵守，CI 会验证）
-- 所有 commit 必须经过 GPG 签名
+- 禁止自己提交代码
 - PR 必须遵循最小修改原则
 - 贡献前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)
 - 禁止使用 `./gradlew clean`

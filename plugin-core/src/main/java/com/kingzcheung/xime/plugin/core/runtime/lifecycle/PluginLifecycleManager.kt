@@ -4,6 +4,7 @@ import android.app.Application
 import android.util.Log
 import com.kingzcheung.xime.plugin.core.api.IPluginEntryClass
 import com.kingzcheung.xime.plugin.core.lua.LuaAsrPluginAdapter
+import com.kingzcheung.xime.plugin.core.lua.LuaClipboardSyncPluginAdapter
 import com.kingzcheung.xime.plugin.core.lua.LuaEmojiPluginAdapter
 import com.kingzcheung.xime.plugin.core.lua.LuaPluginAdapter
 import com.kingzcheung.xime.plugin.core.lua.LuaScriptRuntime
@@ -150,7 +151,9 @@ class PluginLifecycleManager(
                 pluginDir = pluginDir,
                 entryScript = plugin.entryScript ?: "main.lua",
                 configStore = PluginManager.configStoreFactory.create(application, plugin.id),
-                wsHostApi = PluginManager.wsHostApiFactory?.invoke(plugin.id)
+                wsHostApi = PluginManager.wsHostApiFactory?.invoke(plugin.id),
+                httpHostApi = PluginManager.httpHostApiFactory?.invoke(plugin.id),
+                cryptoHostApi = PluginManager.cryptoHostApiFactory?.invoke()
             )
             LoadedPluginInfo(pluginInfo = plugin, script = runtime)
         } catch (e: Exception) {
@@ -176,6 +179,11 @@ class PluginLifecycleManager(
                     )
                 PluginCategory.EMOJI ->
                     LuaEmojiPluginAdapter(
+                        runtime = loadedPlugin.script ?: return null,
+                        pluginContext = pluginContext
+                    )
+                PluginCategory.CLIPBOARD_SYNC ->
+                    LuaClipboardSyncPluginAdapter(
                         runtime = loadedPlugin.script ?: return null,
                         pluginContext = pluginContext
                     )

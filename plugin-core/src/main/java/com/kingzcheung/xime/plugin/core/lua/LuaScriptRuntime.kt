@@ -35,7 +35,9 @@ class LuaScriptRuntime(
     private val entryScript: String,
     private val configStore: PluginConfigStore,
     private val hostApi: LuaHostApi? = null,
-    private val wsHostApi: com.kingzcheung.xime.plugin.core.lua.ws.WsHostApi? = null
+    private val wsHostApi: com.kingzcheung.xime.plugin.core.lua.ws.WsHostApi? = null,
+    private val httpHostApi: com.kingzcheung.xime.plugin.core.lua.http.HttpHostApi? = null,
+    private val cryptoHostApi: com.kingzcheung.xime.plugin.core.lua.crypto.CryptoHostApi? = null
 ) {
 
     companion object {
@@ -304,6 +306,16 @@ class LuaScriptRuntime(
             host.set("ws", buildWsTable())
         }
 
+        // 通用 HTTP 白名单 API（协议无关，剪贴板同步等插件使用，见 HttpHostApi）
+        if (httpHostApi != null) {
+            host.set("http", buildHttpTable())
+        }
+
+        // 加密/编码原语（S3 SigV4 签名等，见 CryptoHostApi）
+        if (cryptoHostApi != null) {
+            host.set("crypto", buildCryptoTable())
+        }
+
         // ASR 结果回传桥：插件 Lua 解析结果后通知宿主后端（协议无关的接口桥）
         host.set("asr", buildAsrEmitTable())
 
@@ -351,6 +363,68 @@ class LuaScriptRuntime(
             CoerceJavaToLua.coerce(wsHostApi?.lastError())
         })
         return ws
+    }
+
+    private fun buildHttpTable(): LuaTable {
+        val http = LuaTable()
+
+        http.set("request", luaFunction { args ->
+            val method = args.arg1().tojstring()
+            val url = args.arg(2).tojstring()
+            val headers = HashMap<String, String>()
+            LuaScriptRuntime.tableToMap(args.arg(3)).forEach { (k, v) ->
+                headers[k] = v.tojstring()
+            }
+            val bodyArg = args.arg(4)
+            val body: ByteArray? = when {
+                bodyArg.isnil() -> null
+                bodyArg.isstring() -> bodyArg.tojstring().toByteArray(Charsets.UTF_8)
+                else -> luaToBytes(bodyArg)
+            }
+            val response = httpHostApi?.request(method, url, headers, body)
+            if (response == null) {
+                CoerceJavaToLua.coerce(null)
+            } else {
+                val table = LuaTable()
+                table.set("status", response.status)
+                val headerTable = LuaTable()
+                response.headers.forEach { (k, v) -> headerTable.set(k, v) }
+                table.set("headers", headerTable)
+                table.set("body", LuaString.valueOf(response.body))
+                table.set("text", response.body.toString(Charsets.UTF_8))
+                table
+            }
+        })
+        http.set("lastError", luaFunction { _ ->
+            CoerceJavaToLua.coerce(httpHostApi?.lastError())
+        })
+        return http
+    }
+
+    private fun buildCryptoTable(): LuaTable {
+        val crypto = LuaTable()
+
+        crypto.set("sha256", luaFunction { args ->
+            val data = luaToBytes(args.arg1()) ?: return@luaFunction LuaValue.NIL
+            LuaString.valueOf(cryptoHostApi?.sha256(data) ?: return@luaFunction LuaValue.NIL)
+        })
+        crypto.set("hmacSha256", luaFunction { args ->
+            val key = luaToBytes(args.arg1()) ?: return@luaFunction LuaValue.NIL
+            val data = luaToBytes(args.arg(2)) ?: return@luaFunction LuaValue.NIL
+            LuaString.valueOf(cryptoHostApi?.hmacSha256(key, data) ?: return@luaFunction LuaValue.NIL)
+        })
+        crypto.set("hex", luaFunction { args ->
+            val data = luaToBytes(args.arg1()) ?: return@luaFunction LuaValue.NIL
+            CoerceJavaToLua.coerce(cryptoHostApi?.hex(data))
+        })
+        crypto.set("base64", luaFunction { args ->
+            val data = luaToBytes(args.arg1()) ?: return@luaFunction LuaValue.NIL
+            CoerceJavaToLua.coerce(cryptoHostApi?.base64(data))
+        })
+        crypto.set("utcTime", luaFunction { args ->
+            CoerceJavaToLua.coerce(cryptoHostApi?.utcTime(args.arg1().tojstring()))
+        })
+        return crypto
     }
 
     private fun buildAsrEmitTable(): LuaTable {
@@ -443,6 +517,7 @@ class LuaScriptRuntime(
             }
         } catch (e: Exception) {
             Log.e(TAG, "Call '$name' failed for $pluginId: ${e.message}", e)
+            api.log("Call '$name' failed: ${e.message}")
             LuaValue.NIL
         }
     }

@@ -28,7 +28,8 @@ internal data class PluginConfig(
     val minHostVersion: String?,
     val maxHostVersion: String?,
     val entryScript: String?,
-    val declaredHosts: List<String> = emptyList()
+    val declaredHosts: List<String> = emptyList(),
+    val allowCustomHosts: Boolean = false
 )
 
 /** manifest.yaml 的类型化模型，与宿主一起用 kaml 解析。 */
@@ -47,7 +48,8 @@ internal data class PluginManifest(
 
 @Serializable
 internal data class NetworkConfig(
-    val hosts: List<String> = emptyList()
+    val hosts: List<String> = emptyList(),
+    val allowCustomHosts: Boolean = false
 )
 
 /**
@@ -89,7 +91,8 @@ class InstallerManager(
                     minHostVersion = manifest.minHostVersion?.takeIf { it.isNotBlank() },
                     maxHostVersion = manifest.maxHostVersion?.takeIf { it.isNotBlank() },
                     entryScript = manifest.entry,
-                    declaredHosts = declaredHosts
+                    declaredHosts = declaredHosts,
+                    allowCustomHosts = manifest.network?.allowCustomHosts ?: false
                 )
             )
         } catch (e: Exception) {
@@ -189,7 +192,8 @@ class InstallerManager(
                 maxHostVersion = pluginConfig.maxHostVersion,
                 trustLevel = com.kingzcheung.xime.plugin.core.util.PluginSignatureUtil.classifyLuaPlugin(source),
                 entryScript = entryScript,
-                declaredHosts = pluginConfig.declaredHosts
+                declaredHosts = pluginConfig.declaredHosts,
+                allowCustomHosts = pluginConfig.allowCustomHosts
             )
 
             if (existingPlugin != null) {

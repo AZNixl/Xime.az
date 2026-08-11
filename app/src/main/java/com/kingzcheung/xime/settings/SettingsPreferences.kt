@@ -589,4 +589,23 @@ object SettingsPreferences {
             getPrefs(context).edit().putStringSet(KEY_INSTALLED_MARKET_IDS, cur).apply()
         }
     }
+
+    const val KEY_CLIPBOARD_SYNC_ENABLED = "clipboard_sync_enabled"
+    const val KEY_CLIPBOARD_SYNC_PULL_ON_OPEN = "clipboard_sync_pull_on_open"
+
+    fun isClipboardSyncEnabled(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_CLIPBOARD_SYNC_ENABLED, false)
+    }
+
+    fun setClipboardSyncEnabled(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_CLIPBOARD_SYNC_ENABLED, enabled).apply()
+    }
+
+    fun isClipboardSyncPullOnOpen(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_CLIPBOARD_SYNC_PULL_ON_OPEN, false)
+    }
+
+    fun setClipboardSyncPullOnOpen(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_CLIPBOARD_SYNC_PULL_ON_OPEN, enabled).apply()
+    }
 }

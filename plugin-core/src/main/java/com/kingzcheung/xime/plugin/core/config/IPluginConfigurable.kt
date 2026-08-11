@@ -1,6 +1,6 @@
 package com.kingzcheung.xime.plugin.core.config
 
-enum class PluginFieldType { TEXT, SECRET, SELECT, MULTI_SELECT, SWITCH, NUMBER }
+enum class PluginFieldType { TEXT, SECRET, SELECT, MULTI_SELECT, SWITCH, NUMBER, BUTTON }
 
 data class PluginSettingField(
     val key: String,
@@ -11,7 +11,12 @@ data class PluginSettingField(
     val options: List<String> = emptyList(),
     val helpText: String? = null,
     val section: String? = null,
-    val required: Boolean = true
+    val required: Boolean = true,
+    /**
+     * 动作标识（仅 [PluginFieldType.BUTTON] 使用）：点击按钮时触发宿主动作，
+     * 通常为插件 Lua 导出的函数名（如 "testConnection"）。
+     */
+    val action: String? = null
 )
 
 interface IPluginConfigurable {
@@ -23,4 +28,14 @@ interface IPluginConfigurable {
      * 返回 null 表示无动态选项。
      */
     fun getOptions(key: String): List<String>? = null
+
+    /**
+     * 处理表单 BUTTON 字段点击（action 见 [PluginSettingField.action]）。
+     *
+     * 默认实现：把 [action] 当作插件 Lua 导出的函数名调用，返回其返回值
+     * （nil/空 = 成功，否则为错误消息）。
+     *
+     * @return null 表示成功；非 null 为错误消息（表单层提示用户）
+     */
+    suspend fun onAction(action: String): String? = null
 }

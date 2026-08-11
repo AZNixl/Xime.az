@@ -80,7 +80,9 @@ import com.kingzcheung.xime.viewmodel.KeyboardUiState
 import com.kingzcheung.xime.viewmodel.KeyboardViewModel
 import com.kingzcheung.xime.association.AssociationService
 import com.kingzcheung.xime.clipboard.ClipboardManager
+import com.kingzcheung.xime.clipboard.sync.ClipboardSyncBridge
 import com.kingzcheung.xime.plugin.ExtensionManager
+import com.kingzcheung.xime.plugin.core.runtime.PluginManager
 import com.kingzcheung.xime.speech.RecognitionState
 import com.kingzcheung.xime.rime.RimeConfigHelper
 import com.kingzcheung.xime.rime.RimeEngine
@@ -164,6 +166,8 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     internal val rimeEngine = RimeEngine.getInstance()
     
     internal lateinit var clipboardManager: ClipboardManager
+
+    private var clipboardSyncBridge: ClipboardSyncBridge? = null
     
     internal lateinit var keyboardContainer: VoiceKeyboardContainer
     
@@ -350,6 +354,11 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                     uiState.value = uiState.value.copy(isSttEnabled = SettingsPreferences.isSttEnabled(this@XimeInputMethodService))
                 }
                 SettingsPreferences.KEY_SMART_PREDICTION_ENABLED -> onPredictionSettingChanged()
+                SettingsPreferences.KEY_CLIPBOARD_SYNC_ENABLED -> updateClipboardSync()
+                SettingsPreferences.KEY_CLIPBOARD_SYNC_PULL_ON_OPEN -> {
+                    stopClipboardSync()
+                    updateClipboardSync()
+                }
             }
         }
         prefs.registerOnSharedPreferenceChangeListener(sharedPrefsListener)
@@ -598,9 +607,56 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                     quickSendItemsState.value = items
                 }
             }
+            startClipboardSyncIfEnabled()
+            serviceScope.launch {
+                PluginManager.pluginInstancesFlow.collect {
+                    updateClipboardSync()
+                }
+            }
             Log.d(TAG, "initClipboardManager: Clipboard manager initialized successfully")
         } catch (e: Exception) {
             Log.e(TAG, "initClipboardManager: Failed to initialize clipboard manager", e)
+        }
+    }
+
+    private fun startClipboardSyncIfEnabled() {
+        if (clipboardSyncBridge != null) return
+        try {
+            val enabled = ExtensionManager.getEnabledClipboardSyncPlugins(this)
+            val first = enabled.firstOrNull() ?: return
+            val plugin = first.second
+            if (!SettingsPreferences.isClipboardSyncEnabled(this)) {
+                Log.d(TAG, "Clipboard sync disabled in settings")
+                return
+            }
+            clipboardSyncBridge = ClipboardSyncBridge(
+                this,
+                clipboardManager,
+                plugin,
+                pullOnOpen = SettingsPreferences.isClipboardSyncPullOnOpen(this)
+            )
+            clipboardSyncBridge?.start()
+            Log.d(TAG, "Clipboard sync started: ${first.first}")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start clipboard sync", e)
+        }
+    }
+
+    private fun stopClipboardSync() {
+        clipboardSyncBridge?.release()
+        clipboardSyncBridge = null
+    }
+
+    /** 剪贴板同步设置或插件状态变化时调用，按条件动态启停。 */
+    private fun updateClipboardSync() {
+        if (!::clipboardManager.isInitialized) return
+        if (clipboardSyncBridge == null) {
+            startClipboardSyncIfEnabled()
+        } else if (
+            !SettingsPreferences.isClipboardSyncEnabled(this) ||
+            ExtensionManager.getEnabledClipboardSyncPlugins(this).isEmpty()
+        ) {
+            stopClipboardSync()
         }
     }
 
@@ -1388,6 +1444,11 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         clearInputState()
         recentClipboardItemsState.value = emptyList()
     }
+
+    override fun onWindowShown() {
+        super.onWindowShown()
+        clipboardSyncBridge?.pullOnce()
+    }
     
     private fun clearInputState() {
         calculatorEngine.clear()
@@ -1432,6 +1493,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             SettingsPreferences.getPrefsPublic(this).unregisterOnSharedPreferenceChangeListener(it)
         }
         RimeEngine.setDeploymentCallback { _, _ -> }
+        stopClipboardSync()
         if (::clipboardManager.isInitialized) {
             clipboardManager.release()
         }

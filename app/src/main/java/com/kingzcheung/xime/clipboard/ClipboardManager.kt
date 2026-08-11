@@ -8,8 +8,11 @@ import android.util.Log
 import androidx.core.content.FileProvider
 import com.kingzcheung.xime.clipboard.db.ClipboardDatabase
 import com.kingzcheung.xime.clipboard.db.ClipboardEntry
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.io.File
@@ -90,6 +93,10 @@ class ClipboardManager private constructor(private val context: Context) {
 
     private val _recentItems = MutableStateFlow<List<ClipboardItem>>(emptyList())
     val recentItems: StateFlow<List<ClipboardItem>> = _recentItems.asStateFlow()
+
+    /** 本地剪贴板变更事件流（新增/更新条目时发射，供剪贴板同步等外部消费）。 */
+    private val _clipboardChanged = MutableSharedFlow<ClipboardItem>(extraBufferCapacity = 16)
+    val clipboardChanged: SharedFlow<ClipboardItem> = _clipboardChanged.asSharedFlow()
 
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
@@ -218,6 +225,12 @@ class ClipboardManager private constructor(private val context: Context) {
         if (text.isBlank()) return
         scope.launch {
             dao.upsertAndTrim(text, System.currentTimeMillis(), MAX_ITEMS)
+            _clipboardChanged.emit(
+                ClipboardItem(
+                    text = text,
+                    timestamp = System.currentTimeMillis()
+                )
+            )
         }
     }
 

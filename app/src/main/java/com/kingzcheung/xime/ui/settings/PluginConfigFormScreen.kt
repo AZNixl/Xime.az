@@ -42,6 +42,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -58,6 +59,7 @@ import com.kingzcheung.xime.plugin.core.config.PluginConfigStore
 import com.kingzcheung.xime.plugin.core.config.PluginFieldType
 import com.kingzcheung.xime.plugin.core.config.PluginSettingField
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -66,7 +68,8 @@ fun PluginConfigFormScreen(
     pluginId: String,
     plugin: IPluginConfigurable,
     pluginName: String,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    embedded: Boolean = false
 ) {
     val context = LocalContext.current
     val configStore = remember(pluginId) {
@@ -86,83 +89,107 @@ fun PluginConfigFormScreen(
             }
     }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.surface,
-        topBar = {
-            TopAppBar(
-                title = { Text(pluginName) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回"
+    @Composable
+    fun sectionContent(section: String, sectionFields: List<PluginSettingField>) {
+        SettingsSection(
+            title = section.ifBlank { "插件配置" },
+            content = {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    sectionFields.forEach { field ->
+                        PluginSettingFieldEditor(
+                            field = field,
+                            configStore = configStore,
+                            options = field.options.ifEmpty {
+                                dynamicOptions[field.key].orEmpty()
+                            },
+                            plugin = plugin
                         )
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface
-                ),
-            )
-        }
-    ) { padding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 16.dp)
-                .imePadding(),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp)
-        ) {
-            groupedFields.forEach { (section, sectionFields) ->
-                item {
-                    SettingsSection(
-                        title = section.ifBlank { "插件配置" },
-                        content = {
-                            Column(
-                                modifier = Modifier.padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                sectionFields.forEach { field ->
-                                    PluginSettingFieldEditor(
-                                        field = field,
-                                        configStore = configStore,
-                                        options = field.options.ifEmpty {
-                                            dynamicOptions[field.key].orEmpty()
-                                        }
-                                    )
-                                }
-                            }
-                        }
-                    )
                 }
             }
+        )
+    }
 
-            item {
-                Button(
-                    onClick = {
-                        var allValid = true
-                        fields.forEach { field ->
-                            if (field.type == PluginFieldType.SECRET && field.required) {
-                                val current = configStore.get(field.key)
-                                if (current.isNullOrBlank()) allValid = false
-                            }
+    @Composable
+    fun saveButton() {
+        Button(
+            onClick = {
+                var allValid = true
+                fields.forEach { field ->
+                    if (field.type == PluginFieldType.SECRET && field.required) {
+                        val current = configStore.get(field.key)
+                        if (current.isNullOrBlank()) allValid = false
+                    }
+                }
+                if (!allValid) {
+                    Toast.makeText(context, "请填写必填配置", Toast.LENGTH_SHORT).show()
+                    return@Button
+                }
+                Toast.makeText(context, "配置已保存", Toast.LENGTH_SHORT).show()
+                if (!embedded) onBack()
+            },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary
+            )
+        ) {
+            Text("保存")
+        }
+    }
+
+    if (embedded) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            groupedFields.forEach { (section, sectionFields) ->
+                sectionContent(section, sectionFields)
+            }
+            saveButton()
+        }
+    } else {
+        Scaffold(
+            containerColor = MaterialTheme.colorScheme.surface,
+            topBar = {
+                TopAppBar(
+                    title = { Text(pluginName) },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "返回"
+                            )
                         }
-                        if (!allValid) {
-                            Toast.makeText(context, "请填写必填配置", Toast.LENGTH_SHORT).show()
-                            return@Button
-                        }
-                        Toast.makeText(context, "配置已保存", Toast.LENGTH_SHORT).show()
-                        onBack()
                     },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary
-                    )
-                ) {
-                    Text("保存")
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        titleContentColor = MaterialTheme.colorScheme.onSurface
+                    ),
+                )
+            }
+        ) { padding ->
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .padding(horizontal = 16.dp)
+                    .imePadding(),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp)
+            ) {
+                groupedFields.forEach { (section, sectionFields) ->
+                    item {
+                        sectionContent(section, sectionFields)
+                    }
+                }
+
+                item {
+                    saveButton()
                 }
             }
         }
@@ -174,8 +201,12 @@ fun PluginConfigFormScreen(
 private fun PluginSettingFieldEditor(
     field: PluginSettingField,
     configStore: PluginConfigStore,
-    options: List<String>
+    options: List<String>,
+    plugin: IPluginConfigurable
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var buttonBusy by remember(field.key) { mutableStateOf(false) }
     var value by rememberSaveable(field.key) {
         mutableStateOf(configStore.get(field.key) ?: field.defaultValue ?: "")
     }
@@ -366,6 +397,38 @@ private fun PluginSettingFieldEditor(
                         }
                     }
                 }
+            }
+        }
+
+        PluginFieldType.BUTTON -> {
+            Button(
+                onClick = {
+                    val action = field.action
+                    if (action.isNullOrBlank()) {
+                        Toast.makeText(context, "未配置动作", Toast.LENGTH_SHORT).show()
+                        return@Button
+                    }
+                    buttonBusy = true
+                    scope.launch {
+                        val error = withContext(Dispatchers.IO) {
+                            runCatching { plugin.onAction(action) }.getOrNull()
+                        }
+                        buttonBusy = false
+                        if (error.isNullOrBlank()) {
+                            Toast.makeText(context, "成功", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, error, Toast.LENGTH_LONG).show()
+                        }
+                    }
+                },
+                enabled = !buttonBusy,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                )
+            ) {
+                Text(if (buttonBusy) "处理中…" else field.label)
             }
         }
     }
