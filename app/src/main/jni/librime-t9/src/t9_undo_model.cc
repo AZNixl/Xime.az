@@ -464,6 +464,16 @@ bool T9UndoModel::UndoOp(const T9SegmentOp& op) {
                     segments_[op.released_seg].digits.push_back(d);
                 }
             }
+            // 修复（2026-08-11，场景34 设备实证）：回收不完整（释放的数字已被删除，
+            // 如场景34 的 '26' 在 undo RC 前被 ⌫2/⌫3 删掉）时，被截短段的 digits 与
+            // option.digit_length 失配（tiao[4] 只剩 '84'）。此时段无法恢复完整拼音段，
+            // 若回 selected 会残留错误 option（预编辑"洮tiao/tian"而非"洮ti"）。
+            // 修复：该段回 unassigned（合并撤销 LC，与 merge_first 同语义），
+            // digits 保留待删 → 派生 unassigned 供 RIME 正确显示剩余数字。
+            bool release_incomplete = op.released_count > 0 && op.released_seg >= 0 &&
+                op.released_seg < static_cast<int>(segments_.size()) &&
+                static_cast<int>(segments_[op.released_seg].digits.size()) !=
+                segments_[op.released_seg].option.digit_length;
             // 2026-08-05 修复：仅单段 commit（size==1）的最早段（idx==0）合并撤销 LC
             // （场景13 undo 里：li 段回 unassigned，数字回退）。
             // 多段 commit（RC({0,1}) 如"价格"）是整体撤销：所有段回 selected（拼音），
@@ -491,12 +501,19 @@ bool T9UndoModel::UndoOp(const T9SegmentOp& op) {
             }
             for (size_t i = 0; i < op.commit_indices.size(); ++i) {
                 auto& seg = segments_[op.commit_indices[i]];
-                if (merge_first && seg.has_lc) {
+                // 场景34：release_incomplete（回收失败，digits 与 option 失配）时
+                // 该段回 unassigned（合并撤销 LC），与 merge_first 同语义——
+                // 否则残留 option='tiao'(4) 与 digits='84' 失配，预编辑错误显示
+                // "洮tiao/tian"而非"洮ti"（设备实证 2026-08-11）。
+                bool merge_lc = merge_first ||
+                    (release_incomplete && static_cast<int>(op.commit_indices[i]) ==
+                        op.released_seg);
+                if (merge_lc && seg.has_lc) {
                     // 被替换段（selections[0] = 最早段）：合并撤销 LC，段回 unassigned。
                     // 同时移除 ops_ 中该段的 LC op（对应命令模式 merge_lc 的 Pop）。
                     for (size_t j = ops_.size(); j-- > 0;) {
                         if (ops_[j].kind == T9SegmentOp::kLC &&
-                            ops_[j].segment_index == op.commit_indices[0]) {
+                            ops_[j].segment_index == op.commit_indices[i]) {
                             ops_.erase(ops_.begin() + static_cast<ptrdiff_t>(j));
                             break;
                         }

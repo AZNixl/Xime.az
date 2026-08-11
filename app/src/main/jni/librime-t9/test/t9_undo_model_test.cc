@@ -1661,3 +1661,76 @@ TEST(T9UndoModelTest, Scenario32_JGGTB_JiuGongGe_Tang) {
     // undo 汤 + undo 九宫格 各 1 个 commit
     EXPECT_EQ(2, m.ConsumeUndoneCommitCount());
 }
+
+// ── 场景34 [Bug-2026-08-11]: 826 8426 右选"提"后回退，undo RC 回收失败 → 段回 unassigned ──
+// 复现：输入 8268426 → 左选 tao(826) → 右选"洮"(commit 段0) → 左选 tiao(8426) → 右选"提"(ti=84)
+//       → 左选 an(26) → ⌫1 undo an → ⌫2 删 6 → ⌫3 删 2（'26' 全部删除）→ ⌫4 undo RC(提)。
+// 根因：右选"提"时 tiao 段被 commit 且截短为 '84'、释放 '26' 到 tail（SyncRightCommit release）。
+//       undo RC(提) 时回收 '26' 失败（已被 ⌫2/⌫3 删除）→ 原实现段1 回 selected，
+//       option='tiao'(4) 与 digits='84'(2) 失配 → 预编辑错误显示 "洮tiao/tian"（应为 "洮ti"）。
+// 修复：回收不完整（digits 长度 != option.digit_length）时，段回 unassigned（合并撤销 LC），
+//       digits 保留待删 → 派生 unassigned='84' → RIME 显示 'ti'，后续 ⌫5 删 4、⌫6 删 8。
+TEST(T9UndoModelTest, Scenario34_8268426_TiaoTi_UndoRC_ReleaseLost_GoesUnassigned) {
+    T9UndoModel m;
+    for (char d : std::string("8268426")) m.DigitPressed(d);
+    m.LeftChoice(SyllableOption("tao", 3));  // 段0: tao(826)
+    // 右选"洮"：commit 段0（partial，剩 8426 unassigned）
+    m.SyncRightCommit(
+        T9Buffer("8268426", {SyllableOption("tao", 3)}, 3, 7),
+        T9Buffer("8426", {}, 0, 7));
+    ASSERT_EQ(1u, m.segments().size());
+    EXPECT_EQ(T9Segment::kCommitted, m.segments()[0].phase);
+    EXPECT_EQ("8426", m.tail_digits());
+    // 左选 tiao(8426)：段1
+    m.LeftChoice(SyllableOption("tiao", 4));
+    ASSERT_EQ(2u, m.segments().size());
+    EXPECT_EQ(T9Segment::kSelected, m.segments()[1].phase);
+    EXPECT_EQ("8426", m.segments()[1].digits);
+    // 右选"提"(ti=84)：commit 段1 + 截短 digits '8426'→'84'，释放 '26' 回 tail
+    m.SyncRightCommit(
+        T9Buffer("8426", {SyllableOption("tiao", 4)}, 4, 7),
+        T9Buffer("26", {}, 0, 7));
+    ASSERT_EQ(2u, m.segments().size());
+    EXPECT_EQ(T9Segment::kCommitted, m.segments()[1].phase);
+    EXPECT_EQ("84", m.segments()[1].digits);
+    EXPECT_EQ("26", m.tail_digits());
+    // 左选 an(26)：段2
+    m.LeftChoice(SyllableOption("an", 2));
+    ASSERT_EQ(3u, m.segments().size());
+    EXPECT_EQ(T9Segment::kSelected, m.segments()[2].phase);
+    EXPECT_EQ("26", m.segments()[2].digits);
+    EXPECT_TRUE(m.tail_digits().empty());
+    // ⌫1: undo an（段2 回 unassigned，digits 保留）
+    EXPECT_TRUE(m.Backspace());
+    EXPECT_EQ(T9Segment::kUnassigned, m.segments()[2].phase);
+    EXPECT_EQ("26", m.segments()[2].digits);
+    // ⌫2: 删 '6'
+    EXPECT_TRUE(m.Backspace());
+    EXPECT_EQ("2", m.segments()[2].digits);
+    // ⌫3: 删 '2'（'26' 全部删除）
+    EXPECT_TRUE(m.Backspace());
+    EXPECT_EQ("", m.segments()[2].digits);
+    // ⌫4: undo RC(提) → 回收 '26' 失败 → 段1 回 unassigned（合并撤销 LC）
+    EXPECT_TRUE(m.Backspace());
+    EXPECT_EQ(T9Segment::kUnassigned, m.segments()[1].phase);
+    EXPECT_FALSE(m.segments()[1].has_lc);
+    EXPECT_EQ("84", m.segments()[1].digits);
+    // 派生 buffer：consumed=3（段0 committed），unassigned='84' → RIME 显示 'ti'
+    T9Buffer buf = m.ToBuffer();
+    EXPECT_EQ(3, buf.consumed_count);
+    EXPECT_EQ("84", buf.unassigned());
+    EXPECT_TRUE(buf.selections.empty());
+    // ⌫5: 删 '4'
+    EXPECT_TRUE(m.Backspace());
+    EXPECT_EQ("8", m.segments()[1].digits);
+    // ⌫6: 删 '8'
+    EXPECT_TRUE(m.Backspace());
+    EXPECT_EQ("", m.segments()[1].digits);
+    // ⌫7: undo RC(洮) → 段0 满足 merge_first（单段commit+逻辑首段+完整拼音+无活跃段+tail空）
+    //     合并撤销 LC → 段0 回 unassigned（digits 保留待删），与场景13 undo 里 行为一致
+    EXPECT_TRUE(m.Backspace());
+    EXPECT_EQ(T9Segment::kUnassigned, m.segments()[0].phase);
+    EXPECT_EQ("826", m.segments()[0].digits);
+    // 撤销"提"+"洮"两个 commit
+    EXPECT_EQ(2, m.ConsumeUndoneCommitCount());
+}
