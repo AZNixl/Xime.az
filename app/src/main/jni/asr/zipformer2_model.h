@@ -27,7 +27,8 @@ struct AsrModelPaths {
 // encoder/decoder/joiner inference plus encoder recurrent-state management.
 class Zipformer2Model {
  public:
-  explicit Zipformer2Model(const AsrModelPaths &paths, int32_t num_threads = 2);
+  explicit Zipformer2Model(const AsrModelPaths &paths);
+  ~Zipformer2Model();
 
   // ---- encoder ----
   // features: (N, T, feat_dim) float; states: encoder recurrent state.
@@ -73,17 +74,17 @@ class Zipformer2Model {
   void ReadEncoderMetadata();
   void ReadDecoderMetadata();
 
-  std::vector<std::string> GetInputNames(const Ort::Session *sess) const;
-  std::vector<std::string> GetOutputNames(const Ort::Session *sess) const;
+  std::vector<std::string> GetInputNames(const Ort::UnownedSession *sess) const;
+  std::vector<std::string> GetOutputNames(const Ort::UnownedSession *sess) const;
 
-  Ort::Env env_;
   Ort::SessionOptions encoder_sess_opts_;
   Ort::SessionOptions decoder_sess_opts_;
   Ort::SessionOptions joiner_sess_opts_;
 
-  std::unique_ptr<Ort::Session> encoder_sess_;
-  std::unique_ptr<Ort::Session> decoder_sess_;
-  std::unique_ptr<Ort::Session> joiner_sess_;
+  // 非拥有包装：session 由共享 env 创建，原始指针在此析构时显式释放。
+  Ort::UnownedSession encoder_sess_;
+  Ort::UnownedSession decoder_sess_;
+  Ort::UnownedSession joiner_sess_;
 
   std::vector<std::string> encoder_input_names_;
   std::vector<std::string> encoder_output_names_;
