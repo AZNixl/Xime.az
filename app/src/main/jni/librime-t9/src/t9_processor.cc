@@ -787,6 +787,13 @@ void T9Processor::DeriveStateMachineFromUndoModel() {
         return;
     }
     if (undo_model_.HasSelectableDigits()) {
+        // 无 selected 段 → 进入 INPUT 态，必须清空 selection_history。
+        // 修复（2026-08-11，设备实证）：退格撤销 LC 后若残留历史（如 [tiao]），
+        // 再次左选同一拼音会累积重复条目 [tiao, tiao] → HSLBC 的
+        // is_full_commit_without_boundaries（JoinPinyins(history)==selected_pinyin）
+        // 判定失败 → 右选错误 partial commit（预编辑"洮条tiao"）。
+        // 段模型是唯一真相源：无 selected 段时 history 必须为空。
+        state_machine_.ClearSelectionHistory();
         state_machine_.EnterInput();
         return;
     }

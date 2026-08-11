@@ -1661,3 +1661,41 @@ TEST(T9UndoModelTest, Scenario32_JGGTB_JiuGongGe_Tang) {
     // undo 汤 + undo 九宫格 各 1 个 commit
     EXPECT_EQ(2, m.ConsumeUndoneCommitCount());
 }
+
+// ── 场景 [Bug-2026-08-11]: 826 8426 退格撤销左选 tiao 后，段模型进入"无 selected + 有可分配数字"态 ──
+// 复现：输入 8268426 → 左选 tao(826) → 右选"洮"(commit tao 段) → 左选 tiao(8426)
+//       → 退格撤销 tiao。退格后 undo_model 应：tao 段 committed、tiao 段 unassigned，
+//       HasSelectedSegment()=false、HasSelectableDigits()=true —— 即
+//       DeriveStateMachineFromUndoModel 走 HasSelectableDigits 分支（修复点：进入
+//       INPUT 前必须 ClearSelectionHistory，否则再次左选 tiao 累积 [tiao,tiao] 残留）。
+TEST(T9UndoModelTest, Scenario8268426_Tao_Tiao_UndoLC_NoSelectedSegment) {
+    T9UndoModel m;
+    for (char d : std::string("8268426")) m.DigitPressed(d);
+    m.LeftChoice(SyllableOption("tao", 3));
+    // 右选"洮"(tao)：commit tao 段（partial，剩 8426 unassigned）
+    m.SyncRightCommit(
+        T9Buffer("8268426", {SyllableOption("tao", 3)}, 3, 7),
+        T9Buffer("8426", {}, 0, 7));
+    ASSERT_EQ(1u, m.segments().size());
+    EXPECT_EQ(T9Segment::kCommitted, m.segments()[0].phase);
+    EXPECT_EQ("8426", m.tail_digits());
+    // 左选 tiao：从 tail 消费 8426
+    m.LeftChoice(SyllableOption("tiao", 4));
+    ASSERT_EQ(2u, m.segments().size());
+    EXPECT_EQ(T9Segment::kSelected, m.segments()[1].phase);
+    EXPECT_EQ("8426", m.segments()[1].digits);
+    EXPECT_TRUE(m.tail_digits().empty());
+    // 退格撤销 tiao（undo LC）
+    EXPECT_TRUE(m.Backspace());
+    EXPECT_EQ(T9Segment::kUnassigned, m.segments()[1].phase);
+    EXPECT_EQ("8426", m.segments()[1].digits);
+    // 段模型状态：无 selected 段 + 有可分配数字 → DeriveStateMachine 走修复分支
+    EXPECT_FALSE(m.HasSelectedSegment());
+    EXPECT_TRUE(m.HasSelectableDigits());
+    // 派生 buffer：consumed=3（tao committed），unassigned='8426'
+    T9Buffer buf = m.ToBuffer();
+    EXPECT_EQ("8268426", buf.digit_sequence);
+    EXPECT_EQ(3, buf.consumed_count);
+    EXPECT_EQ("8426", buf.unassigned());
+    EXPECT_TRUE(buf.selections.empty());
+}
