@@ -14,6 +14,72 @@ namespace xime_asr {
 
 namespace {
 
+int HexDigit(char c) {
+  if (c >= '0' && c <= '9') return c - '0';
+  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+  return -1;
+}
+
+// Parse a byte-level BPE token of the form "<0xNN>" into its byte value.
+// Returns -1 if the symbol is not a byte token.
+int ParseByteToken(const std::string &s) {
+  if (s.size() != 6 || s[0] != '<' || s[1] != '0' ||
+      (s[2] != 'x' && s[2] != 'X') || s[5] != '>') {
+    return -1;
+  }
+  const int hi = HexDigit(s[3]);
+  const int lo = HexDigit(s[4]);
+  if (hi < 0 || lo < 0) return -1;
+  return (hi << 4) | lo;
+}
+
+// Decode a buffer of UTF-8 bytes into a UTF-8 string. Invalid byte sequences
+// are skipped so a partial byte token run cannot corrupt the output.
+std::string DecodeUtf8(const std::vector<uint8_t> &bytes) {
+  std::string out;
+  size_t i = 0;
+  while (i < bytes.size()) {
+    const uint8_t c = bytes[i];
+    if (c < 0x80) {
+      out += static_cast<char>(c);
+      i += 1;
+    } else if ((c & 0xE0) == 0xC0) {
+      if (i + 1 < bytes.size() && (bytes[i + 1] & 0xC0) == 0x80) {
+        out += static_cast<char>(c);
+        out += static_cast<char>(bytes[i + 1]);
+        i += 2;
+      } else {
+        i += 1;
+      }
+    } else if ((c & 0xF0) == 0xE0) {
+      if (i + 2 < bytes.size() && (bytes[i + 1] & 0xC0) == 0x80 &&
+          (bytes[i + 2] & 0xC0) == 0x80) {
+        out += static_cast<char>(c);
+        out += static_cast<char>(bytes[i + 1]);
+        out += static_cast<char>(bytes[i + 2]);
+        i += 3;
+      } else {
+        i += 1;
+      }
+    } else if ((c & 0xF8) == 0xF0) {
+      if (i + 3 < bytes.size() && (bytes[i + 1] & 0xC0) == 0x80 &&
+          (bytes[i + 2] & 0xC0) == 0x80 && (bytes[i + 3] & 0xC0) == 0x80) {
+        out += static_cast<char>(c);
+        out += static_cast<char>(bytes[i + 1]);
+        out += static_cast<char>(bytes[i + 2]);
+        out += static_cast<char>(bytes[i + 3]);
+        i += 4;
+      } else {
+        i += 1;
+      }
+    } else {
+      i += 1;
+    }
+  }
+  return out;
+}
+
 // Load id -> symbol map from a sherpa/icefall tokens.txt. Each line is
 // "<symbol> <id>".
 std::vector<std::string> LoadSymbolTable(const std::string &path) {
@@ -206,6 +272,14 @@ void StreamingRecognizer::DecodeOneChunk() {
 
 std::string StreamingRecognizer::ConvertTokens() const {
   std::string text;
+  std::vector<uint8_t> pending_bytes;
+  auto flush_bytes = [&text, &pending_bytes]() {
+    if (!pending_bytes.empty()) {
+      text += DecodeUtf8(pending_bytes);
+      pending_bytes.clear();
+    }
+  };
+
   size_t start = static_cast<size_t>(context_size_);
   if (tokens_.size() <= start) return text;
   for (size_t i = start; i < tokens_.size(); ++i) {
@@ -213,6 +287,17 @@ std::string StreamingRecognizer::ConvertTokens() const {
     if (id < 0 || static_cast<size_t>(id) >= id2sym_.size()) continue;
     const std::string &s = id2sym_[static_cast<size_t>(id)];
     if (s.empty() || s == "<blk>" || s == "<unk>") continue;
+
+    // Byte-level BPE fallback tokens ("<0xNN>") must be accumulated and
+    // recombined into UTF-8 before being emitted. Otherwise characters outside
+    // the vocabulary (e.g. 垃圾) appear literally as "<0xE5><0x9E><0x83>".
+    const int byte = ParseByteToken(s);
+    if (byte >= 0) {
+      pending_bytes.push_back(static_cast<uint8_t>(byte));
+      continue;
+    }
+    flush_bytes();
+
     std::string out = s;
     // Strip BPE word-boundary marker '▁' (U+2581, 3 UTF-8 bytes).
     for (size_t p = out.find("\xE2\x96\x81"); p != std::string::npos;
@@ -221,6 +306,7 @@ std::string StreamingRecognizer::ConvertTokens() const {
     }
     text += out;
   }
+  flush_bytes();
   return text;
 }
 
