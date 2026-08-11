@@ -8,6 +8,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.ksp)
 }
 
 apply(from = "build-logic/tasks-native.gradle.kts")
@@ -223,6 +224,10 @@ dependencies {
     implementation("io.ktor:ktor-server-core:3.5.1")
     implementation("io.ktor:ktor-server-cio:3.5.1")
     implementation(libs.kotlinx.serialization.json)
+
+    // Room 3.0 (SQLite)
+    implementation(libs.androidx.room3.runtime)
+    ksp(libs.androidx.room3.compiler)
 
     // Sora Code Editor for YAML viewing/editing
     implementation(platform("io.github.rosemoe:editor-bom:0.24.6"))

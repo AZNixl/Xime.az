@@ -6,16 +6,18 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import androidx.core.content.FileProvider
+import com.kingzcheung.xime.clipboard.db.ClipboardDatabase
+import com.kingzcheung.xime.clipboard.db.ClipboardEntry
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileInputStream
-import java.util.concurrent.atomic.AtomicLong
 import android.content.ClipboardManager as AndroidClipboardManager
 
 data class ClipboardItem(
-    val id: Long = ClipboardManager.generateId(),
+    val id: Long = 0,
     val text: String,
     val timestamp: Long = System.currentTimeMillis(),
     val isPinned: Boolean = false,
@@ -23,7 +25,7 @@ data class ClipboardItem(
 )
 
 class ClipboardManager private constructor(private val context: Context) {
-    
+
     companion object {
         private const val TAG = "ClipboardManager"
         private const val MAX_ITEMS = 1000
@@ -31,22 +33,19 @@ class ClipboardManager private constructor(private val context: Context) {
         private const val PREFS_NAME = "clipboard_prefs"
         private const val KEY_CLIPBOARD_ITEMS = "clipboard_items"
         private const val KEY_QUICK_SEND_ITEMS = "quick_send_items"
-        private val idCounter = AtomicLong(System.currentTimeMillis())
-        
-        fun generateId(): Long = idCounter.getAndIncrement()
-        
+
         @Volatile
         private var instance: ClipboardManager? = null
-        
+
         fun getInstance(context: Context): ClipboardManager {
             return instance ?: synchronized(this) {
                 instance ?: ClipboardManager(context.applicationContext).also { instance = it }
             }
         }
     }
-    
+
     private val androidClipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as AndroidClipboardManager
-    
+
     private val clipboardListener = AndroidClipboardManager.OnPrimaryClipChangedListener {
         readClipboard()
     }
@@ -78,7 +77,11 @@ class ClipboardManager private constructor(private val context: Context) {
             Log.e(TAG, "Unexpected error reading clipboard", e)
         }
     }
-    
+
+    private val database = ClipboardDatabase.getInstance(context)
+    private val dao = database.clipboardDao()
+    private val scope = ClipboardDatabase.scope()
+
     private val _clipboardItems = MutableStateFlow<List<ClipboardItem>>(emptyList())
     val clipboardItems: StateFlow<List<ClipboardItem>> = _clipboardItems.asStateFlow()
 
@@ -87,36 +90,56 @@ class ClipboardManager private constructor(private val context: Context) {
 
     private val _recentItems = MutableStateFlow<List<ClipboardItem>>(emptyList())
     val recentItems: StateFlow<List<ClipboardItem>> = _recentItems.asStateFlow()
-    
+
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-    
+
     init {
-        loadItems()
-        loadQuickSendItems()
-        updateRecentItems()
-        startListening()
-    }
-    
-    private fun loadItems() {
-        val itemsJson = prefs.getString(KEY_CLIPBOARD_ITEMS, null)
-        if (itemsJson != null) {
-            try {
-                val items = deserializeItems(itemsJson)
-                _clipboardItems.value = items
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to load clipboard items", e)
+        migrateLegacyData()
+        scope.launch {
+            dao.observeAll().collect { entries ->
+                _clipboardItems.value = entries.map { it.toClipboardItem() }
+                updateRecentItems()
             }
         }
+        scope.launch {
+            dao.observeQuickSend().collect { entries ->
+                _quickSendItems.value = entries.map { it.toClipboardItem() }
+            }
+        }
+        startListening()
     }
-    
-    private fun loadQuickSendItems() {
-        val itemsJson = prefs.getString(KEY_QUICK_SEND_ITEMS, null)
-        if (itemsJson != null) {
+
+    /**
+     * 将旧版 SharedPreferences 中的剪贴板/快捷发送数据一次性迁移到 Room。
+     * 幂等：prefs 无数据时直接返回；迁移成功后删除 prefs 键，避免重复迁移。
+     */
+    fun migrateLegacyData() {
+        val legacyClipboard = prefs.getString(KEY_CLIPBOARD_ITEMS, null)
+        val legacyQuickSend = prefs.getString(KEY_QUICK_SEND_ITEMS, null)
+        if (legacyClipboard == null && legacyQuickSend == null) return
+        scope.launch {
             try {
-                val items = deserializeItems(itemsJson)
-                _quickSendItems.value = items
+                val entries = mutableListOf<ClipboardEntry>()
+                legacyClipboard?.let { str ->
+                    deserializeItems(str).forEach { item ->
+                        entries.add(item.toEntry())
+                    }
+                }
+                legacyQuickSend?.let { str ->
+                    deserializeItems(str).forEach { item ->
+                        entries.add(item.toEntry())
+                    }
+                }
+                if (entries.isNotEmpty()) {
+                    dao.insertAll(entries)
+                }
+                prefs.edit()
+                    .remove(KEY_CLIPBOARD_ITEMS)
+                    .remove(KEY_QUICK_SEND_ITEMS)
+                    .apply()
+                Log.i(TAG, "Migrated ${entries.size} legacy clipboard items to Room")
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to load quick send items", e)
+                Log.e(TAG, "Failed to migrate legacy clipboard items", e)
             }
         }
     }
@@ -126,23 +149,7 @@ class ClipboardManager private constructor(private val context: Context) {
         val cutoff = now - 10 * 1000L
         _recentItems.value = _clipboardItems.value.filter { it.timestamp >= cutoff }
     }
-    
-    private fun saveItems() {
-        val itemsJson = serializeItems(_clipboardItems.value)
-        prefs.edit().putString(KEY_CLIPBOARD_ITEMS, itemsJson).apply()
-    }
-    
-    private fun saveQuickSendItems() {
-        val itemsJson = serializeItems(_quickSendItems.value)
-        prefs.edit().putString(KEY_QUICK_SEND_ITEMS, itemsJson).apply()
-    }
-    
-    private fun serializeItems(items: List<ClipboardItem>): String {
-        return items.joinToString(separator = "|||") { item ->
-            "${item.id}:::${item.text.escape()}:::${item.timestamp}:::${item.isPinned}:::${item.isQuickSend}"
-        }
-    }
-    
+
     private fun deserializeItems(json: String): List<ClipboardItem> {
         if (json.isEmpty()) return emptyList()
         return json.split("|||").mapNotNull { itemStr ->
@@ -174,15 +181,31 @@ class ClipboardManager private constructor(private val context: Context) {
             } else null
         }
     }
-    
-    private fun String.escape(): String {
-        return this.replace("|||", "〈PIPE〉").replace(":::", "〈COLON〉")
-    }
-    
+
     private fun String.unescape(): String {
         return this.replace("〈PIPE〉", "|||").replace("〈COLON〉", ":::")
     }
-    
+
+    private fun ClipboardItem.toEntry(): ClipboardEntry {
+        return ClipboardEntry(
+            id = 0,
+            text = text,
+            timestamp = timestamp,
+            isPinned = isPinned,
+            isQuickSend = isQuickSend
+        )
+    }
+
+    private fun ClipboardEntry.toClipboardItem(): ClipboardItem {
+        return ClipboardItem(
+            id = id,
+            text = text,
+            timestamp = timestamp,
+            isPinned = isPinned,
+            isQuickSend = isQuickSend
+        )
+    }
+
     private fun startListening() {
         androidClipboardManager.addPrimaryClipChangedListener(clipboardListener)
     }
@@ -190,166 +213,89 @@ class ClipboardManager private constructor(private val context: Context) {
     fun release() {
         // Singleton — no cleanup needed.
     }
-    
+
     fun addItem(text: String) {
         if (text.isBlank()) return
-        
-        val currentItems = _clipboardItems.value.toMutableList()
-        
-        val existingIndex = currentItems.indexOfFirst { it.text == text }
-        if (existingIndex >= 0) {
-            val existing = currentItems[existingIndex]
-            currentItems[existingIndex] = existing.copy(timestamp = System.currentTimeMillis())
-            currentItems.moveToTop(existingIndex)
-        } else {
-            val newItem = ClipboardItem(text = text)
-            currentItems.add(0, newItem)
-            
-            val unpinnedCount = currentItems.count { !it.isPinned }
-            if (unpinnedCount > MAX_ITEMS) {
-                val toRemove = currentItems
-                    .filter { !it.isPinned }
-                    .sortedBy { it.timestamp }
-                    .take(unpinnedCount - MAX_ITEMS)
-                currentItems.removeAll(toRemove.toSet())
-            }
+        scope.launch {
+            dao.upsertAndTrim(text, System.currentTimeMillis(), MAX_ITEMS)
         }
+    }
 
-        _clipboardItems.value = currentItems
-        saveItems()
-        updateRecentItems()
-    }
-    
-    private fun <T> MutableList<T>.moveToTop(index: Int) {
-        if (index > 0) {
-            val item = removeAt(index)
-            add(0, item)
-        }
-    }
-    
     fun removeItem(id: Long) {
-        val currentItems = _clipboardItems.value.toMutableList()
-        currentItems.removeAll { it.id == id }
-        _clipboardItems.value = currentItems
-        saveItems()
+        scope.launch {
+            dao.deleteById(id)
+        }
     }
-    
+
     fun splitItem(id: Long) {
-        val currentItems = _clipboardItems.value.toMutableList()
-        val item = currentItems.find { it.id == id } ?: return
-        val now = System.currentTimeMillis()
-        val newItems = item.text.map { char ->
-            ClipboardItem(
-                text = char.toString(),
-                timestamp = now
-            )
-        }
-        val idx = currentItems.indexOfFirst { it.id == id }
-        currentItems.removeAt(idx)
-        currentItems.addAll(idx, newItems)
-        _clipboardItems.value = currentItems
-        saveItems()
-    }
-    
-    fun clearAll() {
-        val pinnedItems = _clipboardItems.value.filter { it.isPinned }
-        _clipboardItems.value = pinnedItems
-        saveItems()
-    }
-    
-    fun addToQuickSend(id: Long) {
-        val clipboardItem = _clipboardItems.value.find { it.id == id }
-        if (clipboardItem != null) {
-            val quickSendItem = clipboardItem.copy(isQuickSend = true, isPinned = true)
-            val currentQuickSend = _quickSendItems.value.toMutableList()
-            
-            val existingIndex = currentQuickSend.indexOfFirst { it.text == quickSendItem.text }
-            if (existingIndex >= 0) {
-                currentQuickSend[existingIndex] = quickSendItem
-            } else {
-                currentQuickSend.add(0, quickSendItem)
-                
-                if (currentQuickSend.size > MAX_QUICK_SEND_ITEMS) {
-                    currentQuickSend.removeAt(currentQuickSend.size - 1)
-                }
+        scope.launch {
+            val item = _clipboardItems.value.find { it.id == id } ?: return@launch
+            dao.deleteById(id)
+            val now = System.currentTimeMillis()
+            item.text.forEachIndexed { index, char ->
+                dao.insert(
+                    ClipboardEntry(
+                        text = char.toString(),
+                        timestamp = now + index
+                    )
+                )
             }
-            
-            _quickSendItems.value = currentQuickSend
-            saveQuickSendItems()
         }
     }
-    
+
+    fun clearAll() {
+        scope.launch {
+            dao.clearUnpinned()
+        }
+    }
+
+    fun addToQuickSend(id: Long) {
+        scope.launch {
+            dao.addQuickSend(id, System.currentTimeMillis(), MAX_QUICK_SEND_ITEMS)
+        }
+    }
+
     fun removeFromQuickSend(id: Long) {
-        val currentQuickSend = _quickSendItems.value.toMutableList()
-        currentQuickSend.removeAll { it.id == id }
-        _quickSendItems.value = currentQuickSend
-        saveQuickSendItems()
+        scope.launch {
+            dao.deleteById(id)
+        }
     }
 
     fun togglePinQuickSend(id: Long) {
-        val currentItems = _quickSendItems.value.toMutableList()
-        val index = currentItems.indexOfFirst { it.id == id }
-        if (index > 0) {
-            val item = currentItems.removeAt(index)
-            currentItems.add(0, item)
-            _quickSendItems.value = currentItems
-            saveQuickSendItems()
+        scope.launch {
+            dao.updateTimestamp(id, System.currentTimeMillis())
         }
     }
 
-    
     fun updateQuickSendItem(id: Long, newText: String): Boolean {
         if (newText.isBlank()) return false
-        val currentItems = _quickSendItems.value.toMutableList()
-        val index = currentItems.indexOfFirst { it.id == id }
+        val index = _quickSendItems.value.indexOfFirst { it.id == id }
         if (index < 0) return false
-        currentItems[index] = currentItems[index].copy(
-            text = newText,
-            timestamp = System.currentTimeMillis()
-        )
-        _quickSendItems.value = currentItems
-        saveQuickSendItems()
+        scope.launch {
+            dao.updateText(id, newText, System.currentTimeMillis())
+        }
         return true
     }
 
     fun addQuickSendItem(text: String) {
         if (text.isBlank()) return
-        
-        val newItem = ClipboardItem(
-            text = text,
-            isQuickSend = true,
-            isPinned = true
-        )
-        
-        val currentQuickSend = _quickSendItems.value.toMutableList()
-        
-        val existingIndex = currentQuickSend.indexOfFirst { it.text == text }
-        if (existingIndex >= 0) {
-            currentQuickSend[existingIndex] = newItem.copy(timestamp = System.currentTimeMillis())
-        } else {
-            currentQuickSend.add(0, newItem)
-            
-            if (currentQuickSend.size > MAX_QUICK_SEND_ITEMS) {
-                currentQuickSend.removeAt(currentQuickSend.size - 1)
-            }
+        scope.launch {
+            dao.insertQuickSend(text, System.currentTimeMillis(), MAX_QUICK_SEND_ITEMS)
         }
-        
-        _quickSendItems.value = currentQuickSend
-        saveQuickSendItems()
     }
-    
+
     fun copyToSystemClipboard(text: String) {
         val clip = ClipData.newPlainText("kime_clipboard", text)
         androidClipboardManager.setPrimaryClip(clip)
     }
-    
+
     fun getCurrentClipboardText(): String? {
         val clipData = androidClipboardManager.primaryClip
         return if (clipData != null && clipData.itemCount > 0) {
             clipData.getItemAt(0).text?.toString()
         } else null
     }
-    
+
     fun getRecentItems(seconds: Int = 30): List<ClipboardItem> {
         val now = System.currentTimeMillis()
         val cutoff = now - seconds * 1000L
