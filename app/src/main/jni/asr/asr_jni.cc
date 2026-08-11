@@ -7,6 +7,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <chrono>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -53,11 +54,19 @@ Java_com_kingzcheung_xime_speech_AsrNative_nativeCreate(JNIEnv *env, jobject,
 
   auto *holder = new (std::nothrow) RecognizerHolder();
   if (!holder) return 0;
-  holder->rec = std::make_unique<StreamingRecognizer>(paths, tokens);
-  if (!holder->rec->LoadOk()) {
-    LOGE("nativeCreate: failed to load ASR model");
-    delete holder;
-    return 0;
+  {
+    using clock = std::chrono::steady_clock;
+    auto t0 = clock::now();
+    holder->rec = std::make_unique<StreamingRecognizer>(paths, tokens);
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                  clock::now() - t0)
+                  .count();
+    LOGE("nativeCreate: model load took %lld ms", (long long)ms);
+    if (!holder->rec->LoadOk()) {
+      LOGE("nativeCreate: failed to load ASR model");
+      delete holder;
+      return 0;
+    }
   }
   holder->rec->Reset();
   return reinterpret_cast<jlong>(holder);
