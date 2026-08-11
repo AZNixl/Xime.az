@@ -5,11 +5,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.twotone.Refresh
 import androidx.compose.material.icons.twotone.Sync
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -41,6 +43,9 @@ fun ClipboardSyncSettingsContent(
     var enabled by remember {
         mutableStateOf(SettingsPreferences.isClipboardSyncEnabled(context))
     }
+    var pullOnOpen by remember {
+        mutableStateOf(SettingsPreferences.isClipboardSyncPullOnOpen(context))
+    }
     val syncPlugins = remember { ExtensionManager.getEnabledClipboardSyncPlugins(context) }
     val installedPlugins = remember { ExtensionManager.getAllInstalledPlugins() }
 
@@ -69,6 +74,7 @@ fun ClipboardSyncSettingsContent(
                 .fillMaxSize()
                 .padding(padding)
                 .padding(horizontal = 16.dp)
+                .imePadding()
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
@@ -83,6 +89,16 @@ fun ClipboardSyncSettingsContent(
                         onCheckedChange = { checked ->
                             enabled = checked
                             SettingsPreferences.setClipboardSyncEnabled(context, checked)
+                        }
+                    )
+                    SettingsToggleItem(
+                        icon = Icons.TwoTone.Refresh,
+                        title = "仅打开键盘时拉取",
+                        subtitle = "开启后不持续轮询，仅在键盘弹出时从远端拉取一次",
+                        checked = pullOnOpen,
+                        onCheckedChange = { checked ->
+                            pullOnOpen = checked
+                            SettingsPreferences.setClipboardSyncPullOnOpen(context, checked)
                         }
                     )
                 }

@@ -33,7 +33,8 @@ import kotlinx.coroutines.launch
 class ClipboardSyncBridge(
     private val context: Context,
     private val clipboardManager: ClipboardManager,
-    private val plugin: ClipboardSyncPlugin
+    private val plugin: ClipboardSyncPlugin,
+    private val pullOnOpen: Boolean = false
 ) {
     companion object {
         private const val TAG = "ClipboardSync"
@@ -69,7 +70,7 @@ class ClipboardSyncBridge(
     fun start() {
         if (running) return
         running = true
-        Log.d(TAG, "Sync started")
+        Log.d(TAG, if (pullOnOpen) "Sync started (pull on open)" else "Sync started")
 
         // 1. 订阅本地剪贴板变化 → push（回声抑制：selfWritten 命中的跳过）
         collectJob = clipboardManager.clipboardChanged
@@ -83,6 +84,12 @@ class ClipboardSyncBridge(
                 pushLocal(item.text, hash)
             }
             .launchIn(scope)
+
+        if (pullOnOpen) {
+            // 打开即拉取一次，不启动轮询（后续由键盘显示时 pullOnce() 触发）
+            scope.launch { pullRemote() }
+            return
+        }
 
         // 2. 轮询远端 → 拉取 → 写回（hash 去重）
         pollJob = scope.launch {
@@ -114,6 +121,14 @@ class ClipboardSyncBridge(
     fun release() {
         stop()
         scope.cancel()
+    }
+
+    /** 键盘显示时触发一次拉取（仅 pullOnOpen 模式；轮询模式忽略）。 */
+    fun pullOnce() {
+        if (!running || !pullOnOpen) return
+        scope.launch {
+            pullRemote()
+        }
     }
 
     private fun currentPollInterval(): Long {

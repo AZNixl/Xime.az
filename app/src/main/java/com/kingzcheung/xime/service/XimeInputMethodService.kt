@@ -355,6 +355,10 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                 }
                 SettingsPreferences.KEY_SMART_PREDICTION_ENABLED -> onPredictionSettingChanged()
                 SettingsPreferences.KEY_CLIPBOARD_SYNC_ENABLED -> updateClipboardSync()
+                SettingsPreferences.KEY_CLIPBOARD_SYNC_PULL_ON_OPEN -> {
+                    stopClipboardSync()
+                    updateClipboardSync()
+                }
             }
         }
         prefs.registerOnSharedPreferenceChangeListener(sharedPrefsListener)
@@ -625,7 +629,12 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                 Log.d(TAG, "Clipboard sync disabled in settings")
                 return
             }
-            clipboardSyncBridge = ClipboardSyncBridge(this, clipboardManager, plugin)
+            clipboardSyncBridge = ClipboardSyncBridge(
+                this,
+                clipboardManager,
+                plugin,
+                pullOnOpen = SettingsPreferences.isClipboardSyncPullOnOpen(this)
+            )
             clipboardSyncBridge?.start()
             Log.d(TAG, "Clipboard sync started: ${first.first}")
         } catch (e: Exception) {
@@ -1434,6 +1443,11 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         super.onWindowHidden()
         clearInputState()
         recentClipboardItemsState.value = emptyList()
+    }
+
+    override fun onWindowShown() {
+        super.onWindowShown()
+        clipboardSyncBridge?.pullOnce()
     }
     
     private fun clearInputState() {
