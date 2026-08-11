@@ -131,8 +131,13 @@ Zipformer2Model::Zipformer2Model(const AsrModelPaths &paths) : allocator_{} {
   // 复用全局共享 env 的 intra-op 线程池（2 线程），而非每个 session 自建
   // 线程池。此前 3 个 session × 4 线程 = 12 个常驻线程，是模型驻留期间
   // 待机发热的主要来源（线程池空闲时仍周期性 spin-wait）。
+  //
+  // 模型已带 int8 权重发布，图优化空间有限；用 ORT_ENABLE_BASIC 而非默认
+  // ORT_ENABLE_ALL 可显著缩短 CreateSession 耗时（模型被空闲释放后重新
+  // 加载时，加载延迟直接决定语音开头是否丢失）。
   auto configure = [](Ort::SessionOptions &opts) {
     OnnxTryEnableCpuFallback(opts);
+    opts.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_BASIC);
   };
   configure(encoder_sess_opts_);
   configure(decoder_sess_opts_);
