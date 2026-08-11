@@ -87,73 +87,96 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
             
             when (key) {
                 "clear_composition" -> {
-                    service.calculatorEngine.clear()
-                    updateCalculatorCandidates()
-                    // 清空 partial commit 累积（与 clear_all 一致）：残留的已选词会在下一轮输入
-                    // 被 buildT9DisplayState 拼进 preedit。
-                    service.t9PartialCommitTexts.clear()
-                    service.rimeEngine.clearComposition()
-                    service.candidateState.value = service.candidateState.value.copy(
-                        candidates = emptyList(),
-                        candidateComments = emptyList(),
-                        associationCandidates = emptyList(),
-                        pendingEnglishText = "",
-                        isShowingRecentClipboard = false
-                    )
+                    // 只清输入态（预编辑/候选/联想/partial 累积/计算器/左栏），不动已上屏文本。
+                    // 清理逻辑统一在 clearInputStateForKeys()（与 clear_all 输入态分支共用，
+                    // 2026-08-11 复盘收敛，避免两处状态清理不一致）：
+                    //   · "编码显示=输入框"模式 endComposingInputBox 清 setComposingText 残留
+                    //   · T9 左栏 t9ResetSignal 回空闲态
+                    clearInputStateForKeys()
                     needsUIUpdate = true
                 }
                 "clear_all" -> {
-                    service.calculatorEngine.clear()
-                    updateCalculatorCandidates()
-                    // 撤回内容记录（供 undo_clear 恢复）：
-                    // 显示在输入框模式：getTextBeforeCursor 返回的 inputFieldText 已包含全部 preedit
-                    //（composing 区），candState.inputText 与它是同一份内容，再拼接会重复
-                    //（如 "ji hua"+"ji hua"="ji huaji hua"）；候选栏模式输入框只有已上屏文本，
-                    // 才需补上候选栏中的编码 candState.inputText。
-                    // 英文输入时文本在 pendingEnglishText（composing 区），getTextBeforeCursor
-                    // 取不到，需显式拼接以支持 undo_clear 恢复。
-                    val codeInInputBox = SettingsPreferences.getInputTextLocation(service) ==
-                        SettingsPreferences.INPUT_TEXT_INPUT_BOX
-                    val inputFieldText = withContext(Dispatchers.Main) {
-                        service.currentInputConnection?.getTextBeforeCursor(XimeInputMethodService.SAFE_TEXT_LIMIT, 0)?.toString() ?: ""
-                    }
-                    service.lastClearedText = when {
-                        codeInInputBox -> inputFieldText + candState.pendingEnglishText
-                        else -> inputFieldText + candState.inputText + candState.pendingEnglishText
-                    }
-                    // 清空 partial commit 累积：否则残留的已选词（如右选"几乎"）会在下一轮输入
-                    // 被 buildT9DisplayState 拼进 preedit（"几乎ji hua"）。
-                    service.t9PartialCommitTexts.clear()
-                    service.rimeEngine.clearComposition()
-                    service.candidateState.value = service.candidateState.value.copy(
-                        candidates = emptyList(),
-                        candidateComments = emptyList(),
-                        associationCandidates = emptyList(),
-                        pendingEnglishText = "",
-                        inputText = "",
-                        isComposing = false,
-                        isShowingRecentClipboard = false
-                    )
-                    withContext(Dispatchers.Main) {
-                        service.currentInputConnection?.let {
-                            service.endComposingInputBox()
-                            // 删除输入框中所有文字
-                            val textLen = inputFieldText.length
-                            if (textLen > 0) {
-                                it.deleteSurroundingText(textLen, 0)
+                    // 竞对对标（搜狗，2026-08-11）：上滑清空 = 多次 backspace 的快捷方式——
+                    //   · 输入态（有 preedit/候选/partial 累积）：只清输入态，不动已上屏文本
+                    //   · 空闲态（无输入态）：清空输入框全部已上屏文本
+                    // 输入态判定用 candidateState（输入态时 preeditText/inputText/isComposing 必非空），
+                    // 不能用 RIME getInput()——它是 tryLocked，锁竞争/异步 flush 未完成时静默返回空，
+                    // 输入态会误判空闲态（设备实证 2026-08-11 场景2：上滑误删已上屏文本）。
+                    // 空闲态 candidateState 残留已根治：T9 full commit/enter/space 补清 preeditText（2026-08-11）。
+                    if (hasInputState(candState)) {
+                        // 搜狗行为1：只清输入态（等价于 clear_composition），不动已上屏文本，
+                        // 并记录 lastClearedText 供下滑撤回（undo_clear）恢复。
+                        // 必须在 clearInputStateForKeys() 之前记录（函数会清空 preeditText/inputText）。
+                        val codeInInputBox = SettingsPreferences.getInputTextLocation(service) ==
+                            SettingsPreferences.INPUT_TEXT_INPUT_BOX
+                        service.lastClearedText = when {
+                            codeInInputBox -> candState.preeditText + candState.pendingEnglishText
+                            else -> candState.inputText + candState.pendingEnglishText
+                        }
+                        clearInputStateForKeys()
+                    } else {
+                        // 搜狗行为2：空闲态 → 清空输入框全部已上屏文本（原有 clear_all 逻辑）。
+                        service.calculatorEngine.clear()
+                        updateCalculatorCandidates()
+                        // 撤回内容记录（供 undo_clear 恢复）：
+                        // 显示在输入框模式：getTextBeforeCursor 返回的 inputFieldText 已包含全部 preedit
+                        //（composing 区），candState.inputText 与它是同一份内容，再拼接会重复
+                        //（如 "ji hua"+"ji hua"="ji huaji hua"）；候选栏模式输入框只有已上屏文本，
+                        // 才需补上候选栏中的编码 candState.inputText。
+                        // 英文输入时文本在 pendingEnglishText（composing 区），getTextBeforeCursor
+                        // 取不到，需显式拼接以支持 undo_clear 恢复。
+                        val codeInInputBox = SettingsPreferences.getInputTextLocation(service) ==
+                            SettingsPreferences.INPUT_TEXT_INPUT_BOX
+                        val inputFieldText = withContext(Dispatchers.Main) {
+                            service.currentInputConnection?.getTextBeforeCursor(XimeInputMethodService.SAFE_TEXT_LIMIT, 0)?.toString() ?: ""
+                        }
+                        service.lastClearedText = when {
+                            codeInInputBox -> inputFieldText + candState.pendingEnglishText
+                            else -> inputFieldText + candState.inputText + candState.pendingEnglishText
+                        }
+                        // 清空 partial commit 累积：否则残留的已选词（如右选"几乎"）会在下一轮输入
+                        // 被 buildT9DisplayState 拼进 preedit（"几乎ji hua"）。
+                        service.t9PartialCommitTexts.clear()
+                        service.rimeEngine.clearComposition()
+                        service.candidateState.value = service.candidateState.value.copy(
+                            candidates = emptyList(),
+                            candidateComments = emptyList(),
+                            associationCandidates = emptyList(),
+                            pendingEnglishText = "",
+                            inputText = "",
+                            isComposing = false,
+                            isShowingRecentClipboard = false
+                        )
+                        withContext(Dispatchers.Main) {
+                            service.currentInputConnection?.let {
+                                service.endComposingInputBox()
+                                // 删除输入框中所有文字
+                                val textLen = inputFieldText.length
+                                if (textLen > 0) {
+                                    it.deleteSurroundingText(textLen, 0)
+                                }
                             }
                         }
                     }
                     needsUIUpdate = true
                 }
                 "undo_clear" -> {
-                    val text = service.lastClearedText
-                    if (text.isNotEmpty()) {
-                        service.lastClearedText = ""
-                        withContext(Dispatchers.Main) {
-                            val ic = service.currentInputConnection
-                            if (ic != null) {
-                                ic.commitText(text, text.length)
+                    // 下滑撤回 = 撤销"上滑清空"，仅空闲态有效（对标搜狗，2026-08-11）：
+                    // 输入态（正在输入 jihua/54482 等）触发应无反应——输入态时输入框内容
+                    // = 已上屏 + composing 区，此时恢复 lastClearedText 会插入错误位置。
+                    // 判定与 clear_all 共用 hasInputState()，保证两手势语义对称。
+                    if (!hasInputState(candState)) {
+                        val text = service.lastClearedText
+                        if (text.isNotEmpty()) {
+                            service.lastClearedText = ""
+                            withContext(Dispatchers.Main) {
+                                val ic = service.currentInputConnection
+                                if (ic != null) {
+                                    // newCursorPosition 必须为 1（光标在插入文本末尾）：
+                                    // 传 text.length 会按"相对文本末尾 -1"计算，把光标推到
+                                    // 文本外被 clamp 到整段文本末尾（设备实证 2026-08-11）。
+                                    ic.commitText(text, 1)
+                                }
                             }
                         }
                     }
@@ -204,6 +227,7 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
                     withContext(Dispatchers.Main) {
                         service.candidateState.value = service.candidateState.value.copy(
                             inputText = "",
+                            preeditText = "",
                             pendingEnglishText = "",
                             candidates = emptyList(),
                             candidateComments = emptyList(),
@@ -238,6 +262,15 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
                             if (input.isNotEmpty()) {
                                 withContext(Dispatchers.Main) {
                                     service.commitText(input)
+                                    service.candidateState.value = service.candidateState.value.copy(
+                                        inputText = "",
+                                        preeditText = "",
+                                        isComposing = false,
+                                        pendingEnglishText = "",
+                                        candidates = emptyList(),
+                                        candidateComments = emptyList(),
+                                        associationCandidates = emptyList()
+                                    )
                                 }
                                 service.rimeEngine.clearComposition()
                                 // T9模式：清空partialCommit累积文本，避免下一轮输入
@@ -754,6 +787,7 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
                 service.t9PartialCommitTexts.clear()
                 service.candidateState.value = service.candidateState.value.copy(
                     inputText = "",
+                    preeditText = "",
                     candidates = emptyList(),
                     candidateComments = emptyList(),
                     isComposing = false,
@@ -794,6 +828,61 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
         }
     }
     
+    /**
+     * 输入态判定（clear_all 上滑与 undo_clear 下滑共用，2026-08-11 收敛）。
+     *
+     * 输入态 = 存在未上屏的输入内容：RIME 组合（candidateState 的 isComposing/inputText/
+     * preeditText 在 applyComposition/updateUIWithResult 中恒为同一 displayText 派生）或
+     * T9 partial commit 累积。不能用 RIME getInput()——它是 tryLocked，锁竞争/异步 flush
+     * 未完成时静默返回空字符串，输入态会误判空闲态（设备实证 2026-08-11 场景2）。
+     */
+    private fun hasInputState(candState: CandidateState): Boolean =
+        candState.isComposing ||
+            candState.inputText.isNotEmpty() ||
+            candState.preeditText.isNotEmpty() ||
+            service.t9PartialCommitTexts.isNotEmpty()
+
+    /**
+     * 清空输入态（预编辑/候选/联想/partial 累积/计算器），不动已上屏文本。
+     * 供 clear_composition 与 clear_all 输入态分支共用（2026-08-11 复盘收敛）。
+     *
+     * 覆盖与提交路径"残留根治"原则一致（显式清 preeditText，不依赖 updateUI 自愈）：
+     *  - RIME composition
+     *  - t9PartialCommitTexts（否则残留已选词在下一轮输入被 buildT9DisplayState 拼进 preedit）
+     *  - candidateState（candidates/comments/association/pendingEnglish/inputText/preeditText/isComposing）
+     *  - "编码显示=输入框"模式：endComposingInputBox 结束 setComposingText 残留
+     *  - T9 方案：t9ResetSignal 重置左侧候选区为空闲态（笔画/全键盘/符号/英文无左栏，跳过）
+     * 运行在 keyProcessingDispatcher 线程。
+     */
+    private suspend fun clearInputStateForKeys() {
+        service.calculatorEngine.clear()
+        updateCalculatorCandidates()
+        service.t9PartialCommitTexts.clear()
+        service.rimeEngine.clearComposition()
+        service.candidateState.value = service.candidateState.value.copy(
+            candidates = emptyList(),
+            candidateComments = emptyList(),
+            associationCandidates = emptyList(),
+            pendingEnglishText = "",
+            inputText = "",
+            preeditText = "",
+            isComposing = false,
+            isShowingRecentClipboard = false
+        )
+        if (SettingsPreferences.getInputTextLocation(service) ==
+            SettingsPreferences.INPUT_TEXT_INPUT_BOX
+        ) {
+            withContext(Dispatchers.Main) { service.endComposingInputBox() }
+        }
+        if (isT9Schema(service.uiState.value.currentSchemaId)) {
+            service.uiState.value = service.uiState.value.copy(
+                t9ResetSignal = service.uiState.value.t9ResetSignal + 1,
+                t9RightCandidateSelectedCount = 0,
+                t9SelectedCandidatePinyin = ""
+            )
+        }
+    }
+
     /**
      * 更新计算器候选栏显示
      * 显示两个候选：

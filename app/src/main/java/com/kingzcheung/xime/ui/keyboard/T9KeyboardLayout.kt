@@ -797,9 +797,10 @@ private fun T9KeyboardContent(
             ResetKey(
                 onClick = {
                     controller.clearAll()
-                    // 与上滑清空手势一致：全清（含输入框已上屏文本，可撤销），
-                    // 由服务层 onKeyPress("clear_all") 处理 calculator/输入框文本。
-                    onKeyPress("clear_all")
+                    // 重输 = 只清输入态（预编辑/候选/左栏），不动已上屏文本（对标搜狗 2026-08-11）：
+                    //   · 输入态点重输 → 清除输入态内容
+                    //   · 空闲态点重输 → 无反应（clear_composition 无可清内容）
+                    onKeyPress("clear_composition")
                 },
                 onPress = { onKeyPressDown?.invoke("clear") },
                 backgroundColor = specialKeyBackgroundColor,
