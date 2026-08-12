@@ -355,6 +355,10 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                 }
                 SettingsPreferences.KEY_SMART_PREDICTION_ENABLED -> onPredictionSettingChanged()
                 SettingsPreferences.KEY_CLIPBOARD_SYNC_ENABLED -> updateClipboardSync()
+                SettingsPreferences.KEY_CLIPBOARD_SYNC_PLUGIN_ID -> {
+                    stopClipboardSync()
+                    updateClipboardSync()
+                }
                 SettingsPreferences.KEY_CLIPBOARD_SYNC_PULL_ON_OPEN -> {
                     stopClipboardSync()
                     updateClipboardSync()
@@ -622,21 +626,24 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     private fun startClipboardSyncIfEnabled() {
         if (clipboardSyncBridge != null) return
         try {
-            val enabled = ExtensionManager.getEnabledClipboardSyncPlugins(this)
-            val first = enabled.firstOrNull() ?: return
-            val plugin = first.second
             if (!SettingsPreferences.isClipboardSyncEnabled(this)) {
                 Log.d(TAG, "Clipboard sync disabled in settings")
                 return
             }
+            val enabled = ExtensionManager.getEnabledClipboardSyncPlugins(this)
+            if (enabled.isEmpty()) return
+            val preferredId = SettingsPreferences.getClipboardSyncPluginId(this)
+            val selected = enabled.firstOrNull { it.first == preferredId } ?: enabled.first()
+            val plugin = selected.second
             clipboardSyncBridge = ClipboardSyncBridge(
                 this,
                 clipboardManager,
                 plugin,
-                pullOnOpen = SettingsPreferences.isClipboardSyncPullOnOpen(this)
+                pullOnOpen = SettingsPreferences.isClipboardSyncPullOnOpen(this),
+                pluginId = selected.first
             )
             clipboardSyncBridge?.start()
-            Log.d(TAG, "Clipboard sync started: ${first.first}")
+            Log.d(TAG, "Clipboard sync started: ${selected.first}")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start clipboard sync", e)
         }
@@ -652,11 +659,24 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         if (!::clipboardManager.isInitialized) return
         if (clipboardSyncBridge == null) {
             startClipboardSyncIfEnabled()
-        } else if (
+            return
+        }
+        if (
             !SettingsPreferences.isClipboardSyncEnabled(this) ||
             ExtensionManager.getEnabledClipboardSyncPlugins(this).isEmpty()
         ) {
             stopClipboardSync()
+            return
+        }
+        // 当前 bridge 使用的插件与偏好选中的插件不一致时，重启切换到偏好插件
+        val enabled = ExtensionManager.getEnabledClipboardSyncPlugins(this)
+        val preferredId = SettingsPreferences.getClipboardSyncPluginId(this)
+        val shouldUse = (if (preferredId.isNotEmpty()) {
+            enabled.firstOrNull { it.first == preferredId }
+        } else null) ?: enabled.first()
+        if (shouldUse.first != clipboardSyncBridge?.pluginId) {
+            stopClipboardSync()
+            startClipboardSyncIfEnabled()
         }
     }
 
@@ -682,7 +702,10 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             onPerformVibration = { view -> feedbackManager.hapticFeedback(view) },
             onPerformUndo = { pendingVoiceAction = { textCommit.performUndo() } },
             onPerformSearch = { pendingVoiceAction = { textCommit.performSearch() } },
-            onStopRecognition = { voiceRecognitionHandler.stopRecognition() },
+            onStopRecognition = {
+                voiceRecognitionHandler.commitPendingOnRelease()
+                voiceRecognitionHandler.stopRecognition()
+            },
             isRecording = { voiceRecordingStarted },
             setRecording = { voiceRecordingStarted = it },
             onVoiceDismiss = {

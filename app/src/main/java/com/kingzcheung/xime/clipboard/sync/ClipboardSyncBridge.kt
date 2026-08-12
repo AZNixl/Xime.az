@@ -34,7 +34,8 @@ class ClipboardSyncBridge(
     private val context: Context,
     private val clipboardManager: ClipboardManager,
     private val plugin: ClipboardSyncPlugin,
-    private val pullOnOpen: Boolean = false
+    private val pullOnOpen: Boolean = false,
+    val pluginId: String = ""
 ) {
     companion object {
         private const val TAG = "ClipboardSync"
