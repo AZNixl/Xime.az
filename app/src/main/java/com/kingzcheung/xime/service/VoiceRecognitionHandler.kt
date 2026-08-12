@@ -5,6 +5,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.inputmethod.InputConnection
+import android.widget.Toast
 import com.kingzcheung.xime.plugin.ExtensionManager
 import com.kingzcheung.xime.speech.AsrBackendFactory
 import com.kingzcheung.xime.speech.RecognitionState
@@ -44,8 +45,8 @@ class VoiceRecognitionHandler(
             onStateChange = { state ->
                 handleSpeechStateChange(state)
             },
-            onError = { error ->
-                handleSpeechError(error)
+            onError = { error, userVisible ->
+                handleSpeechError(error, userVisible)
             },
             onAmplitude = { amplitude ->
                 handleAmplitudeUpdate(amplitude)
@@ -142,11 +143,14 @@ class VoiceRecognitionHandler(
     private var lastAmplitudeUpdate = 0L
     // 抬起时已提交当前识别文本后，置真以忽略随后可能迟到的重复最终结果
     private var suppressDuplicateFinal = false
+    private var errorToast: Toast? = null
 
     // 语音按钮长按抬起时调用：立即提交当前已识别的文本（不依赖可能被断连竞态吞掉的异步最终结果）
     fun commitPendingOnRelease() {
-        val ic = getInputConnection() ?: return
+        val ic = getInputConnection()
         val partial = lastPartialText
+        Log.d(TAG, "commitPendingOnRelease: ic=${ic != null}, partial='$partial', suppress=$suppressDuplicateFinal")
+        if (ic == null) return
         if (partial.isEmpty()) return
         val punctuatedText = addPunctuation(partial)
         commitFinal(ic, punctuatedText, partial)
@@ -182,6 +186,8 @@ class VoiceRecognitionHandler(
             val remainder = finalText.substring(partial.length)
             if (remainder.isNotEmpty()) {
                 ic.commitText(remainder, 1)
+            } else {
+                Log.d(TAG, "commitFinal: remainder empty, only finished composing")
             }
         } else {
             // 最终结果与部分结果不一致：删除已上屏的部分，再提交完整结果
@@ -190,6 +196,7 @@ class VoiceRecognitionHandler(
             }
             ic.commitText(finalText, 1)
         }
+        Log.d(TAG, "commitFinal: final='$finalText', partial='$partial'")
     }
     
     private fun addPunctuation(text: String): String {
@@ -211,6 +218,7 @@ class VoiceRecognitionHandler(
     }
 
     private fun handlePartialResult(text: String) {
+        if (suppressDuplicateFinal) return
         if (text == lastPartialText) return
         lastPartialText = text
         Log.d(TAG, "Speech result (partial): $text")
@@ -235,10 +243,15 @@ class VoiceRecognitionHandler(
         onStateChanged(getState().copy(voiceRecognitionState = state))
     }
 
-    private fun handleSpeechError(error: String) {
+    private fun handleSpeechError(error: String, userVisible: Boolean) {
         Log.e(TAG, "Speech error: $error")
         FileLogger.e(TAG, "Speech error: $error")
         lastPartialText = ""
+        if (userVisible && error.isNotBlank()) {
+            errorToast?.cancel()
+            errorToast = Toast.makeText(context, error, Toast.LENGTH_LONG)
+            errorToast?.show()
+        }
         onVoiceComplete()
     }
 
