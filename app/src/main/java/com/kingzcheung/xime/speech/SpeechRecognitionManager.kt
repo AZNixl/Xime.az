@@ -40,7 +40,7 @@ class SpeechRecognitionManager(private val context: Context) {
     private var resultCallback: ((String) -> Unit)? = null
     private var partialResultCallback: ((String) -> Unit)? = null
     private var stateCallback: ((RecognitionState) -> Unit)? = null
-    private var errorCallback: ((String) -> Unit)? = null
+    private var errorCallback: ((String, Boolean) -> Unit)? = null
     private var amplitudeCallback: ((Float) -> Unit)? = null
 
     // 预启动的 AudioRecord：手指按下 150ms 后启动，语音激活时直接交给录音线程
@@ -85,7 +85,7 @@ class SpeechRecognitionManager(private val context: Context) {
                     val ok = preload()
                     if (!ok || synchronized(preloadLock) { backend } == null) {
                         mainHandler.post {
-                            errorCallback?.invoke("无法初始化语音引擎，请检查本地模型或在线语音插件配置")
+                            errorCallback?.invoke("无法初始化语音引擎，请检查本地模型或在线语音插件配置", true)
                             stateCallback?.invoke(RecognitionState.ERROR)
                         }
                         return@Thread
@@ -220,7 +220,7 @@ class SpeechRecognitionManager(private val context: Context) {
         onResult: (String) -> Unit,
         onPartialResult: ((String) -> Unit)? = null,
         onStateChange: (RecognitionState) -> Unit,
-        onError: (String) -> Unit,
+        onError: (message: String, userVisible: Boolean) -> Unit,
         onAmplitude: ((Float) -> Unit)? = null
     ) {
         resultCallback = onResult
@@ -369,7 +369,7 @@ class SpeechRecognitionManager(private val context: Context) {
         override fun run() {
             val audioRecord = preStarted ?: (createAudioRecord() ?: run {
                 mainHandler.post {
-                    errorCallback?.invoke("无法启动录音")
+                    errorCallback?.invoke("无法启动录音", false)
                     stateCallback?.invoke(RecognitionState.ERROR)
                 }
                 return
@@ -379,7 +379,7 @@ class SpeechRecognitionManager(private val context: Context) {
                 audioRecord.stop()
                 audioRecord.release()
                 mainHandler.post {
-                    errorCallback?.invoke("启动引擎失败")
+                    errorCallback?.invoke("启动引擎失败", false)
                     stateCallback?.invoke(RecognitionState.ERROR)
                 }
                 return
@@ -473,7 +473,7 @@ class SpeechRecognitionManager(private val context: Context) {
     private fun handleError(error: String) {
         Log.e(TAG, "Recognition error: $error")
         mainHandler.post {
-            errorCallback?.invoke(error)
+            errorCallback?.invoke(error, true)
         }
     }
 }

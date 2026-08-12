@@ -702,7 +702,10 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             onPerformVibration = { view -> feedbackManager.hapticFeedback(view) },
             onPerformUndo = { pendingVoiceAction = { textCommit.performUndo() } },
             onPerformSearch = { pendingVoiceAction = { textCommit.performSearch() } },
-            onStopRecognition = { voiceRecognitionHandler.stopRecognition() },
+            onStopRecognition = {
+                voiceRecognitionHandler.commitPendingOnRelease()
+                voiceRecognitionHandler.stopRecognition()
+            },
             isRecording = { voiceRecordingStarted },
             setRecording = { voiceRecordingStarted = it },
             onVoiceDismiss = {
