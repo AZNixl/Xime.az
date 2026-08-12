@@ -22,6 +22,7 @@ data class InputUIState(
     val resizePreviewHeightDp: Int = 0,
     val associationEnabled: Boolean = false,
     val isVoiceMode: Boolean = false,
+    val voiceSticky: Boolean = false,
     val voiceButtonState: VoiceButtonState = VoiceButtonState(),
     val voicePluginName: String = "",
     val voiceRecognitionState: RecognitionState = RecognitionState.IDLE,

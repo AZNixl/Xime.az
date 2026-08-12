@@ -144,6 +144,7 @@ fun KeyboardLayout(
     val isDarkTheme = uiState.isDarkTheme
     val isSttEnabled = uiState.isSttEnabled
     val isVoiceMode = uiState.isVoiceMode
+    val isVoiceSticky = uiState.voiceSticky
     val keyRows = KeysConfigHelper.getKeyRows(isAsciiMode)
     val onKeyPressDown = callbacks.onKeyPressDown
     val onKeyRelease = callbacks.onKeyRelease
@@ -283,7 +284,7 @@ fun KeyboardLayout(
                     verticalArrangement = Arrangement.Top,
                 ) {
                     // 第一行
-                    if (isVoiceMode) {
+                    if (isVoiceMode && !isVoiceSticky) {
                         Box(modifier = Modifier.weight(1f)) {
                             DummyKeyboardRow(
                                 keysCount = 10,
@@ -325,7 +326,7 @@ fun KeyboardLayout(
                     }
 
                     // 第二行
-                    if (isVoiceMode) {
+                    if (isVoiceMode && !isVoiceSticky) {
                         Box(
                             modifier = Modifier
                                 .weight(1f)
@@ -373,7 +374,7 @@ fun KeyboardLayout(
                     }
 
                     // 第三行
-                    if (isVoiceMode) {
+                    if (isVoiceMode && !isVoiceSticky) {
                         Box(modifier = Modifier.weight(1f)) {
                             DummyBottomRow(
                                 keyBackgroundColor = keyBackgroundColor.copy(alpha = 0.5f),
@@ -543,7 +544,7 @@ fun KeyboardLayout(
                             .fillMaxWidth()
                             .weight(1f),
                     ) {
-                        if (isVoiceMode) {
+                        if (isVoiceMode && !isVoiceSticky) {
                             DummyKeyButton(
                                 backgroundColor = specialKeyBackgroundColor.copy(alpha = 0.5f),
                                 modifier = Modifier.weight(1.2f)
@@ -682,6 +683,7 @@ fun KeyboardLayout(
                             isAsciiMode = isAsciiMode,
                             isSttEnabled = isSttEnabled,
                             isVoiceMode = isVoiceMode,
+                            voiceSticky = isVoiceSticky,
                             keyBackgroundColor = keyBackgroundColor,
                             keyTextColor = keyTextColor,
                             shadowEnabled = shadowEnabled,
@@ -695,7 +697,7 @@ fun KeyboardLayout(
                         )
 
                         // 中/英切换 + 回车（硬编码 + 配置驱动）
-                        if (isVoiceMode) {
+                        if (isVoiceMode && !isVoiceSticky) {
                             DummyKeyButton(
                                 backgroundColor = keyBackgroundColor.copy(alpha = 0.5f),
                                 modifier = Modifier.weight(0.8f)
@@ -836,7 +838,7 @@ fun KeyboardLayout(
         }
 
         // 语音模式中央麦克风图标
-        if (isVoiceMode) {
+        if (isVoiceMode && !isVoiceSticky) {
             Box(
                 modifier = Modifier.matchParentSize(),
                 contentAlignment = Alignment.Center
@@ -2143,6 +2145,7 @@ private fun SpaceKey(
     isAsciiMode: Boolean,
     isSttEnabled: Boolean,
     isVoiceMode: Boolean,
+    voiceSticky: Boolean,
     keyBackgroundColor: Color,
     keyTextColor: Color,
     shadowEnabled: Boolean,
@@ -2181,9 +2184,17 @@ private fun SpaceKey(
     Box(
         modifier = modifier
             .fillMaxHeight()
-            .pointerInput(isSttEnabled) {
+            .pointerInput(isSttEnabled, voiceSticky) {
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
+
+                    if (voiceSticky) {
+                        // 常驻语音模式：轻触空格即结束语音
+                        waitForUpOrCancellation()
+                        currentOnVoiceModeChange?.invoke(false)
+                        return@awaitEachGesture
+                    }
+
                     currentOnKeyPressDown?.invoke("space")
 
                     var longPressTriggered = false
@@ -2224,40 +2235,53 @@ private fun SpaceKey(
             .background(keyBackgroundColor),
         contentAlignment = Alignment.Center
     ) {
-        if (isVoiceMode) {
-            Icon(
-                imageVector = Icons.Default.Mic,
-                contentDescription = "语音输入",
-                tint = keyTextColor,
-                modifier = Modifier.size(24.dp)
-            )
-        } else {
-            Text(
-                text = if (isAsciiMode) "English" else schemaName,
-                color = keyTextColor,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Normal,
-                textAlign = TextAlign.Center,
-                maxLines = 1
-            )
-
-            if (isSttEnabled) {
-                Icon(
-                    painter = painterResource(com.kingzcheung.xime.R.drawable.voice),
-                    contentDescription = "语音输入",
-                    tint = keyTextColor.copy(alpha = 0.3f),
-                    modifier = Modifier.size(18.dp).align(Alignment.BottomStart).padding(start = 6.dp, bottom = 2.dp)
-                )
-            } else {
+        when {
+            voiceSticky -> {
                 Text(
-                    text = "空格",
-                    color = keyTextColor.copy(alpha = 0.3f),
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Normal,
-                    textAlign = TextAlign.Start,
-                    maxLines = 1,
-                    modifier = Modifier.align(Alignment.BottomStart).padding(start = 6.dp, bottom = 2.dp)
+                    text = "轻触结束语音",
+                    color = keyTextColor,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1
                 )
+            }
+            isVoiceMode -> {
+                Icon(
+                    imageVector = Icons.Default.Mic,
+                    contentDescription = "语音输入",
+                    tint = keyTextColor,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+            else -> {
+                Text(
+                    text = if (isAsciiMode) "English" else schemaName,
+                    color = keyTextColor,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Normal,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1
+                )
+
+                if (isSttEnabled) {
+                    Icon(
+                        painter = painterResource(com.kingzcheung.xime.R.drawable.voice),
+                        contentDescription = "语音输入",
+                        tint = keyTextColor.copy(alpha = 0.3f),
+                        modifier = Modifier.size(18.dp).align(Alignment.BottomStart).padding(start = 6.dp, bottom = 2.dp)
+                    )
+                } else {
+                    Text(
+                        text = "空格",
+                        color = keyTextColor.copy(alpha = 0.3f),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Normal,
+                        textAlign = TextAlign.Start,
+                        maxLines = 1,
+                        modifier = Modifier.align(Alignment.BottomStart).padding(start = 6.dp, bottom = 2.dp)
+                    )
+                }
             }
         }
     }

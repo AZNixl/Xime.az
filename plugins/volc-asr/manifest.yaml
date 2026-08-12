@@ -11,7 +11,7 @@ icon: "🎙️"
 description: 火山方舟在线语音识别
 
 # 插件版本（字符串）
-version: 1.0.0
+version: 1.0.1
 
 # 插件分类：speech 语音识别（单选激活）
 type: speech

@@ -68,7 +68,8 @@ class VoiceKeyboardContainer(
     }
 
     private fun handleActionDown(ev: MotionEvent) {
-        val isVoiceMode = uiStateProvider().isVoiceMode
+        val uiState = uiStateProvider()
+        val isVoiceMode = uiState.isVoiceMode && !uiState.voiceSticky
 
         lastLeftActive = false
         lastRightActive = false
@@ -87,6 +88,14 @@ class VoiceKeyboardContainer(
 
     private fun handleActionUp() {
         val state = uiStateProvider()
+
+        // 常驻语音（工具栏进入）不拦截触摸：空格键/工具栏自行结束语音
+        if (state.voiceSticky) {
+            isTrackingVoiceButtons = false
+            lastLeftActive = false
+            lastRightActive = false
+            return
+        }
 
         if (state.isVoiceMode || isRecording()) {
             if (state.voiceButtonState.leftActive) {
@@ -111,7 +120,7 @@ class VoiceKeyboardContainer(
     }
 
     private fun handleActionMove(ev: MotionEvent) {
-        val isVoiceMode = uiStateProvider().isVoiceMode
+        val isVoiceMode = uiStateProvider().isVoiceMode && !uiStateProvider().voiceSticky
 
         if (isVoiceMode && isTrackingVoiceButtons) {
             val yThreshold = height * 0.6f

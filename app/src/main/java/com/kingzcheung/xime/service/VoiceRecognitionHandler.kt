@@ -19,7 +19,8 @@ class VoiceRecognitionHandler(
     private val getState: () -> InputUIState,
     private val getInputConnection: () -> InputConnection?,
     private val onVoiceComplete: () -> Unit = {},
-    private val onAmplitudeChanged: (Float) -> Unit = {}
+    private val onAmplitudeChanged: (Float) -> Unit = {},
+    private val onSpectrumChanged: (FloatArray) -> Unit = {}
 ) {
     companion object {
         private const val TAG = "VoiceRecognition"
@@ -50,6 +51,9 @@ class VoiceRecognitionHandler(
             },
             onAmplitude = { amplitude ->
                 handleAmplitudeUpdate(amplitude)
+            },
+            onSpectrum = { spectrum ->
+                handleSpectrumUpdate(spectrum)
             }
         )
 
@@ -93,6 +97,7 @@ class VoiceRecognitionHandler(
             Log.e(TAG, "speechRecognitionManager not initialized")
             onStateChanged(getState().copy(
                 isVoiceMode = false,
+                voiceSticky = false,
                 voiceRecognitionState = RecognitionState.ERROR
             ))
             return
@@ -141,12 +146,23 @@ class VoiceRecognitionHandler(
 
     private var lastPartialText = ""
     private var lastAmplitudeUpdate = 0L
+    private var smoothedAmplitude = 0f
+    private var smoothedSpectrum = FloatArray(16)
     // 抬起时已提交当前识别文本后，置真以忽略随后可能迟到的重复最终结果
     private var suppressDuplicateFinal = false
+    // 输入法窗口隐藏等场景：丢弃本会话，迟到结果不得写入任何输入框
+    private var sessionAbandoned = false
     private var errorToast: Toast? = null
+
+    /** 输入法隐藏/切换输入框时调用：丢弃当前会话的未识别文本，忽略迟到的最终结果 */
+    fun abandonSession() {
+        sessionAbandoned = true
+        lastPartialText = ""
+    }
 
     // 语音按钮长按抬起时调用：立即提交当前已识别的文本（不依赖可能被断连竞态吞掉的异步最终结果）
     fun commitPendingOnRelease() {
+        if (sessionAbandoned) return
         val ic = getInputConnection()
         val partial = lastPartialText
         Log.d(TAG, "commitPendingOnRelease: ic=${ic != null}, partial='$partial', suppress=$suppressDuplicateFinal")
@@ -160,6 +176,13 @@ class VoiceRecognitionHandler(
 
     private fun handleSpeechResult(text: String) {
         Log.d(TAG, "Speech result (final): $text")
+
+        if (sessionAbandoned) {
+            sessionAbandoned = false
+            lastPartialText = ""
+            onVoiceComplete()
+            return
+        }
 
         if (suppressDuplicateFinal) {
             // 抬起时已提交，忽略迟到的重复最终结果
@@ -218,7 +241,7 @@ class VoiceRecognitionHandler(
     }
 
     private fun handlePartialResult(text: String) {
-        if (suppressDuplicateFinal) return
+        if (sessionAbandoned || suppressDuplicateFinal) return
         if (text == lastPartialText) return
         lastPartialText = text
         Log.d(TAG, "Speech result (partial): $text")
@@ -239,6 +262,7 @@ class VoiceRecognitionHandler(
         if (state == RecognitionState.LISTENING) {
             lastPartialText = ""
             suppressDuplicateFinal = false
+            sessionAbandoned = false
         }
         onStateChanged(getState().copy(voiceRecognitionState = state))
     }
@@ -259,6 +283,15 @@ class VoiceRecognitionHandler(
         val now = System.currentTimeMillis()
         if (now - lastAmplitudeUpdate < 80) return
         lastAmplitudeUpdate = now
-        onAmplitudeChanged(amplitude)
+        smoothedAmplitude = smoothedAmplitude * 0.45f + amplitude * 0.55f
+        onAmplitudeChanged(smoothedAmplitude)
+    }
+
+    private fun handleSpectrumUpdate(spectrum: FloatArray) {
+        val smoothed = smoothedSpectrum
+        for (i in spectrum.indices) {
+            smoothed[i] = smoothed[i] * 0.5f + spectrum[i] * 0.5f
+        }
+        onSpectrumChanged(smoothed.copyOf())
     }
 }

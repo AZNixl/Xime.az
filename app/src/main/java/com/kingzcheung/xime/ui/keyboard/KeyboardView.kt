@@ -28,6 +28,7 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -60,6 +61,7 @@ import com.kingzcheung.xime.ui.menubar.SchemaListView
 import com.kingzcheung.xime.ui.menubar.ToolbarCustomizeView
 import com.kingzcheung.xime.ui.theme.KeyboardThemes
 import com.kingzcheung.xime.ui.theme.keyboardBackground
+import com.kingzcheung.xime.util.PermissionHelper
 import com.kingzcheung.xime.viewmodel.KeyboardUiState
 import com.kingzcheung.xime.viewmodel.KeyboardViewModel
 import kotlin.math.abs
@@ -77,6 +79,8 @@ fun KeyboardView(
     inlineSuggestions: List<*> = listOf<Any>(),
     onCardPositioned: (left: Int, top: Int, right: Int, bottom: Int) -> Unit = { _: Int, _: Int, _: Int, _: Int -> },
     candidateState: State<CandidateState> = remember { mutableStateOf(CandidateState()) },
+    voiceAmplitudeState: State<Float> = remember { mutableFloatStateOf(0f) },
+    voiceSpectrumState: State<FloatArray> = remember { mutableStateOf(FloatArray(16)) },
 ) {
     val isShifted by viewModel.isShifted.collectAsStateWithLifecycle()
     val keyboardState by viewModel.keyboardState.collectAsStateWithLifecycle()
@@ -273,11 +277,17 @@ fun KeyboardView(
                 state = candidateBarState,
                 page = page,
                 isFloatingMode = state.isFloatingMode,
+                isVoiceSticky = state.voiceSticky,
+                voiceAmplitude = voiceAmplitudeState.value,
+                voiceSpectrum = voiceSpectrumState.value,
+                voiceRecognitionState = state.voiceRecognitionState,
+                voicePluginName = state.voicePluginName,
                 toolbarActions = state.toolbarButtons.mapNotNull { id ->
                     val button = ToolbarButton.fromId(id) ?: return@mapNotNull null
                     if (button == ToolbarButton.HANDWRITING_LOOKUP) {
                         if (!com.kingzcheung.xime.handwriting.HandwritingEngine.hasModel(LocalContext.current)) return@mapNotNull null
                     }
+                    val toolbarContext = LocalContext.current
                     val onClick: () -> Unit = when (button) {
                         ToolbarButton.EMOJI -> ({ viewModel.showOverlay(OverlayRoute.Emoji) })
                         ToolbarButton.CLIPBOARD -> ({ viewModel.showOverlay(OverlayRoute.Clipboard(0)) })
@@ -292,6 +302,14 @@ fun KeyboardView(
                         ToolbarButton.FLOAT -> ({ callbacks.onFloatingModeChange?.invoke(!state.isFloatingMode) })
                         ToolbarButton.HANDWRITING_LOOKUP -> ({ isHandwritingLookup = !isHandwritingLookup })
                         ToolbarButton.EDIT -> ({ viewModel.showOverlay(OverlayRoute.Edit) })
+                        ToolbarButton.VOICE -> ({
+                            if (PermissionHelper.hasRecordAudioPermission(toolbarContext)) {
+                                callbacks.onVoiceStickyToggle?.invoke()
+                            } else {
+                                android.widget.Toast.makeText(toolbarContext, "需要麦克风权限才能使用语音输入", android.widget.Toast.LENGTH_SHORT).show()
+                                PermissionHelper.requestRecordAudioPermission(toolbarContext)
+                            }
+                        })
                     }
                     ToolbarAction(button, onClick)
                 },
@@ -669,7 +687,8 @@ fun KeyboardView(
                             pluginName = state.voicePluginName,
                             recognitionState = state.voiceRecognitionState,
                             recognizedText = state.voiceRecognizedText,
-                            amplitude = state.voiceAmplitude
+                            amplitude = voiceAmplitudeState.value,
+                            spectrum = voiceSpectrumState.value
                         )
                     }
                 }
