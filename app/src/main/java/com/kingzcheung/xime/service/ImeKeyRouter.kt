@@ -73,6 +73,11 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
                 }
             }
         }
+        // 常驻语音模式下开始打字：先结束语音会话（提交已识别文本），再处理按键
+        val current = service.uiState.value
+        if (current.isVoiceMode && current.voiceSticky) {
+            service.endVoiceSession()
+        }
         // 长按退格以固定频率重复派发，走合并路径，避免 keyJobs 堆积导致候选栏抖动
         if (key == "delete") {
             handleDeleteKey()

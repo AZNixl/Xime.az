@@ -209,6 +209,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     internal val candidateState = mutableStateOf(CandidateState())
     private val clipboardItemsState = mutableStateOf<List<com.kingzcheung.xime.clipboard.ClipboardItem>>(emptyList())
     private val voiceAmplitudeState = mutableFloatStateOf(0f)
+    private val voiceSpectrumState = mutableStateOf(FloatArray(16))
     private val quickSendItemsState = mutableStateOf<List<com.kingzcheung.xime.clipboard.ClipboardItem>>(emptyList())
     internal val recentClipboardItemsState = mutableStateOf<List<com.kingzcheung.xime.clipboard.ClipboardItem>>(emptyList())
 
@@ -266,21 +267,37 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             pendingVoiceAction = null
             action?.invoke()
 
-            voiceAmplitudeState.floatValue = 0f
-            uiState.value = uiState.value.copy(
-                isVoiceMode = false,
-                voiceButtonState = VoiceButtonState(),
-                voiceRecognitionState = RecognitionState.IDLE,
-                voiceRecognizedText = "",
-                voiceAmplitude = 0f
-            )
-            isTrackingVoiceButtons = false
-            keyboardViewModel.exitVoice()
+            endVoiceSession()
         },
         onAmplitudeChanged = { amplitude ->
             voiceAmplitudeState.floatValue = amplitude
+        },
+        onSpectrumChanged = { spectrum ->
+            voiceSpectrumState.value = spectrum
         }
     )
+
+    /**
+     * 结束语音会话的统一出口：提交已识别文本、停止识别与预启动、恢复键盘状态。
+     * 幂等：识别已停止/无文本时各步骤自动跳过。
+     */
+    internal fun endVoiceSession() {
+        voiceRecognitionHandler.commitPendingOnRelease()
+        voiceRecognitionHandler.stopRecognition()
+        voiceRecognitionHandler.cancelPreStart()
+        keyboardViewModel.exitVoice()
+        isTrackingVoiceButtons = false
+        voiceRecordingStarted = false
+        voiceAmplitudeState.floatValue = 0f
+        uiState.value = uiState.value.copy(
+            isVoiceMode = false,
+            voiceSticky = false,
+            voiceButtonState = VoiceButtonState(),
+            voiceRecognitionState = RecognitionState.IDLE,
+            voiceRecognizedText = "",
+            voiceAmplitude = 0f
+        )
+    }
     
     private var sharedPrefsListener: android.content.SharedPreferences.OnSharedPreferenceChangeListener? = null
     private var clipboardCollectorJob: kotlinx.coroutines.Job? = null
@@ -712,13 +729,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                 val action = pendingVoiceAction
                 pendingVoiceAction = null
                 action?.invoke()
-                uiState.value = uiState.value.copy(
-                    isVoiceMode = false,
-                    voiceButtonState = VoiceButtonState(),
-                    voiceRecognizedText = ""
-                )
-                keyboardViewModel.exitVoice()
-                isTrackingVoiceButtons = false
+                endVoiceSession()
             },
             onTouchCancel = {
                 uiState.value = uiState.value.copy(
@@ -885,12 +896,11 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                 isDarkTheme,
                                 effectiveKeyboardHeight,
                                 floatingMinY,
-                                isHandwritingMode,
-                                clipboardItemsState.value,
-                                quickSendItemsState.value,
-                                recentClipboardItemsState.value,
-                                voiceAmplitudeState.floatValue,
-                                calculatorEngine.isActive(),
+                            isHandwritingMode,
+                            clipboardItemsState.value,
+                            quickSendItemsState.value,
+                            recentClipboardItemsState.value,
+                            calculatorEngine.isActive(),
                             ) {
                                 KeyboardUiState(
                                     isAsciiMode = state.isAsciiMode,
@@ -908,13 +918,13 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                     quickSendItems = quickSendItemsState.value,
                                     recentClipboardItems = recentClipboardItemsState.value,
                                     isVoiceMode = state.isVoiceMode,
+                                    voiceSticky = state.voiceSticky,
                                     voiceBottomActive = state.voiceButtonState.bottomActive,
                                     voiceLeftActive = state.voiceButtonState.leftActive,
                                     voiceRightActive = state.voiceButtonState.rightActive,
                                     voicePluginName = state.voicePluginName,
                                     voiceRecognitionState = state.voiceRecognitionState,
                                     voiceRecognizedText = state.voiceRecognizedText,
-                                    voiceAmplitude = voiceAmplitudeState.floatValue,
                                     isSttEnabled = state.isSttEnabled,
                                     toolbarButtons = state.toolbarButtons,
                                     isCalculatorMode = calculatorEngine.isActive(),
@@ -940,6 +950,8 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                 viewModel = keyboardViewModel,
                                 state = kbState,
                                 candidateState = candidateState,
+                                voiceAmplitudeState = this@XimeInputMethodService.voiceAmplitudeState,
+                                voiceSpectrumState = this@XimeInputMethodService.voiceSpectrumState,
                                 callbacks = callbacks,
                                 inlineSuggestions = inlineSuggestionManager?.suggestions.orEmpty(),
                                 onCardPositioned = { _: Int, top: Int, _: Int, bottom: Int ->
@@ -1477,6 +1489,24 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         calculatorEngine.clear()
         rimeEngine.clearComposition()
         t9PartialCommitTexts.clear()
+        // 输入法隐藏/结束输入：静默停止语音会话，丢弃未识别文本，避免迟到结果写入新输入框
+        if (uiState.value.isVoiceMode || voiceRecordingStarted) {
+            voiceRecognitionHandler.abandonSession()
+            voiceRecognitionHandler.stopRecognition()
+            voiceRecognitionHandler.cancelPreStart()
+            isTrackingVoiceButtons = false
+            voiceRecordingStarted = false
+            voiceAmplitudeState.floatValue = 0f
+            uiState.value = uiState.value.copy(
+                isVoiceMode = false,
+                voiceSticky = false,
+                voiceButtonState = VoiceButtonState(),
+                voiceRecognitionState = RecognitionState.IDLE,
+                voiceRecognizedText = "",
+                voiceAmplitude = 0f
+            )
+            keyboardViewModel.exitVoice()
+        }
         uiState.value = uiState.value.copy(
             t9ResetSignal = uiState.value.t9ResetSignal + 1,
             t9RightCandidateSelectedCount = 0,

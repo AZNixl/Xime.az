@@ -27,6 +27,7 @@ data class KeyboardCallbacks(
     val onToolbarEditingAction: ((String) -> Unit)? = null,
     val onCommitImage: ((String) -> Unit)? = null,
     val onVoiceModeChange: ((Boolean) -> Unit)? = null,
+    val onVoiceStickyToggle: (() -> Unit)? = null,
     val onPageDown: (() -> Unit)? = null,
     val onPageUp: (() -> Unit)? = null,
     val onCursorMove: ((Int) -> Unit)? = null,

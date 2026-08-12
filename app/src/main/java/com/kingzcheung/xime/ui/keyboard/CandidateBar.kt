@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -43,6 +44,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -57,6 +59,7 @@ import com.kingzcheung.xime.keyboard.OverlayRoute
 import com.kingzcheung.xime.keyboard.PanelType
 import com.kingzcheung.xime.keyboard.ToolbarAction
 import com.kingzcheung.xime.settings.SettingsPreferences
+import com.kingzcheung.xime.speech.RecognitionState
 
 @Immutable
 data class CandidateBarVisuals(
@@ -89,6 +92,11 @@ fun CandidateBar(
     inlineSuggestions: List<*> = listOf<Any>(),
     @SuppressLint("ModifierParameter") modifier: Modifier = Modifier,
     isFloatingMode: Boolean = false,
+    isVoiceSticky: Boolean = false,
+    voiceAmplitude: Float = 0f,
+    voiceSpectrum: FloatArray = FloatArray(16),
+    voiceRecognitionState: RecognitionState = RecognitionState.IDLE,
+    voicePluginName: String = "",
 ) {
     val configuration = LocalConfiguration.current
     val isLandscape = !isFloatingMode && configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
@@ -222,6 +230,47 @@ fun CandidateBar(
             .padding(horizontal = horizontalPadding),
         verticalArrangement = Arrangement.Center
     ) {
+        if (isVoiceSticky) {
+            // 常驻语音模式：候选栏显示语音引擎名 + 频谱
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                if (voicePluginName.isNotEmpty()) {
+                    Text(
+                        text = voicePluginName,
+                        color = visuals.textColor.copy(alpha = 0.7f),
+                        fontSize = 10.sp,
+                        maxLines = 1,
+                        textAlign = TextAlign.Center
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                ) {
+                    AudioSpectrumAnimation(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 24.dp, vertical = 2.dp),
+                        isActive = voiceRecognitionState == RecognitionState.LISTENING ||
+                            voiceRecognitionState == RecognitionState.PROCESSING,
+                        amplitude = voiceAmplitude,
+                        spectrum = voiceSpectrum,
+                        barWidthFactor = 4f,
+                        barCount = 16,
+                        spacingRatio = 1.6f,
+                        heightScale = 0.6f
+                    )
+                }
+            }
+            return@Column
+        }
+
         val displayText = (state as? CandidateBarState.ChineseCandidates)?.preeditText
             ?: (state as? CandidateBarState.ChineseCandidates)?.inputText ?: ""
         val showInputText = showInputTextRow && displayText.isNotEmpty() && !showInputBoxStyle

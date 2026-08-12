@@ -42,6 +42,7 @@ class SpeechRecognitionManager(private val context: Context) {
     private var stateCallback: ((RecognitionState) -> Unit)? = null
     private var errorCallback: ((String, Boolean) -> Unit)? = null
     private var amplitudeCallback: ((Float) -> Unit)? = null
+    private var spectrumCallback: ((FloatArray) -> Unit)? = null
 
     // 预启动的 AudioRecord：手指按下 150ms 后启动，语音激活时直接交给录音线程
     private var preStartedRecord: AudioRecord? = null
@@ -221,13 +222,15 @@ class SpeechRecognitionManager(private val context: Context) {
         onPartialResult: ((String) -> Unit)? = null,
         onStateChange: (RecognitionState) -> Unit,
         onError: (message: String, userVisible: Boolean) -> Unit,
-        onAmplitude: ((Float) -> Unit)? = null
+        onAmplitude: ((Float) -> Unit)? = null,
+        onSpectrum: ((FloatArray) -> Unit)? = null
     ) {
         resultCallback = onResult
         partialResultCallback = onPartialResult
         stateCallback = onStateChange
         errorCallback = onError
         amplitudeCallback = onAmplitude
+        spectrumCallback = onSpectrum
     }
 
     fun startPreStart() {
@@ -366,6 +369,8 @@ class SpeechRecognitionManager(private val context: Context) {
         private val preStarted: AudioRecord? = null
     ) : Thread("AsrRecording") {
 
+        private val spectrumAnalyzer = SpectrumAnalyzer()
+
         override fun run() {
             val audioRecord = preStarted ?: (createAudioRecord() ?: run {
                 mainHandler.post {
@@ -404,10 +409,20 @@ class SpeechRecognitionManager(private val context: Context) {
                 while (!interrupted()) {
                     val nread = audioRecord.read(buffer, 0, buffer.size)
                     if (nread > 0) {
+                        var peak = 0
                         for (i in 0 until nread) {
                             val s = buffer[i].toInt()
                             byteBuffer[i * 2] = (s and 0xFF).toByte()
                             byteBuffer[i * 2 + 1] = ((s shr 8) and 0xFF).toByte()
+                            val abs = if (s < 0) -s else s
+                            if (abs > peak) peak = abs
+                        }
+                        // 归一化振幅（0~1）与频段频谱，驱动频谱可视化
+                        val normalized = (peak / 32768f).coerceIn(0f, 1f)
+                        val spectrum = spectrumAnalyzer.analyze(buffer, nread)
+                        mainHandler.post {
+                            amplitudeCallback?.invoke(normalized)
+                            spectrumCallback?.invoke(spectrum)
                         }
                         val chunk = byteBuffer.copyOf(nread * 2)
                         if (!speechDetected) {
