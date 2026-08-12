@@ -8,7 +8,7 @@ id: com.kingzcheung.xime.plugin.volc_asr
 # 插件名称与描述（语音转文本服务商列表展示）
 name: 火山引擎流式语音识别
 icon: "🎙️"
-description: 火山方舟在线语音识别
+description: 火山方舟在线语音识别。使用火山引擎控制台获取的APP Key，可参考 快速入门（https://console.volcengine.com/speech/new/setting/apikeys?projectName=default）
 
 # 插件版本（字符串）
 version: 1.0.1
