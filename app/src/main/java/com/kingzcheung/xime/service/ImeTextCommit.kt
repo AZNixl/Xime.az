@@ -97,6 +97,8 @@ internal class ImeTextCommit(private val service: XimeInputMethodService) {
                 }
             }
         }
+        // 标记为已消费：候选栏/剪贴板点选上屏后不再重复出现在候选栏
+        service.clipboardManager.markConsumed(text)
         service.commitText(text)
         service.clipboardManager.copyToSystemClipboard(text)
     }
