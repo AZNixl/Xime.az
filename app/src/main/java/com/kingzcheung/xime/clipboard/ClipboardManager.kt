@@ -24,7 +24,8 @@ data class ClipboardItem(
     val text: String,
     val timestamp: Long = System.currentTimeMillis(),
     val isPinned: Boolean = false,
-    val isQuickSend: Boolean = false
+    val isQuickSend: Boolean = false,
+    val consumed: Boolean = false
 )
 
 class ClipboardManager private constructor(private val context: Context) {
@@ -199,7 +200,8 @@ class ClipboardManager private constructor(private val context: Context) {
             text = text,
             timestamp = timestamp,
             isPinned = isPinned,
-            isQuickSend = isQuickSend
+            isQuickSend = isQuickSend,
+            consumed = consumed
         )
     }
 
@@ -209,7 +211,8 @@ class ClipboardManager private constructor(private val context: Context) {
             text = text,
             timestamp = timestamp,
             isPinned = isPinned,
-            isQuickSend = isQuickSend
+            isQuickSend = isQuickSend,
+            consumed = consumed
         )
     }
 
@@ -312,7 +315,21 @@ class ClipboardManager private constructor(private val context: Context) {
     fun getRecentItems(seconds: Int = 30): List<ClipboardItem> {
         val now = System.currentTimeMillis()
         val cutoff = now - seconds * 1000L
-        return _clipboardItems.value.filter { it.timestamp >= cutoff }
+        // 候选栏只展示未消费的最近剪贴板项（用户点选上屏后标记 consumed 不再显示）
+        return _clipboardItems.value.filter { it.timestamp >= cutoff && !it.consumed }
+    }
+
+    /**
+     * 标记指定文本的剪贴板条目为"已消费"（候选栏不再显示）。
+     * 匹配最近一条未消费的相同文本，避免影响历史重复条目。
+     */
+    fun markConsumed(text: String) {
+        scope.launch {
+            val item = _clipboardItems.value
+                .filter { it.text == text && !it.consumed }
+                .maxByOrNull { it.timestamp } ?: return@launch
+            dao.markConsumed(item.id)
+        }
     }
 
     fun copyImageToSystemClipboard(imagePath: String, label: String = "emoji_image"): Boolean {

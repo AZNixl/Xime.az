@@ -52,6 +52,9 @@ interface ClipboardDao {
     @Query("UPDATE clipboard_entries SET text = :text, timestamp = :now WHERE id = :id")
     suspend fun updateText(id: Long, text: String, now: Long)
 
+    @Query("UPDATE clipboard_entries SET consumed = 1 WHERE id = :id")
+    suspend fun markConsumed(id: Long)
+
     @Query("DELETE FROM clipboard_entries")
     suspend fun deleteAll()
 

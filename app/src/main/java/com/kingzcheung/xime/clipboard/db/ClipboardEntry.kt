@@ -14,5 +14,6 @@ data class ClipboardEntry(
     val text: String,
     @ColumnInfo(defaultValue = "0") val timestamp: Long = System.currentTimeMillis(),
     @ColumnInfo(defaultValue = "0") val isPinned: Boolean = false,
-    @ColumnInfo(defaultValue = "0") val isQuickSend: Boolean = false
+    @ColumnInfo(defaultValue = "0") val isQuickSend: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val consumed: Boolean = false
 )
