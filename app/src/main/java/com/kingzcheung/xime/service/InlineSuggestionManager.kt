@@ -1,21 +1,69 @@
 package com.kingzcheung.xime.service
 
+import android.content.Context
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.util.Size
+import android.view.SurfaceControl
 import android.view.inputmethod.InlineSuggestion
 import android.view.inputmethod.InlineSuggestionsRequest
 import android.view.inputmethod.InlineSuggestionsResponse
+import android.widget.inline.InlineContentView
 import android.widget.inline.InlinePresentationSpec
 import androidx.annotation.RequiresApi
 import androidx.autofill.inline.UiVersions
 import androidx.autofill.inline.common.TextViewStyle
 import androidx.autofill.inline.v1.InlineSuggestionUi
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import java.util.concurrent.Executor
+
+/**
+ * 进程内共享的 InlineSuggestion 视图缓存。
+ *
+ * [InlineSuggestion.inflate] 对同一个对象实例只能调用一次，重复调用会抛出
+ * `IllegalStateException("Already called #inflate()")`。这里按对象缓存已
+ * inflate 的 [InlineContentView]，跨重组/进出组合复用，并在建议更新或清除时
+ * 释放旧视图对应的 surface。
+ */
+internal object InlineSuggestionViews {
+    val views = mutableStateMapOf<InlineSuggestion, InlineContentView?>()
+
+    private val inflateExecutor: Executor =
+        Executor { command -> Handler(Looper.getMainLooper()).post(command) }
+
+    @RequiresApi(Build.VERSION_CODES.R)
+    fun inflate(suggestion: InlineSuggestion, context: Context, size: Size) {
+        if (views[suggestion] != null) return
+        suggestion.inflate(context, size, inflateExecutor) { contentView ->
+            views[suggestion] = contentView
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.R)
+    fun retain(keep: Collection<InlineSuggestion>) {
+        val keepSet = keep.toSet()
+        views.keys.filter { it !in keepSet }.forEach { release(it) }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.R)
+    fun releaseAll() {
+        views.keys.toList().forEach { release(it) }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.R)
+    private fun release(suggestion: InlineSuggestion) {
+        views.remove(suggestion)?.surfaceControl?.let { sc ->
+            SurfaceControl.Transaction().reparent(sc, null).apply()
+        }
+    }
+}
 
 class InlineSuggestionManager {
 
@@ -65,15 +113,20 @@ class InlineSuggestionManager {
     fun onInlineSuggestionsResponse(response: InlineSuggestionsResponse): Boolean {
         isAvailable = true
         val newSuggestions = response.inlineSuggestions
-        if (newSuggestions.isEmpty() && suggestions.isNotEmpty()) {
+        // 空响应表示宿主撤销了建议（如用户开始输入），需清除旧建议
+        if (newSuggestions.isEmpty() && suggestions.isEmpty()) {
             return true
         }
         suggestions = newSuggestions
+        InlineSuggestionViews.retain(newSuggestions)
         return true
     }
 
     fun clear() {
         suggestions = emptyList()
         isAvailable = false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            InlineSuggestionViews.releaseAll()
+        }
     }
 }
