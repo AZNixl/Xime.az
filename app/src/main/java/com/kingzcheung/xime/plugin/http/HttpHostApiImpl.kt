@@ -59,8 +59,11 @@ class HttpHostApiImpl(
             // 视为用户意图连接该服务器，自动授权并放行。
             val host = NetworkPolicy.extractHost(url)
             if (pluginInfo?.allowCustomHosts == true && host != null && isConfiguredUrlHost(host)) {
-                SettingsPreferences.authorizePluginHost(context, pluginId, host)
-                Log.d(TAG, "[$pluginId] 自动授权用户配置的服务器域名: $host")
+                // 仅首次授权，避免每 3 秒轮询刷屏（授权后 authorizedHosts 命中即放行）
+                if (host !in authorizedHosts) {
+                    SettingsPreferences.authorizePluginHost(context, pluginId, host)
+                    Log.d(TAG, "[$pluginId] 自动授权用户配置的服务器域名: $host")
+                }
             } else {
                 lastErrorMsg = reason
                 Log.w(TAG, "[$pluginId] 联网被拒绝: $reason")
@@ -80,6 +83,8 @@ class HttpHostApiImpl(
                 "PUT" -> requestBuilder.put(requestBody)
                 "POST" -> requestBuilder.post(requestBody)
                 "PATCH" -> requestBuilder.patch(requestBody)
+                "MKCOL" -> requestBuilder.method("MKCOL", null)
+                "PROPFIND" -> requestBuilder.method("PROPFIND", null)
                 else -> requestBuilder.get()
             }
             client.newCall(requestBuilder.build()).execute().use { response ->

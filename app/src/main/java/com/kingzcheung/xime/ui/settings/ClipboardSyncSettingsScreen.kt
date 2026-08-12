@@ -26,12 +26,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.kingzcheung.xime.plugin.ExtensionManager
+import com.kingzcheung.xime.plugin.core.model.PluginCategory
 import com.kingzcheung.xime.settings.SettingsPreferences
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -40,6 +44,7 @@ fun ClipboardSyncSettingsContent(
     onNavigateToPlugins: () -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var enabled by remember {
         mutableStateOf(SettingsPreferences.isClipboardSyncEnabled(context))
     }
@@ -47,7 +52,22 @@ fun ClipboardSyncSettingsContent(
         mutableStateOf(SettingsPreferences.isClipboardSyncPullOnOpen(context))
     }
     val syncPlugins = remember { ExtensionManager.getEnabledClipboardSyncPlugins(context) }
+    // 偏好未设置时，自动选中第一个已启用的插件（与服务端 fallback 一致）
+    var selectedPluginId by remember {
+        mutableStateOf(
+            SettingsPreferences.getClipboardSyncPluginId(context).ifEmpty {
+                syncPlugins.firstOrNull()?.first ?: ""
+            }
+        )
+    }
+    // 当前选中的插件实例（切换时在 IO 协程里 launch 完成后更新，驱动表单立即渲染新插件）
+    var activePlugin by remember {
+        mutableStateOf(
+            syncPlugins.firstOrNull { it.first == selectedPluginId } ?: syncPlugins.firstOrNull()
+        )
+    }
     val installedPlugins = remember { ExtensionManager.getAllInstalledPlugins() }
+    val clipboardPlugins = remember { installedPlugins.filter { it.category == PluginCategory.CLIPBOARD_SYNC } }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
@@ -131,15 +151,74 @@ fun ClipboardSyncSettingsContent(
                         }
                     )
                 } else {
-                    val pluginId = plugin.first
-                    val pluginName = installedPlugins.find { it.id == pluginId }?.name ?: pluginId
-                    PluginConfigFormScreen(
-                        pluginId = pluginId,
-                        plugin = plugin.second,
-                        pluginName = pluginName,
-                        onBack = {},
-                        embedded = true
+                    SettingsSection(
+                        title = "同步服务",
+                        content = {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                if (clipboardPlugins.isEmpty()) {
+                                    Text(
+                                        text = "未安装剪贴板同步插件，请先在插件中心安装后再配置。",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Button(
+                                        onClick = onNavigateToPlugins,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text("前往插件中心")
+                                    }
+                                } else {
+                                    clipboardPlugins.forEach { plugin ->
+                                        val pluginId = plugin.id
+                                        val isActive = pluginId == selectedPluginId
+                                        SettingsToggleItem(
+                                            icon = Icons.TwoTone.Sync,
+                                            title = plugin.name,
+                                            subtitle = plugin.description,
+                                            checked = isActive,
+                                            onCheckedChange = { checked ->
+                                                if (checked && !isActive) {
+                                                    selectedPluginId = pluginId
+                                                    SettingsPreferences.setClipboardSyncPluginId(context, pluginId)
+                                                    scope.launch(Dispatchers.IO) {
+                                                        // 单选激活：同一时间只能运行 1 个剪贴板同步插件
+                                                        clipboardPlugins
+                                                            .filter { it.id != pluginId }
+                                                            .forEach {
+                                                                SettingsPreferences.setPluginEnabled(context, it.id, false)
+                                                                com.kingzcheung.xime.plugin.core.runtime.PluginManager.unloadPlugin(it.id)
+                                                            }
+                                                        SettingsPreferences.setPluginEnabled(context, pluginId, true)
+                                                        com.kingzcheung.xime.plugin.core.runtime.PluginManager.launchPlugin(pluginId)
+                                                        // 重新获取已启用实例，驱动表单切换到新插件
+                                                        val instance = ExtensionManager.getEnabledClipboardSyncPlugins(context)
+                                                            .firstOrNull { it.first == pluginId }
+                                                        activePlugin = instance
+                                                    }
+                                                }
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     )
+                    activePlugin?.let { selected ->
+                        val pluginId = selected.first
+                        val pluginName = installedPlugins.find { it.id == pluginId }?.name ?: pluginId
+                        PluginConfigFormScreen(
+                            pluginId = pluginId,
+                            plugin = selected.second,
+                            pluginName = pluginName,
+                            onBack = {},
+                            embedded = true
+                        )
+                    }
                 }
             }
         }

@@ -57,6 +57,7 @@ class LuaClipboardSyncPluginTest {
     private class DebugHostApi(private val store: PluginConfigStore) : LuaHostApi {
         override val sdkVersion = "0.1.0"
         override fun log(message: String) { System.out.println("LUA_LOG: $message") }
+        override fun logError(message: String) { System.err.println("LUA_ERROR: $message") }
         override fun configGet(key: String) = store.get(key)
         override fun configSet(key: String, value: String) { store.set(key, value) }
         override fun configRemove(key: String) { store.remove(key) }
