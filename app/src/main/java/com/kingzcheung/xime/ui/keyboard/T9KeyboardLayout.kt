@@ -746,6 +746,7 @@ private fun T9KeyboardContent(
                 )
                 T9SpaceKey(
                     schemaName = uiState.schemaName, isSttEnabled = uiState.isSttEnabled,
+                    voiceSticky = uiState.voiceSticky,
                     onKeyPress = onKeyPress, onKeyPressDown = onKeyPressDown,
                     onVoiceModeChange = callbacks.onVoiceModeChange,
                     backgroundColor = keyBackgroundColor, textColor = keyTextColor,
@@ -1038,6 +1039,7 @@ private fun ResetKey(
 private fun T9SpaceKey(
     schemaName: String,
     isSttEnabled: Boolean,
+    voiceSticky: Boolean = false,
     onKeyPress: (String) -> Unit,
     onKeyPressDown: ((String) -> Unit)?,
     onVoiceModeChange: ((Boolean) -> Unit)?,
@@ -1073,14 +1075,25 @@ private fun T9SpaceKey(
         modifier = modifier
             .fillMaxHeight()
             .padding(horizontal = 2.dp, vertical = 2.dp)
-            .pointerInput(Unit) {
+            .pointerInput(voiceSticky) {
                 detectTapGestures(
                     onPress = {
-                        onKeyPressDown?.invoke("space")
-                        tryAwaitRelease()
+                        if (voiceSticky) {
+                            tryAwaitRelease()
+                        } else {
+                            onKeyPressDown?.invoke("space")
+                            tryAwaitRelease()
+                        }
                     },
-                    onTap = { currentOnKeyPress("space") },
+                    onTap = {
+                        if (voiceSticky) {
+                            currentOnVoiceModeChange?.invoke(false)
+                        } else {
+                            currentOnKeyPress("space")
+                        }
+                    },
                     onLongPress = {
+                        if (voiceSticky) return@detectTapGestures
                         view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
                         if (isSttEnabled) {
                             if (!PermissionHelper.hasRecordAudioPermission(context)) {
@@ -1105,38 +1118,50 @@ private fun T9SpaceKey(
                 .clip(RoundedCornerShape(LocalKeyCornerRadius.current))
                 .background(backgroundColor)
         )
-        Text(
-            text = schemaName,
-            color = textColor,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Normal,
-            textAlign = TextAlign.Center,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 8.dp)
-        )
-        if (isSttEnabled) {
-            Icon(
-                painter = painterResource(R.drawable.voice),
-                contentDescription = "语音输入",
-                tint = textColor.copy(alpha = 0.3f),
-                modifier = Modifier
-                    .size(18.dp)
-                    .align(Alignment.BottomStart)
-                    .padding(start = 6.dp, bottom = 2.dp)
+        if (voiceSticky) {
+            Text(
+                text = "轻触结束语音",
+                color = textColor,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                modifier = Modifier.padding(horizontal = 8.dp)
             )
         } else {
             Text(
-                text = "空格",
-                color = textColor.copy(alpha = 0.3f),
-                fontSize = 10.sp,
+                text = schemaName,
+                color = textColor,
+                fontSize = 14.sp,
                 fontWeight = FontWeight.Normal,
-                textAlign = TextAlign.Start,
+                textAlign = TextAlign.Center,
                 maxLines = 1,
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(start = 6.dp, bottom = 2.dp)
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 8.dp)
             )
+            if (isSttEnabled) {
+                Icon(
+                    painter = painterResource(R.drawable.voice),
+                    contentDescription = "语音输入",
+                    tint = textColor.copy(alpha = 0.3f),
+                    modifier = Modifier
+                        .size(18.dp)
+                        .align(Alignment.BottomStart)
+                        .padding(start = 6.dp, bottom = 2.dp)
+                )
+            } else {
+                Text(
+                    text = "空格",
+                    color = textColor.copy(alpha = 0.3f),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Normal,
+                    textAlign = TextAlign.Start,
+                    maxLines = 1,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = 6.dp, bottom = 2.dp)
+                )
+            }
         }
     }
 }

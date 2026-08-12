@@ -118,12 +118,16 @@ internal fun rememberImeKeyboardCallbacks(
                 }
             },
             onVoiceModeChange = { enabled ->
-                service.uiState.value = service.uiState.value.copy(
-                    isVoiceMode = enabled,
-                    voiceButtonState = if (enabled) VoiceButtonState(bottomActive = true) else VoiceButtonState(),
-                    voiceRecognizedText = ""
-                )
-                if (enabled) {
+                if (!enabled) {
+                    // 长按抬手：结束语音会话（提交当前已识别文本并停止识别）
+                    service.endVoiceSession()
+                } else if (!service.uiState.value.isVoiceMode) {
+                    service.uiState.value = service.uiState.value.copy(
+                        isVoiceMode = true,
+                        voiceSticky = false,
+                        voiceButtonState = VoiceButtonState(bottomActive = true),
+                        voiceRecognizedText = ""
+                    )
                     service.keyboardViewModel.enterVoice()
                     service.feedbackManager.performVibration()
                     service.isTrackingVoiceButtons = true
@@ -133,12 +137,24 @@ internal fun rememberImeKeyboardCallbacks(
                     // preStarted 可能还没创建好就被 startRecording 跳过，导致开头丢失）
                     service.voiceRecognitionHandler.startDelayedPreStart(0)
                     service.voiceRecognitionHandler.startRecognition()
-                } else {
-                    // 长按抬起：先立即提交当前已识别文本，再结束识别
-                    service.voiceRecognitionHandler.commitPendingOnRelease()
-                    service.voiceRecognitionHandler.stopRecognition()
-                    service.keyboardViewModel.exitVoice()
-                    service.isTrackingVoiceButtons = false
+                }
+            },
+            onVoiceStickyToggle = {
+                val state = service.uiState.value
+                if (state.isVoiceMode && state.voiceSticky) {
+                    // 常驻语音中：点按空格/再次点击工具栏即结束
+                    service.endVoiceSession()
+                } else if (!state.isVoiceMode) {
+                    // 进入常驻语音：保持正常键盘布局，候选栏显示频谱，空格键轻触结束
+                    service.uiState.value = service.uiState.value.copy(
+                        isVoiceMode = true,
+                        voiceSticky = true,
+                        voiceButtonState = VoiceButtonState(bottomActive = true),
+                        voiceRecognizedText = ""
+                    )
+                    service.voiceRecordingStarted = true
+                    service.voiceRecognitionHandler.startDelayedPreStart(0)
+                    service.voiceRecognitionHandler.startRecognition()
                 }
             },
             onPageDown = { service.keyRouter.pageDown() },
