@@ -1655,5 +1655,54 @@ TEST(T9RightCommitHandlerTest, LetterBufferExtraSyllablePartialCommit_54482_JieG
     EXPECT_TRUE(ctx.state_machine.is_input());
 }
 
+// ── 场景 [Bug-2026-08-11]: 退格撤销左选后再次左选，history 残留重复 → 右选错误 partial commit ──
+// 复现：输入 826 8426 → 左选 tao → 右选"洮"(partial commit) → 左选 tiao → 退格撤销 tiao
+//       → 再次左选 tiao（此时 digitSeq='8268426', consumed=7, unassigned=''）→ 空格选"条"(tiao)。
+// 根因：退格撤销 LC 后 DeriveStateMachineFromUndoModel 走 HasSelectableDigits 分支只调
+//       EnterInput()（不清 selection_history），再次左选 tiao 时 EnterSelection push_back
+//       累积出 [tiao, tiao]。HSLBC 中 JoinPinyins(history)="tiaotiao" != selectedPinyin="tiao"
+//       → is_full_commit_without_boundaries=0 → 错误 partial commit（预编辑"洮条tiao"）。
+// 本测试锚定"干净 history"（修复后状态）：history=[tiao] 时右选"条"应 full commit。
+TEST(T9RightCommitHandlerTest, LetterBufferFullCommit_8268426_Tiao_CleanHistory) {
+    std::vector<SyllableOption> sels{SyllableOption("tiao", 4)};
+    std::vector<SyllableOption> history{sels[0]};
+    auto ctx = MakeContext({
+        .digits = "8268426",
+        .selections = sels,
+        .consumed_count = 7,
+        .state = T9StateMachine::State::kSelection,
+        .selected_option = sels[0],
+        .selection_candidate_digits = std::optional<std::string>("8426"),
+        .confirmed_pinyin = "",
+        .selection_history = history
+    });
+    T9RightCommitHandler handler;
+    bool result = handler.HandleRightCommit(ctx, std::optional<std::string>("tiao"), 1);
+    EXPECT_TRUE(result);   // full commit — 干净 history 下完整消费 826 8426
+    EXPECT_TRUE(ctx.input_buffer.is_empty());
+    EXPECT_TRUE(ctx.state_machine.is_idle());
+}
+
+// ── 场景 [Bug-2026-08-11] 反向锚定：history 残留重复 [tiao, tiao] 时右选"条"错误 partial ──
+// 与上测试形成对比：仅 history 多一个重复 tiao，消费判定即从 full 退化为 partial。
+// 证明 bug 根因是 history 残留（DeriveStateMachineFromUndoModel 未清空），而非算法本身。
+TEST(T9RightCommitHandlerTest, LetterBufferPartialCommit_8268426_Tiao_DuplicatedHistory) {
+    std::vector<SyllableOption> sels{SyllableOption("tiao", 4)};
+    std::vector<SyllableOption> history{sels[0], sels[0]};  // 残留重复
+    auto ctx = MakeContext({
+        .digits = "8268426",
+        .selections = sels,
+        .consumed_count = 7,
+        .state = T9StateMachine::State::kSelection,
+        .selected_option = sels[0],
+        .selection_candidate_digits = std::optional<std::string>("8426"),
+        .confirmed_pinyin = "",
+        .selection_history = history
+    });
+    T9RightCommitHandler handler;
+    bool result = handler.HandleRightCommit(ctx, std::optional<std::string>("tiao"), 1);
+    EXPECT_FALSE(result);   // partial commit — history 重复导致 full commit 判定失败
+}
+
 }  // namespace
 }  // namespace rime
