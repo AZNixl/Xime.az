@@ -17,6 +17,9 @@ interface LuaHostApi {
     /** 输出日志（转到宿主 Logcat，tag 含插件 id）。 */
     fun log(message: String)
 
+    /** 输出错误日志（Log.e 级别，关键失败用，避免被日志配额丢弃）。 */
+    fun logError(message: String)
+
     /** 读取插件配置（不存在返回 null）。 */
     fun configGet(key: String): String?
 
@@ -68,6 +71,10 @@ class LuaHostApiImpl(
 
     override fun log(message: String) {
         android.util.Log.d("LuaPlugin", "[$pluginId] $message")
+    }
+
+    override fun logError(message: String) {
+        android.util.Log.e("LuaPlugin", "[$pluginId] $message")
     }
 
     override fun configGet(key: String): String? = configStore.get(key)

@@ -157,6 +157,9 @@ class PluginsSettingsViewModel(application: Application) : AndroidViewModel(appl
         if (SettingsPreferences.getSttOnlinePluginId(context) == pluginId) {
             SettingsPreferences.setSttOnlinePluginId(context, "")
         }
+        if (SettingsPreferences.getClipboardSyncPluginId(context) == pluginId) {
+            SettingsPreferences.setClipboardSyncPluginId(context, "")
+        }
         
         viewModelScope.launch {
             withContext(Dispatchers.IO) {

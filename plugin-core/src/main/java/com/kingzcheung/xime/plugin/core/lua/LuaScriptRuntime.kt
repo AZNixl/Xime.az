@@ -205,6 +205,10 @@ class LuaScriptRuntime(
             api.log(args.tojstring())
             LuaValue.NIL
         })
+        host.set("logError", luaFunction { args ->
+            api.logError(args.tojstring())
+            LuaValue.NIL
+        })
 
         val config = LuaTable()
         config.set("get", luaFunction { args ->
