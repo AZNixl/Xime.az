@@ -8,7 +8,7 @@ id: com.kingzcheung.xime.plugin.webdav_clipboard_sync
 # 插件名称与描述
 name: WebDAV 剪贴板同步
 icon: "☁️"
-description: 通过 WebDAV 文件同步剪贴板（文本，多设备）
+description: 通过 WebDAV 文件同步剪贴板（文本，多设备）,目前仅测试了坚果云盘的 WebDAV 接口。
 
 # 插件版本（字符串）
 version: 0.1.0
