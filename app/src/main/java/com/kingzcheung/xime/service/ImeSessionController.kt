@@ -69,6 +69,11 @@ internal class ImeSessionController(private val service: XimeInputMethodService)
             isComposing = inputText.isNotEmpty()
         }
 
+        // 用户开始实际输入时，清除候选栏中残留的 inline suggestions
+        if (displayText.isNotEmpty() || displayCandidates.isNotEmpty()) {
+            service.dismissInlineSuggestions()
+        }
+
         service.candidateState.value = service.candidateState.value.copy(
             inputText = displayText,
             preeditText = displayText,
@@ -161,6 +166,11 @@ internal class ImeSessionController(private val service: XimeInputMethodService)
             displayCandidates = filteredTexts
             displayComments = filteredComments
             isComposing = result.inputText.isNotEmpty()
+        }
+
+        // 用户开始实际输入时，清除候选栏中残留的 inline suggestions
+        if (displayText.isNotEmpty() || displayCandidates.isNotEmpty()) {
+            service.dismissInlineSuggestions()
         }
 
         service.candidateState.value = service.candidateState.value.copy(

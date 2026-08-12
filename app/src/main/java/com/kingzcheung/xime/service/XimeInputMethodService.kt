@@ -1520,6 +1520,13 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         sessionController.applyComposition(rimeEngine.getComposition())
     }
 
+    /**
+     * 用户开始输入时清除候选栏中的 inline suggestions，让位于正常输入候选。
+     */
+    internal fun dismissInlineSuggestions() {
+        inlineSuggestionManager?.clear()
+    }
+
 
     
 
