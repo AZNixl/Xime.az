@@ -29,6 +29,7 @@ app/src/main/jni/snappy/
 app/src/main/jni/boost*
 app/src/main/jni/onnxruntime/
 app/src/main/jniLibs/
+app/src/main/jni/librime-t9/build_test/
 app/release
 # Large archives
 *.tar.xz

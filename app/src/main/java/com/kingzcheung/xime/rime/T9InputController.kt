@@ -306,6 +306,10 @@ class T9InputController(
      * 右选候选（保持同步返回值契约，供服务层判断 full/partial commit）。
      * 由服务层在 keyProcessingDispatcher（后台线程）调用。先等待后台队列排空再执行，
      * 避免 pending 覆盖导致消费计算错乱——阻塞的是该后台线程，不冻结主线程（方案 B）。
+     * 调频不在此进行——由服务层在 full commit 上屏后经 rimeEngine.t9Memorize 单独调用。
+     *
+     * @param candidatePinyin 候选词拼音注释（comment），null 表示无注释候选（如 emoji）
+     * @param candidateTextLength 候选词字数
      */
     fun onRightCandidateSelected(candidatePinyin: String? = null, candidateTextLength: Int = 0): Boolean {
         awaitT9Queue()

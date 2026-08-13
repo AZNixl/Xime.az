@@ -3,8 +3,10 @@
 
 #include <rime/processor.h>
 #include <rime/component.h>
+#include <rime/dict/vocabulary.h>  // DictEntry / Code / SyllableId / Syllabary
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "t9_buffer.h"
@@ -15,6 +17,10 @@
 #include "t9_panel_state.h"  // LeftPanelStateData, T9PanelStateContext, t9_panel_state::*
 
 namespace rime {
+
+// 前向声明（用户词典调频：对齐全键盘 Memorize 机制）
+class Dictionary;
+class UserDictionary;
 
 // 九键拼音输入处理器（RIME Processor 组件）。
 //
@@ -50,10 +56,16 @@ public:
 
     // 右侧候选选词，返回 true = 完整消费（full commit）
     // 委托给 T9RightCommitHandler 三层消费算法
-    // 注：传入候选拼音注释（comment）和候选词字数，而非索引；
+    // 注：传入候选拼音注释（comment）与候选词字数，而非索引；
     //     RIME Menu::GetCandidateAt 使用绝对索引，而 Kotlin 层持有的是当前页
     //     相对索引，直接传拼音可避免翻页后索引错位导致消费计算错误。
     bool SelectCandidate(const std::string& candidate_pinyin, int candidate_text_length);
+
+    // ── 用户词典调频（Kotlin 上屏路径为唯一真相源）──
+    // 调频文本与拼音由 Kotlin 在 full commit（含 partial 拼接）时传入，
+    // C++ 构造 RIME 原生 DictEntry 写入（key 由 RIME 生成）；撤销段时 ForgetEntry 回滚。
+    bool MemorizeEntry(const std::string& text, const std::string& pinyin);
+    bool ForgetEntry(const std::string& text, const std::string& pinyin);
 
     // 获取 partial commit 后剩余的数字串
     std::string GetRemainingDigits() const;
@@ -132,6 +144,11 @@ private:
 
     // ── 辅助 ──
     void LogPreeditState();
+    // 构造 DictEntry（text + 拼音音节 code）；音节不在词典 syllabary 时返回 false。
+    bool BuildEntryForPinyin(const std::string& text, const std::string& pinyin,
+                             DictEntry* entry);
+    // 调频写入/回滚公共实现（MemorizeEntry/ForgetEntry 共用）：commits=+1 记忆 / -1 回滚。
+    bool UpdateDictEntry(const std::string& text, const std::string& pinyin, int commits);
 
     // 方案 A（消费算法优化）：查询 RIME 候选的实际匹配结束位置，
     // 换算为 T9 应消费的数字位数（RIME input[0:end) 中数字字符数，跳过分隔符）。
@@ -162,6 +179,17 @@ private:
     // kNone（英文/词级预测方案）：左栏返回 IDLE、首音节候选为空、左选 no-op。
     t9_panel_state::LeftPanelMode left_panel_mode_ =
         t9_panel_state::LeftPanelMode::kPinyin;
+
+    // ── 用户词典调频（对齐全键盘 Memorize 机制，2026-08-11）──
+    // 通过组件池与主翻译器（script_translator）共享 Table/Prism/db：
+    //   dict_      dictionary: rime_frost + prism: t9
+    //   user_dict_ user_dict:  rime_frost（enable_user_dict 默认 true）
+    // 由 Kotlin 在 full commit 时调用 MemorizeEntry/ForgetEntry 写入（UpdateEntry）。
+    the<Dictionary> dict_;
+    the<UserDictionary> user_dict_;
+    // 音节→SyllableId 映射（惰性构建，与 UserDictionary::Lookup 的 RecruitEntry
+    // 构造方式一致：GetSyllabary 返回顺序即 id）。用于把拼音音节转为原生 Code。
+    std::unordered_map<std::string, SyllableId> syllabary_map_;
 
     // ── 异步 flush 状态（SendToRime 标记，FlushRimeInput 消费）──
     // pending_action_ / pending_input_ 的读写都发生在 RimeEngine.rimeLock

@@ -575,10 +575,11 @@ class RimeEngine {
     // ═══════════════════════════════════════════════════════════
 
     /**
-     * 右选候选：根据候选拼音注释和文本长度执行右侧选词。
+     * 右选候选：根据候选拼音注释与文本长度执行右侧选词（消费计算）。
      * 委托给 T9RightCommitHandler 三层消费算法，判断 full/partial commit。
-     * @param pinyin 候选词的拼音注释（如 "ji"）
-     * @param textLength 候选词字数（如 "计划" 为 2）
+     * 调频不在此进行——由 Kotlin 在 full commit 上屏后经 [t9Memorize] 单独调用。
+     * @param pinyin 候选词的拼音注释（如 "li hua"）
+     * @param textLength 候选词字数（如 "丽华" 为 2）
      */
     fun t9SelectCandidate(pinyin: String, textLength: Int): Boolean {
         if (!isInitialized) return false
@@ -587,6 +588,25 @@ class RimeEngine {
             nativeT9SelectCandidate(pinyin, textLength)
         }
     }
+
+    /** 用户词典写入/回滚公共实现：memorize=true → commits=+1；false → commits=-1。 */
+    private fun t9DictOp(text: String, pinyin: String, memorize: Boolean): Boolean {
+        if (!isInitialized || text.isEmpty() || pinyin.isEmpty()) return false
+        return tryLocked(false) {
+            if (!nativeHasSession() && !nativeCreateSession()) return@tryLocked false
+            if (memorize) nativeT9Memorize(text, pinyin) else nativeT9Forget(text, pinyin)
+        }
+    }
+
+    /**
+     * 用户词典调频写入：在 full commit（含 partial 拼接）上屏后调用，
+     * text 为上屏完整文本，pinyin 为空格分隔的拼音音节串（如 "ji hu a"）。
+     * C++ 构造 RIME 原生 DictEntry 写入（key 由 RIME 生成）。
+     */
+    fun t9Memorize(text: String, pinyin: String): Boolean = t9DictOp(text, pinyin, true)
+
+    /** 用户词典调频回滚（undo 联动）：撤销 right commit 段时调用，commits=-1。 */
+    fun t9Forget(text: String, pinyin: String): Boolean = t9DictOp(text, pinyin, false)
 
     // Native 方法声明
     private external fun nativeInitialize(userDataDir: String, sharedDataDir: String)
@@ -655,6 +675,8 @@ class RimeEngine {
     private external fun nativeSetPageSize(schemaId: String, pageSize: Int)
     private external fun nativeDestroy()
     private external fun nativeT9SelectCandidate(pinyin: String, textLength: Int): Boolean
+    private external fun nativeT9Memorize(text: String, pinyin: String): Boolean
+    private external fun nativeT9Forget(text: String, pinyin: String): Boolean
     private external fun nativeT9SelectPinyinDirect(pinyin: String, digitLength: Int): Boolean
     private external fun nativeT9GetLeftPanelState(): String?
     private external fun nativeT9ClearComposition(mode: Int)

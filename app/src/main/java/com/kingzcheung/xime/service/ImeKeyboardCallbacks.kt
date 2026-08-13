@@ -242,7 +242,7 @@ internal fun rememberImeKeyboardCallbacks(
                             service.rimeEngine.clearComposition()
                         }
                         pinyin == T9InputController.CLEAR_ALL -> {
-                            service.t9PartialCommitTexts.clear()
+                            service.t9PartialSegments.clear()
                             service.rimeEngine.setInput("")
                             service.rimeEngine.clearComposition()
                         }
@@ -268,7 +268,13 @@ internal fun rememberImeKeyboardCallbacks(
                 } else {
                     service.currentInputConnection?.deleteSurroundingText(count, 0)
                 }
-                service.t9PartialCommitTexts.removeLastOrNull()
+                // undo 联动：撤销 right commit 段时回滚用户词典调频。
+                val undone = service.t9PartialSegments.removeLastOrNull()
+                if (undone != null) {
+                    service.serviceScope.launch(service.keyProcessingDispatcher) {
+                        service.rimeEngine.t9Forget(undone.text, undone.pinyin)
+                    }
+                }
             },
             onT9RefreshComposition = { composition ->
                 // composition 由 T9 控制器在 flush 后一次取回并传入，
