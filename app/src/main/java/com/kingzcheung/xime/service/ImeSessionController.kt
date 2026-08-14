@@ -54,7 +54,7 @@ internal class ImeSessionController(private val service: XimeInputMethodService)
             val rawPreedit = if (preeditText.isNotEmpty()) preeditText else inputText
             // preedit 转换由 C++ t9_filter 完成，Kotlin 侧直接使用引擎输出的 preedit
             val display = buildT9DisplayState(
-                service.t9PartialCommitTexts, rawPreedit, inputText, t9FilteredTexts, t9FilteredComments
+                service.t9PartialSegments.map { it.text }, rawPreedit, inputText, t9FilteredTexts, t9FilteredComments
             )
             displayText = display.displayText
             displayCandidates = display.displayCandidates
@@ -151,7 +151,7 @@ internal class ImeSessionController(private val service: XimeInputMethodService)
             val rawPreedit = if (result.preeditText.isNotEmpty()) result.preeditText else result.inputText
             // preedit 转换由 C++ t9_filter 完成，Kotlin 侧直接使用引擎输出的 preedit
             val display = buildT9DisplayState(
-                service.t9PartialCommitTexts, rawPreedit, result.inputText, t9FilteredTexts, t9FilteredComments
+                service.t9PartialSegments.map { it.text }, rawPreedit, result.inputText, t9FilteredTexts, t9FilteredComments
             )
             displayText = display.displayText
             displayCandidates = display.displayCandidates
@@ -356,7 +356,7 @@ internal class ImeSessionController(private val service: XimeInputMethodService)
                 t9RightCandidateSelectedCount = 0,
                 t9SelectedCandidatePinyin = ""
             )
-            service.t9PartialCommitTexts.clear()
+            service.t9PartialSegments.clear()
             service.candidateState.value = service.candidateState.value.copy(
                 inputText = "",
                 preeditText = "",

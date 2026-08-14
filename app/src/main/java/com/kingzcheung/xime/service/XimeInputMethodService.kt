@@ -135,6 +135,12 @@ object QuickSendFormEditTextHolder {
     var editText: android.widget.EditText? = null
 }
 
+/**
+ * T9 九键 partial commit 段：右选部分提交时累积的（文本, 拼音）对。
+ * 文本用于 preedit 拼接与上屏，拼音用于用户词典调频/回滚，两者同源同步维护。
+ */
+data class T9PartialSegment(val text: String, val pinyin: String)
+
 class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateRegistryOwner, ViewModelStoreOwner, ActionExecutor {
 
     companion object {
@@ -224,8 +230,8 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     private var pendingVoiceAction: (() -> Unit)? = null
     internal var composeViewRef: View? = null
     internal var lastClearedText: String = ""
-    /** 累积的 partial commit 文本列表（多段选词场景下逐段追加） */
-    internal val t9PartialCommitTexts = mutableListOf<String>()
+    /** 累积的 partial commit 段列表（多段选词场景下逐段追加，文本+拼音同源，供调频/回滚） */
+    internal val t9PartialSegments = mutableListOf<T9PartialSegment>()
     /** 键盘回调引用，用于在 RIME selectCandidate 前同步通知 T9 控制器 */
     internal var keyboardCallbacks: KeyboardCallbacks? = null
     internal var isChineseMode = true
@@ -1150,7 +1156,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         // 新输入会话清空 partial commit 累积：外部 UI（如设置页输入框"清除"按钮仅清 Compose
         // state）会触发 restartInput → 此处重建 T9，若残留累积会被 buildT9DisplayState 拼进
         // preedit 回灌输入框（2026-08-07 日志实证：清除后 testText 从 '' 回灌为 '几乎'）。
-        t9PartialCommitTexts.clear()
+        t9PartialSegments.clear()
         debugLog("onStartInput: cleared lastCommittedText")
 
         // 跨进程同步文件日志开关（开关在主进程设置页切换）
@@ -1488,7 +1494,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     private fun clearInputState() {
         calculatorEngine.clear()
         rimeEngine.clearComposition()
-        t9PartialCommitTexts.clear()
+        t9PartialSegments.clear()
         // 输入法隐藏/结束输入：静默停止语音会话，丢弃未识别文本，避免迟到结果写入新输入框
         if (uiState.value.isVoiceMode || voiceRecordingStarted) {
             voiceRecognitionHandler.abandonSession()

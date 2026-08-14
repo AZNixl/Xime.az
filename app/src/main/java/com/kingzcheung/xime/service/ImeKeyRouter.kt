@@ -127,7 +127,7 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
                             else -> inputFieldText + candState.inputText + candState.pendingEnglishText
                         }
                         // 清空 partial 累积，避免残留词被 buildT9DisplayState 拼进下一轮 preedit。
-                        service.t9PartialCommitTexts.clear()
+                        service.t9PartialSegments.clear()
                         service.rimeEngine.clearComposition()
                         service.candidateState.value = service.candidateState.value.copy(
                             candidates = emptyList(),
@@ -186,7 +186,7 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
                         }
                         if (isT9) {
                             // 同步清空，避免异步 postRimeJob 延迟导致后续 backspace 拿到旧状态。
-                            service.t9PartialCommitTexts.clear()
+                            service.t9PartialSegments.clear()
                             service.rimeEngine.setInput("")
                             service.rimeEngine.clearComposition()
                         } else {
@@ -265,7 +265,7 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
                                 // preedit中残留上一轮的提交内容（如"看"→下一轮"看jihua"）
                                 if (isT9Schema(state.currentSchemaId)) {
                                     withContext(Dispatchers.Main) {
-                                        service.t9PartialCommitTexts.clear()
+                                        service.t9PartialSegments.clear()
                                         service.uiState.value = service.uiState.value.copy(
                                             t9ResetSignal = service.uiState.value.t9ResetSignal + 1,
                                             t9RightCandidateSelectedCount = 0,
@@ -395,6 +395,8 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
                                 needsUIUpdate = true
                             }
                         } else {
+                            // 注：T9 数字键不经过此处（T9KeyboardLayout 直接调
+                            // controller.onDigitPressed → applyComposition）。
                             val result = service.rimeEngine.processKeyAndGetResult(keyCode, mask)
                             if (result.processed) {
                                 if (isShiftedChinese && result.committedText != char) {
@@ -636,8 +638,8 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
                     // T9 部分提交：剩余编码删完后，已上屏/ composing 的部分候选词无法用
                     // RIME 退格删除，会一直卡在候选栏。这里撤销最近一次部分提交：
                     // 清空 composing 区域（或删除上屏文本）并从累积列表移除。
-                    if (service.t9PartialCommitTexts.isNotEmpty()) {
-                        val len = service.t9PartialCommitTexts.last().length
+                    if (service.t9PartialSegments.isNotEmpty()) {
+                        val len = service.t9PartialSegments.last().text.length
                         withContext(Dispatchers.Main) {
                             if (SettingsPreferences.getInputTextLocation(service)
                                 == SettingsPreferences.INPUT_TEXT_INPUT_BOX) {
@@ -646,7 +648,11 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
                                 service.currentInputConnection?.deleteSurroundingText(len, 0)
                             }
                         }
-                        service.t9PartialCommitTexts.removeLastOrNull()
+                        // undo 联动：撤销段时回滚用户词典调频。
+                        val undone = service.t9PartialSegments.removeLastOrNull()
+                        if (undone != null) {
+                            service.rimeEngine.t9Forget(undone.text, undone.pinyin)
+                        }
                     }
                 }
                 service.uiEventChannel.trySend {
@@ -757,22 +763,34 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
                 selectedCandidate!!
             }
             // T9 full commit：partial commit 累积文本（未单独上屏，只存在于
-            // service.t9PartialCommitTexts 的 composing 区）与本次上屏文本是独立词，必须拼接，
+            // service.t9PartialSegments 的 composing 区）与本次上屏文本是独立词，必须拼接，
             // 不能去重（mergePartialCommitText 仅用于显示，会吞掉重复的词）。
             // 但若点击的是 partial 词本身（RIME 无菜单、候选栏显示的就是 partial 词，
             // 无拼音注释 candidatePinyin==null），则只提交累积的 partial 文本，避免重复。
-            val fullCommitText = if (isT9 && service.t9PartialCommitTexts.isNotEmpty()) {
+            val partialTexts = service.t9PartialSegments.map { it.text }
+            val fullCommitText = if (isT9 && partialTexts.isNotEmpty()) {
                 if (candidatePinyin == null) {
-                    service.t9PartialCommitTexts.joinToString("")
+                    partialTexts.joinToString("")
                 } else {
-                    service.t9PartialCommitTexts.joinToString("") + textToMerge
+                    partialTexts.joinToString("") + textToMerge
                 }
             } else {
                 textToMerge
             }
+            // 调频拼音与上屏文本同源：partial 累积拼音 + 当前候选拼音（如 "ji hu a"）。
+            val fullCommitPinyin = buildString {
+                service.t9PartialSegments.forEachIndexed { i, seg ->
+                    if (i > 0) append(' ')
+                    append(seg.pinyin)
+                }
+                if (candidatePinyin != null) {
+                    if (isNotEmpty()) append(' ')
+                    append(candidatePinyin)
+                }
+            }
             withContext(Dispatchers.Main) {
                 service.commitText(fullCommitText)
-                service.t9PartialCommitTexts.clear()
+                service.t9PartialSegments.clear()
                 service.candidateState.value = service.candidateState.value.copy(
                     inputText = "",
                     preeditText = "",
@@ -789,15 +807,19 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
                     t9SelectedCandidatePinyin = ""
                 )
             }
+            // 用户词典调频：记忆实际上屏文本（后台线程，rimeLock 保护）。
+            if (isT9 && fullCommitText.isNotEmpty() && fullCommitPinyin.isNotEmpty()) {
+                service.rimeEngine.t9Memorize(fullCommitText, fullCommitPinyin)
+            }
             // T9 跳过了 service.rimeEngine.commit()，需显式清除 RIME composition，
             // 防止残留状态影响后续输入（在 service.keyProcessingDispatcher 上执行）。
             if (isT9) service.rimeEngine.clearComposition()
         } else {
             withContext(Dispatchers.Main) {
                 if (isT9) {
-                    // partial commit：把本次选中的候选文本追加到累积列表，供后续合并显示
+                    // partial commit：累积候选文本与拼音，供合并显示与 full commit 调频拼接。
                     if (selectedCandidate != null) {
-                        service.t9PartialCommitTexts.add(selectedCandidate)
+                        service.t9PartialSegments.add(T9PartialSegment(selectedCandidate, candidatePinyin ?: ""))
                     }
                     // 保留状态字段，供 UI 层感知右侧选词事件
                     service.uiState.value = service.uiState.value.copy(
@@ -830,7 +852,7 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
             candState.inputText.isNotEmpty() ||
             candState.preeditText.isNotEmpty() ||
             candState.pendingEnglishText.isNotEmpty() ||
-            service.t9PartialCommitTexts.isNotEmpty()
+            service.t9PartialSegments.isNotEmpty()
 
     /**
      * 清空输入态（预编辑/候选/联想/partial 累积/计算器），不动已上屏文本。
@@ -842,7 +864,7 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
     private suspend fun clearInputStateForKeys() {
         service.calculatorEngine.clear()
         updateCalculatorCandidates()
-        service.t9PartialCommitTexts.clear()
+        service.t9PartialSegments.clear()
         service.rimeEngine.clearComposition()
         service.candidateState.value = service.candidateState.value.copy(
             candidates = emptyList(),

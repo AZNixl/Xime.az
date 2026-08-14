@@ -7,13 +7,18 @@
 #include <rime/engine.h>
 #include <rime/key_event.h>
 #include <rime/key_table.h>
+#include <rime/language.h>
 #include <rime/menu.h>
 #include <rime/schema.h>
+#include <rime/ticket.h>
+#include <rime/dict/dictionary.h>
+#include <rime/dict/user_dictionary.h>
 #include <algorithm>
 #include <atomic>
 #include <set>
 
 #include "t9_log.h"
+#include "t9_right_commit_utils.h"  // ParseSyllables
 
 namespace rime {
 
@@ -75,8 +80,24 @@ T9Processor::T9Processor(const Ticket& ticket) : Processor(ticket) {
         }
     }
 
-    T9LOG("T9Processor created (integrated T1-T6), manual_delimiter='%c', leftPanelMode=%d",
-          manual_delimiter_, static_cast<int>(left_panel_mode_));
+    // 用户词典调频（对齐全键盘 Memory::Memorize 机制）：
+    // 与主翻译器（script_translator）使用同一 name_space "translator"，
+    // 通过组件池共享 Table/Prism/db（dict_name=rime_frost, prism_name=t9）。
+    // 仅在右选候选时写入；创建失败（非拼音方案/未部署）时置空，调频自动跳过。
+    if (auto dictionary = Dictionary::Require("dictionary")) {
+        dict_.reset(dictionary->Create(Ticket(engine_, "translator")));
+        if (dict_) dict_->Load();
+    }
+    if (auto user_dictionary = UserDictionary::Require("user_dictionary")) {
+        user_dict_.reset(user_dictionary->Create(Ticket(engine_, "translator")));
+        if (user_dict_) {
+            user_dict_->Load();
+            if (dict_) user_dict_->Attach(dict_->primary_table(), dict_->prism());
+        }
+    }
+    T9LOG("T9Processor created (integrated T1-T6), manual_delimiter='%c', leftPanelMode=%d, userDict=%s",
+          manual_delimiter_, static_cast<int>(left_panel_mode_),
+          (user_dict_ && user_dict_->loaded()) ? "on" : "off");
 }
 
 T9Processor::~T9Processor() {
@@ -463,7 +484,10 @@ bool T9Processor::SelectCandidate(const std::string& candidate_pinyin,
     bool full_commit = right_commit_handler_.HandleRightCommit(
         ctx, candidate_pinyin, candidate_text_length, rime_consumed);
 
+    // 必须先把 handler 消费结果回写 input_buffer_（consumed/unassigned 更新）。
     ApplyHandlerContext(ctx);
+
+    // 调频不在此进行：由 Kotlin 在 full commit 上屏后经 MemorizeEntry 显式调用。
 
     // ── 诊断日志：出口状态 ──
     T9LOG(">> SelectCandidate EXIT: full_commit=%d", full_commit ? 1 : 0);
@@ -478,6 +502,76 @@ bool T9Processor::SelectCandidate(const std::string& candidate_pinyin,
           static_cast<int>(state_machine_.state()));
 
     return full_commit;
+}
+
+// ════════════════════════════════════════
+// MemorizeEntry / ForgetEntry — 用户词典调频（Kotlin 上屏路径为唯一真相源）
+// ════════════════════════════════════════
+// pinyin 拆音节转原生 Code（key 由 RIME 生成，避免手拼字符串依赖内部格式）；
+// 撤销段时 Kotlin 调 ForgetEntry（commits=-1）回滚。
+
+bool T9Processor::BuildEntryForPinyin(const std::string& text,
+                                      const std::string& pinyin,
+                                      DictEntry* entry) {
+    if (!entry || text.empty() || pinyin.empty())
+        return false;
+    // 惰性构建 音节→SyllableId 映射（与 UserDictionary 的 RecruitEntry 一致：
+    // GetSyllabary 返回按 id 排序的音节集合，遍历顺序即 id）。
+    if (syllabary_map_.empty() && dict_ && dict_->primary_table()) {
+        Syllabary syllabary;
+        if (dict_->primary_table()->GetSyllabary(&syllabary)) {
+            SyllableId sid = 0;
+            for (const auto& s : syllabary)
+                syllabary_map_[s] = sid++;
+        }
+    }
+    if (syllabary_map_.empty())
+        return false;
+    auto syllables = ParseSyllables(pinyin);
+    if (syllables.empty())
+        return false;
+    Code code;
+    for (const auto& syl : syllables) {
+        auto it = syllabary_map_.find(syl);
+        if (it == syllabary_map_.end())
+            return false;  // 音节不在词典（如英文/符号），放弃调频
+        code.push_back(it->second);
+    }
+    entry->text = text;
+    entry->code = code;
+    return true;
+}
+
+bool T9Processor::UpdateDictEntry(const std::string& text,
+                                  const std::string& pinyin,
+                                  int commits) {
+    if (!user_dict_ || !user_dict_->loaded() || user_dict_->readonly())
+        return false;
+    if (text.empty() || pinyin.empty())
+        return false;
+    DictEntry entry;
+    if (!BuildEntryForPinyin(text, pinyin, &entry))
+        return false;
+    // 刷新 tick：与主翻译器的 UserDictionary 共享 db（db_pool_），
+    // 但各实例独立缓存 tick_，写前同步防 tick 倒退（UpdateEntry 依赖 tick 计算权重）。
+    user_dict_->Load();
+    const char* op = commits > 0 ? "Memorize" : "Forget";
+    if (user_dict_->UpdateEntry(entry, commits)) {
+        T9LOG(">> %sEntry OK: '%s' pinyin='%s'", op, text.c_str(), pinyin.c_str());
+        return true;
+    }
+    T9LOG(">> %sEntry FAIL: '%s' pinyin='%s'", op, text.c_str(), pinyin.c_str());
+    return false;
+}
+
+bool T9Processor::MemorizeEntry(const std::string& text,
+                                const std::string& pinyin) {
+    return UpdateDictEntry(text, pinyin, 1);
+}
+
+bool T9Processor::ForgetEntry(const std::string& text,
+                              const std::string& pinyin) {
+    return UpdateDictEntry(text, pinyin, -1);
 }
 
 int T9Processor::QueryRimeConsumedDigits(
