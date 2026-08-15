@@ -5,6 +5,10 @@ import android.util.Log
 import android.view.KeyEvent
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputContentInfo
+import android.provider.MediaStore
+import android.content.ContentValues
+import android.os.Environment
+import android.net.Uri
 import androidx.core.content.FileProvider
 import java.io.File
 import java.io.FileInputStream
@@ -61,11 +65,7 @@ internal class ImeTextCommit(private val service: XimeInputMethodService) {
                 }
             }
             
-            val uri = FileProvider.getUriForFile(
-                service,
-                "$service.packageName.fileprovider",
-                cacheFile
-            )
+            val uri = getContentUriForImage(cacheFile, mimeType) ?: return false
             
             val inputContentInfo = InputContentInfo(
                 uri,
@@ -111,4 +111,62 @@ internal class ImeTextCommit(private val service: XimeInputMethodService) {
         service.currentInputConnection?.deleteSurroundingText(count, 0)
     }
 
+    /**
+     * 生成图片 content URI。
+     *
+     * 优先使用 FileProvider；Android 12+ 部分厂商 ROM（如一加）上
+     * FileProvider.getUriForFile 内部 resolveContentProvider 以 USER_ALL(-10000)
+     * 校验跨用户权限时抛 "Invalid userId -10000"，此时降级为 MediaStore
+     * 插入图片获取系统 content URI（API 29+ 免权限）。
+     */
+    private fun getContentUriForImage(imageFile: File, mimeType: String): Uri? {
+        try {
+            return FileProvider.getUriForFile(
+                service,
+                "${service.packageName}.fileprovider",
+                imageFile
+            )
+        } catch (e: IllegalArgumentException) {
+            Log.w(XimeInputMethodService.TAG, "FileProvider unavailable, falling back to MediaStore", e)
+        } catch (e: Exception) {
+            Log.w(XimeInputMethodService.TAG, "FileProvider getUriForFile failed, falling back to MediaStore", e)
+        }
+
+        return insertImageToMediaStore(imageFile, mimeType)
+    }
+
+    /** 把图片插入 MediaStore（Pictures/Xime），返回系统 content URI。 */
+    private fun insertImageToMediaStore(imageFile: File, mimeType: String): Uri? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            Log.e(XimeInputMethodService.TAG, "MediaStore fallback requires API 29+, image commit failed")
+            return null
+        }
+        return try {
+            val resolver = service.contentResolver
+            val values = ContentValues().apply {
+                put(MediaStore.Images.Media.DISPLAY_NAME, imageFile.name)
+                put(MediaStore.Images.Media.MIME_TYPE, mimeType)
+                put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Xime")
+                put(MediaStore.Images.Media.IS_PENDING, 1)
+            }
+            val collection = MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+            val uri = resolver.insert(collection, values) ?: return null
+            try {
+                resolver.openOutputStream(uri)?.use { output ->
+                    FileInputStream(imageFile).use { input -> input.copyTo(output) }
+                } ?: return null
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    val update = ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }
+                    resolver.update(uri, update, null, null)
+                }
+                uri
+            } catch (e: Exception) {
+                resolver.delete(uri, null, null)
+                throw e
+            }
+        } catch (e: Exception) {
+            Log.e(XimeInputMethodService.TAG, "MediaStore insert failed", e)
+            null
+        }
+    }
 }
