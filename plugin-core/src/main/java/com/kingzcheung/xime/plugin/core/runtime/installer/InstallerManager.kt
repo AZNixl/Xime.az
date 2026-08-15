@@ -71,6 +71,18 @@ class InstallerManager(
         private const val PLUGINS_DIR = "plugins"
         private const val MANIFEST_YAML = "manifest.yaml"
 
+        /** 插件 id 白名单：仅字母/数字/下划线/连字符，最长 64，杜绝路径穿越。 */
+        private val PLUGIN_ID_REGEX = Regex("^[A-Za-z0-9_-]{1,64}$")
+
+        /** 入口脚本：普通文件名，不允许路径分隔符与 ".."。 */
+        private val ENTRY_SCRIPT_REGEX = Regex("^[A-Za-z0-9_.-]{1,128}$")
+
+        private fun isValidPluginId(id: String): Boolean = PLUGIN_ID_REGEX.matches(id)
+
+        private fun isValidEntryScript(name: String): Boolean =
+            ENTRY_SCRIPT_REGEX.matches(name) && !name.contains("..")
+
+
         private val manifestYaml: Yaml by lazy {
             Yaml(configuration = YamlConfiguration(strictMode = false))
         }
@@ -134,6 +146,13 @@ class InstallerManager(
             is PluginParseResult.Success -> parsed.config
         }
         val pluginId = pluginConfig.id
+        if (!isValidPluginId(pluginId)) {
+            return@withContext InstallResult.Failure("非法插件 id: $pluginId（仅允许字母/数字/下划线/连字符）")
+        }
+        val entryScript = pluginConfig.entryScript ?: "main.lua"
+        if (!isValidEntryScript(entryScript)) {
+            return@withContext InstallResult.Failure("非法入口脚本: $entryScript")
+        }
         val pluginDir = getPluginDirectory(pluginId)
 
         // 校验插件声明的宿主版本范围
@@ -170,7 +189,6 @@ class InstallerManager(
 
         try {
             extractPluginArchive(pluginFile, pluginDir)
-            val entryScript = pluginConfig.entryScript ?: "main.lua"
             val entryFile = File(pluginDir, entryScript)
             if (!entryFile.exists()) {
                 throw IllegalArgumentException("Lua 入口脚本不存在: $entryScript")
@@ -211,6 +229,10 @@ class InstallerManager(
     }
 
     suspend fun uninstallPlugin(pluginId: String): Boolean = withContext(Dispatchers.IO) {
+        if (!isValidPluginId(pluginId)) {
+            Log.e("InstallerManager", "uninstallPlugin 拒绝非法 id: $pluginId")
+            return@withContext false
+        }
         val pluginDir = getPluginDirectory(pluginId)
         if (pluginDir.exists()) {
             pluginDir.deleteRecursively()
@@ -240,6 +262,7 @@ class InstallerManager(
     }
 
     internal fun getPluginDirectory(pluginId: String): File {
+        require(isValidPluginId(pluginId)) { "非法插件 id: $pluginId" }
         return File(pluginsDir, pluginId)
     }
 
