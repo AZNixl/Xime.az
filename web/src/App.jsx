@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import logo from './assets/logo.png'
 
-const ACCEPT = '.yaml,.zip,.tar.gz,.tgz,.gram,.jpg,.jpeg,.png'
-const SUPPORTED = /\.(yaml|zip|tar\.gz|tgz|gram|jpe?g|png)$/i
+const ACCEPT = '.yaml,.zip,.tar.gz,.tgz,.gram,.jpg,.jpeg,.png,.xipk'
+const SUPPORTED = /\.(yaml|zip|tar\.gz|tgz|gram|jpe?g|png|xipk)$/i
 
 function supported(name) {
   return SUPPORTED.test(name)
@@ -62,10 +62,12 @@ function typeBadge(name, isDir) {
   if (lower.endsWith('.schema.yaml')) return '方案'
   if (lower.endsWith('.dict.yaml')) return '词典'
   if (lower.endsWith('.zip')) return 'ZIP'
+  if (lower.endsWith('.xipk')) return '插件'
   if (lower.endsWith('.tar.gz') || lower.endsWith('.tgz')) return '归档'
   if (lower.endsWith('.yaml')) return '配置'
   if (lower.endsWith('.txt')) return '文本'
   if (lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.webp')) return '图片'
+  if (lower.endsWith('.xipk')) return '插件'
   return '文件'
 }
 
@@ -270,7 +272,7 @@ export default function App() {
         >
           <div className="mb-3 text-4xl text-gray-400">📄</div>
           <div className="text-sm text-gray-400">拖拽文件到此处</div>
-          <div className="mt-2 text-xs text-gray-300">支持 .yaml / .zip / .tar.gz / 图片(.jpg/.png)</div>
+          <div className="mt-2 text-xs text-gray-300">          支持 .yaml / .zip / .tar.gz / 插件(.xipk) / 图片(.jpg/.png)</div>
         </div>
 
         <input
