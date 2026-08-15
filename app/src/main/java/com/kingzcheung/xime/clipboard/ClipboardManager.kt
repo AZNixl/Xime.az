@@ -1,9 +1,14 @@
 package com.kingzcheung.xime.clipboard
 
 import android.content.ClipData
+import android.content.ContentValues
 import android.content.Context
+import android.net.Uri
+import android.os.Build
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import android.provider.MediaStore
 import android.util.Log
 import androidx.core.content.FileProvider
 import com.kingzcheung.xime.clipboard.db.ClipboardDatabase
@@ -352,11 +357,7 @@ class ClipboardManager private constructor(private val context: Context) {
                 }
             }
 
-            val uri = FileProvider.getUriForFile(
-                context,
-                "${context.packageName}.fileprovider",
-                cacheFile
-            )
+            val uri = getContentUriForImage(cacheFile) ?: return false
 
             val clip = ClipData.newUri(context.contentResolver, label, uri)
             androidClipboardManager.setPrimaryClip(clip)
@@ -365,6 +366,60 @@ class ClipboardManager private constructor(private val context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to copy image to clipboard", e)
             false
+        }
+    }
+
+    /**
+     * 生成图片 content URI。
+     *
+     * 优先使用 FileProvider；Android 12+ 部分厂商 ROM（如一加）上
+     * FileProvider.getUriForFile 内部 resolveContentProvider 以 USER_ALL(-10000)
+     * 校验跨用户权限时抛 "Invalid userId -10000"，此时降级为 MediaStore
+     * 插入图片获取系统 content URI（API 29+ 免权限）。
+     */
+    private fun getContentUriForImage(imageFile: File): Uri? {
+        try {
+            return FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                imageFile
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "FileProvider getUriForFile failed, falling back to MediaStore", e)
+        }
+        return insertImageToMediaStore(imageFile)
+    }
+
+    /** 把图片插入 MediaStore（Pictures/Xime），返回系统 content URI。 */
+    private fun insertImageToMediaStore(imageFile: File): Uri? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            Log.e(TAG, "MediaStore fallback requires API 29+, clipboard image copy failed")
+            return null
+        }
+        return try {
+            val resolver = context.contentResolver
+            val values = ContentValues().apply {
+                put(MediaStore.Images.Media.DISPLAY_NAME, imageFile.name)
+                put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Xime")
+                put(MediaStore.Images.Media.IS_PENDING, 1)
+            }
+            val collection = MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+            val uri = resolver.insert(collection, values) ?: return null
+            try {
+                resolver.openOutputStream(uri)?.use { output ->
+                    FileInputStream(imageFile).use { input -> input.copyTo(output) }
+                } ?: return null
+                val update = ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }
+                resolver.update(uri, update, null, null)
+                uri
+            } catch (e: Exception) {
+                resolver.delete(uri, null, null)
+                throw e
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "MediaStore insert failed", e)
+            null
         }
     }
 }
