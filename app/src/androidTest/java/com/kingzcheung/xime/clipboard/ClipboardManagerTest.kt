@@ -230,6 +230,63 @@ class ClipboardManagerTest {
     }
 
     @Test
+    fun removeItemsRemovesMultipleClipboardItems() {
+        clipboardManager.addItem("First")
+        awaitCondition({ clipboardManager.clipboardItems.value.size == 1 })
+        clipboardManager.addItem("Second")
+        awaitCondition({ clipboardManager.clipboardItems.value.size == 2 })
+        clipboardManager.addItem("Third")
+        awaitCondition({ clipboardManager.clipboardItems.value.size == 3 })
+        val ids = clipboardManager.clipboardItems.value.map { it.id }
+
+        clipboardManager.removeItems(ids)
+
+        awaitCondition({ clipboardManager.clipboardItems.value.isEmpty() })
+    }
+
+    @Test
+    fun removeItemsKeepsQuickSendIntact() {
+        clipboardManager.addItem("Shared text")
+        awaitCondition({ clipboardManager.clipboardItems.value.isNotEmpty() })
+        val itemId = clipboardManager.clipboardItems.value[0].id
+        clipboardManager.addToQuickSend(itemId)
+        awaitCondition({ clipboardManager.quickSendItems.value.isNotEmpty() })
+        clipboardManager.addItem("Clipboard only")
+        awaitCondition({ clipboardManager.clipboardItems.value.size == 2 })
+        val clipboardIds = clipboardManager.clipboardItems.value.map { it.id }
+
+        clipboardManager.removeItems(clipboardIds)
+
+        awaitCondition({ clipboardManager.clipboardItems.value.isEmpty() })
+        assertEquals(
+            "Quick send items must survive clipboard batch delete",
+            1,
+            clipboardManager.quickSendItems.value.size
+        )
+        assertEquals("Shared text", clipboardManager.quickSendItems.value[0].text)
+    }
+
+    @Test
+    fun clearClipboardClearsOnlyClipboardItems() {
+        clipboardManager.addItem("Clipboard A")
+        awaitCondition({ clipboardManager.clipboardItems.value.isNotEmpty() })
+        clipboardManager.addItem("Clipboard B")
+        awaitCondition({ clipboardManager.clipboardItems.value.size == 2 })
+        clipboardManager.addQuickSendItem("Quick A")
+        awaitCondition({ clipboardManager.quickSendItems.value.isNotEmpty() })
+
+        clipboardManager.clearClipboard()
+
+        awaitCondition({ clipboardManager.clipboardItems.value.isEmpty() })
+        assertEquals(
+            "Quick send items must survive clipboard clear",
+            1,
+            clipboardManager.quickSendItems.value.size
+        )
+        assertEquals("Quick A", clipboardManager.quickSendItems.value[0].text)
+    }
+
+    @Test
     fun addQuickSendItemAddsTextDirectly() {
         clipboardManager.addQuickSendItem("Direct quick")
 

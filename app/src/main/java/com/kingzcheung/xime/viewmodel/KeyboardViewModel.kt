@@ -484,12 +484,16 @@ class KeyboardViewModel(application: Application) : AndroidViewModel(application
         clipboardManager.removeItem(id)
     }
 
+    fun removeClipboardItems(ids: List<Long>) {
+        clipboardManager.removeItems(ids)
+    }
+
     fun splitClipboardItem(id: Long) {
         clipboardManager.splitItem(id)
     }
 
     fun clearClipboard() {
-        clipboardManager.clearAll()
+        clipboardManager.clearClipboard()
     }
 
     fun addToQuickSend(id: Long) {

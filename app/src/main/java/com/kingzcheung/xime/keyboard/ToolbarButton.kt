@@ -1,6 +1,7 @@
 package com.kingzcheung.xime.keyboard
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.twotone.Assignment
 import androidx.compose.material.icons.automirrored.twotone.LastPage
 import androidx.compose.material.icons.twotone.ContentCopy
 import androidx.compose.material.icons.twotone.ContentPaste
@@ -16,7 +17,6 @@ import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PictureInPicture
 import androidx.compose.material.icons.outlined.Gesture
-import androidx.compose.material.icons.twotone.ContentPasteGo
 import androidx.compose.material.icons.twotone.Edit
 import androidx.compose.material.icons.twotone.Mic
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -27,7 +27,7 @@ enum class ToolbarButton(
     val icon: ImageVector
 ) {
     EMOJI("emoji", "表情", Icons.TwoTone.EmojiEmotions),
-    CLIPBOARD("clipboard", "剪贴板", Icons.TwoTone.ContentPasteGo),
+    CLIPBOARD("clipboard", "剪贴板", Icons.AutoMirrored.TwoTone.Assignment),
     SCHEMA("schema", "方案选择", Icons.TwoTone.KeyboardAlt),
     QUICK_PHRASE("quick_phrase", "快捷发送", Icons.TwoTone.Quickreply),
     SYMBOL("symbol", "符号", Icons.TwoTone.Paid),

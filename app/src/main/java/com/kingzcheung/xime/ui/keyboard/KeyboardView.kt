@@ -867,6 +867,7 @@ fun KeyboardView(
                         selectedTab = p.route.tab,
                         backgroundColor = keyboardBgColor,
                         keyTextColor = keyTextColor,
+                        keyBgColor = keyBgColor,
                         viewModel = viewModel,
                         onSelectItem = { text ->
                             callbacks.onClipboardSelect?.invoke(text)
