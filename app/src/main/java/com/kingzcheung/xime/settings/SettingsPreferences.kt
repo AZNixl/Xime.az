@@ -7,6 +7,8 @@ import com.kingzcheung.xime.plugin.core.runtime.PluginManager
 object SettingsPreferences {
     private const val PREFS_NAME = "kime_settings"
     private const val KEY_CURRENT_SCHEMA = "current_schema"
+    /** 双写标记：仅新版本双写后置 true，本地值才可信（旧版本只写 rime，本地是过时迁移值） */
+    private const val KEY_CURRENT_SCHEMA_DUAL = "current_schema_dual"
     private const val KEY_DEPLOYMENT_DONE = "deployment_done"
     private const val KEY_DEPLOYMENT_HASH = "deployment_hash"
     private const val KEY_RIME_ASSETS_VERSION = "rime_assets_version"
@@ -120,7 +122,13 @@ object SettingsPreferences {
     }
     
     fun getCurrentSchema(context: Context): String {
-        // 方案状态以 librime user.yaml 的 var/previously_selected_schema 为准
+        val prefs = getPrefs(context)
+        // 双写标记已置：本地值是新版本写入的最新方案，进程重建后 rime 未初始化也能恢复
+        if (prefs.getBoolean(KEY_CURRENT_SCHEMA_DUAL, false)) {
+            val local = prefs.getString(KEY_CURRENT_SCHEMA, null)
+            if (!local.isNullOrBlank()) return local
+        }
+        // 未双写（旧版本升级/首次）：rime user.yaml 为权威，本地仅作迁移兜底
         val fromRime = try {
             if (com.kingzcheung.xime.rime.RimeEngine.isInitialized()) {
                 com.kingzcheung.xime.rime.RimeEngine.getInstance()
@@ -129,24 +137,26 @@ object SettingsPreferences {
         } catch (_: Throwable) {
             null
         }
-        if (!fromRime.isNullOrBlank()) return fromRime
-        // 旧版本 SharedPreferences 数据仅作一次性迁移，迁移后不再写入
-        val legacy = getPrefs(context).getString(KEY_CURRENT_SCHEMA, null)
-        if (!legacy.isNullOrBlank()) {
-            try {
-                if (com.kingzcheung.xime.rime.RimeEngine.isInitialized()) {
-                    com.kingzcheung.xime.rime.RimeEngine.getInstance()
-                        .setUserConfigString("var/previously_selected_schema", legacy)
-                }
-            } catch (_: Throwable) {
-            }
-            return legacy
+        if (!fromRime.isNullOrBlank()) {
+            // 回写 SharedPreferences 并置双写标记，之后本地优先
+            prefs.edit()
+                .putString(KEY_CURRENT_SCHEMA, fromRime)
+                .putBoolean(KEY_CURRENT_SCHEMA_DUAL, true)
+                .apply()
+            return fromRime
         }
+        val legacy = prefs.getString(KEY_CURRENT_SCHEMA, null)
+        if (!legacy.isNullOrBlank()) return legacy
         return "wubi86"
     }
 
     fun setCurrentSchema(context: Context, schemaId: String) {
-        // 方案状态只写 librime user.yaml，不写 SharedPreferences
+        // 双写：SharedPreferences 保证进程重建后不依赖 rime 即可恢复，
+        // librime user.yaml 保持引擎侧状态一致（switchSchema 后由 librime 持久化）
+        getPrefs(context).edit()
+            .putString(KEY_CURRENT_SCHEMA, schemaId)
+            .putBoolean(KEY_CURRENT_SCHEMA_DUAL, true)
+            .apply()
         try {
             if (com.kingzcheung.xime.rime.RimeEngine.isInitialized()) {
                 com.kingzcheung.xime.rime.RimeEngine.getInstance()
