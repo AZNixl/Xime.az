@@ -41,7 +41,7 @@
     <td><img src="docs/Screenshot/theme_light.jpg" width="180"><br><p align="center">主題設定（亮色）</p></td>
     <td><img src="docs/Screenshot/theme_dark.jpg" width="180"><br><p align="center">主題設定（暗色）</p></td>
     <td><img src="docs/Screenshot/plugin_light.jpg" width="180"><br><p align="center">外掛管理</p></td>
-    <td><img src="docs/Screenshot/方案市场.jpg" width="180"><br><p align="center">方案市場</p></td>
+    <td><img src="docs/Screenshot/扩展商店.png" width="180"><br><p align="center">擴充商店</p></td>
   </tr>
 </table>
 
@@ -51,19 +51,20 @@
 - **Rime 引擎** - 使用成熟穩定的 Rime 輸入法引擎，精準可靠的中文輸入體驗
 - **豐富鍵盤佈局** - QWERTY 全鍵盤、T9 九宮格拼音、九宮格筆畫、手寫、數字（含計算機）
 - **懸浮鍵盤** - 懸浮卡片樣式，支援拖拽移動、半透明圓角設計
-- **語音轉文字** - 透過阿里百煉 FunAsr 外掛實現即時語音辨識（內建標點）
-- **AI 智能增強** - 基於 Transformer 的聯想詞預測和標點預測，輸入更高效
+- **語音轉文字** - 本地離線語音辨識（內建串流 zipformer2 引擎），也支援線上 ASR 外掛（FunAsr、Volc 等）
+- **AI 智能增強** - 基於 Transformer 的聯想詞預測，輸入更高效
 - **簡潔介面** - Material Design 3 風格，支援淺色/深色主題及多種配色方案
 - **鍵盤調節** - 支援鍵盤高度調整和位置移動
 - **工具列定製** - 可自訂工具列按鈕佈局和功能
 - **按鍵反饋** - 可調節音效和振動強度
 - **滑動手勢** - 游標移動、刪除、符號輸入等滑動手勢操作
 - **剪貼簿管理** - 剪貼簿歷史記錄，支援快捷傳送和置頂
+- **剪貼簿同步** - 透過外掛與遠端裝置雙向同步剪貼簿（WebDAV、ximed 等）
 - **候選詞編碼提示** - 候選詞顯示五筆編碼，輔助學習
 - **字根顯示** - 下滑按鈕顯示五筆字根，方便健忘用戶
 - **實體鍵盤支援** - 連接實體/藍牙鍵盤時顯示浮動候選欄
 - **WebDAV 同步** - 透過 WebDAV 備份和還原方案與設定
-- **表情外掛** - 支援擴充套件表情外掛（顏文字、表情包等）
+- **外掛市場** - 透過內建擴充商店安裝可擴充 Lua 外掛（表情、剪貼簿同步、線上 ASR 等）
 
 ## 系統需求
 
@@ -81,9 +82,16 @@
 
 ### 外掛下載（選用）
 
-外掛為獨立 APK，安裝後可在主應用程式中啟用：
-- **meme-bunny**: 惡搞兔表情包外掛（提供8個表情）
+外掛為 Lua 指令碼外掛（.xipk 格式），可在主應用程式「設定 > 擴充商店」中安裝和啟用：
 - **kaomoji**: 顏文字外掛（提供精選顏文字）
+- **meme-bunny**: 惡搞兔表情包外掛（提供8個表情）
+- **xime-fluent-emoji**: Fluent UI 3D 風格表情外掛（222 個精選 3D 表情，9 大分類）
+- **funasr-asr**: 阿里百煉 FunAsr 線上語音辨識
+- **volc-asr**: 火山引擎線上語音辨識
+- **webdav-clipboard-sync**: 基於 WebDAV 的剪貼簿同步
+- **ximed-clipboard-sync**: 基於 ximed 服務的剪貼簿同步
+
+更多外掛請查看 [外掛中心列表](https://ime.ximei.me/plugin-list.html)，或直接到手機應用程式「設定 > 擴充商店」中瀏覽安裝。
 
 ### 從 Release 下載
 
@@ -131,15 +139,11 @@ git submodule update --init --recursive
 - **存放位置**: `filesDir/` 目錄（即應用私有目錄根目錄）
 - **功能**: 基於 Transformer 的中文聯想詞預測，提供智慧候選詞推薦
 
-#### 標點預測模型
+#### 語音辨識模型
 
-- **專案地址**: https://github.com/ximeiorg/srf-punctuation
-- **線上演示**: https://srf-punctuation.ximei.me/
-- **模型下載**: https://www.modelscope.cn/models/bikeand/srf-punctuation
-- **模型檔案**: `punctuation_int8.onnx`（約 2.2MB）
-- **詞表檔案**: `vocab.json`
-- **存放位置**: `filesDir/punctuation_models/` 目錄
-- **功能**: 基於 Transformer 的中文標點預測，語音辨識後自動新增標點
+- **模型下載**: https://www.modelscope.cn/models/bikeand/asr
+- **模型檔案**: `sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30.tar.bz2`（約 132MB）
+- **功能**: 串流 zipformer2 中文語音辨識（本地離線執行）
 
 **注意**: 所有模型均可直接在應用程式內「設定 > 智慧聯想/語音辨識」頁面下載，無需手動放置。
 
@@ -165,7 +169,7 @@ git submodule update --init --recursive
 - [Rime](https://rime.im/) - 中州韻輸入法引擎
 - [Trime](https://github.com/osfans/trime) - 同文輸入法，設定參考
 - [fcitx5-android](https://github.com/fcitx5-android/fcitx5-android) - 鍵盤佈局參考
-- [onnxruntime](https://github.com/microsoft/onnxruntime) - 聯想詞預測與標點預測的 ONNX 推論引擎
+- [onnxruntime](https://github.com/microsoft/onnxruntime) - 聯想詞預測與語音辨識的 ONNX 推論引擎
 
 ## 授權條款
 
