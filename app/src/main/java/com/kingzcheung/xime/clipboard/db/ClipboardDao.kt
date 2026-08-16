@@ -34,8 +34,17 @@ interface ClipboardDao {
     @Query("UPDATE clipboard_entries SET timestamp = :timestamp WHERE id = :id")
     suspend fun updateTimestamp(id: Long, timestamp: Long)
 
-    @Query("DELETE FROM clipboard_entries WHERE id = :id")
-    suspend fun deleteById(id: Long)
+    @Query("DELETE FROM clipboard_entries WHERE isQuickSend = 0 AND id = :id")
+    suspend fun deleteClipboardById(id: Long)
+
+    @Query("DELETE FROM clipboard_entries WHERE isQuickSend = 1 AND id = :id")
+    suspend fun deleteQuickSendById(id: Long)
+
+    @Query("DELETE FROM clipboard_entries WHERE isQuickSend = 0 AND id IN (:ids)")
+    suspend fun deleteClipboardByIds(ids: List<Long>)
+
+    @Query("DELETE FROM clipboard_entries WHERE isQuickSend = 0")
+    suspend fun clearAllClipboard()
 
     @Query("DELETE FROM clipboard_entries WHERE isPinned = 0")
     suspend fun clearUnpinned()

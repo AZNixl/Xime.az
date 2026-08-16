@@ -244,14 +244,29 @@ class ClipboardManager private constructor(private val context: Context) {
 
     fun removeItem(id: Long) {
         scope.launch {
-            dao.deleteById(id)
+            dao.deleteClipboardById(id)
+        }
+    }
+
+    /** 批量删除剪贴板条目（仅 isQuickSend = 0，不影响快捷发送）。 */
+    fun removeItems(ids: List<Long>) {
+        if (ids.isEmpty()) return
+        scope.launch {
+            dao.deleteClipboardByIds(ids)
+        }
+    }
+
+    /** 清空剪贴板（仅 isQuickSend = 0，不影响快捷发送）。 */
+    fun clearClipboard() {
+        scope.launch {
+            dao.clearAllClipboard()
         }
     }
 
     fun splitItem(id: Long) {
         scope.launch {
             val item = _clipboardItems.value.find { it.id == id } ?: return@launch
-            dao.deleteById(id)
+            dao.deleteClipboardById(id)
             val now = System.currentTimeMillis()
             item.text.forEachIndexed { index, char ->
                 dao.insert(
@@ -278,7 +293,7 @@ class ClipboardManager private constructor(private val context: Context) {
 
     fun removeFromQuickSend(id: Long) {
         scope.launch {
-            dao.deleteById(id)
+            dao.deleteQuickSendById(id)
         }
     }
 
