@@ -12,13 +12,17 @@
 #include <rime/schema.h>
 #include <rime/ticket.h>
 #include <rime/dict/dictionary.h>
+#include <rime/dict/prism.h>
 #include <rime/dict/user_dictionary.h>
+#include <rime/algo/syllabifier.h>
+#include <rime/gear/translator_commons.h>  // Phrase（右选码捕获）
 #include <algorithm>
 #include <atomic>
 #include <set>
 
 #include "t9_log.h"
 #include "t9_right_commit_utils.h"  // ParseSyllables
+#include "t9_filter.h"              // NormalizePinyinComment（调频码声调保真）
 
 namespace rime {
 
@@ -431,12 +435,13 @@ void T9Processor::HandleSelectionReplacementChoice(const SyllableOption& option)
 // ════════════════════════════════════════
 
 bool T9Processor::SelectCandidate(const std::string& candidate_pinyin,
+                                   const std::string& candidate_text,
                                    int candidate_text_length) {
     // ── 诊断日志：入口状态 ──
     T9_SCOPED_TIMER_TAG("T9Processor", "SelectCandidate");
     T9_PERF_SCOPED_TIMER("[T9] SelectCandidate");
-    T9LOG(">> SelectCandidate ENTRY: pinyin='%s', textLen=%d",
-          candidate_pinyin.c_str(), candidate_text_length);
+    T9LOG(">> SelectCandidate ENTRY: pinyin='%s', text='%s', textLen=%d",
+          candidate_pinyin.c_str(), candidate_text.c_str(), candidate_text_length);
     T9LOG(">>   buf: digitSeq='%s', selCount=%zu, consumedCount=%d, unassigned='%s'",
           input_buffer_.digit_sequence.c_str(),
           input_buffer_.selections.size(),
@@ -478,8 +483,22 @@ bool T9Processor::SelectCandidate(const std::string& candidate_pinyin,
 
     // 方案 A：优先用 RIME 候选 end 换算的消费位数（精确反映 schema 派生编码
     // 的匹配范围），无法确定时用 -1 fallback 到现有 AlignWithBuffer 算法。
-    int rime_consumed = QueryRimeConsumedDigits(candidate_pinyin);
+    // 顺带捕获候选真实数据（Phrase 文本 + 音节码，含声调真相）供调频使用。
+    Code captured_code;
+    std::string captured_text;
+    int rime_consumed =
+        QueryRimeConsumedDigits(candidate_pinyin, candidate_text, &captured_code, &captured_text);
     T9LOG(">> SelectCandidate: rimeConsumedDigits=%d", rime_consumed);
+    if (!captured_code.empty()) {
+        // 捕获随段模型同生命周期（Clear/undo 由段模型权威管理）；
+        // rime::Code → 段模型 RIME 无关表示（T9SyllableCode，同型互转）。
+        undo_model_.PushCommitCapture(captured_text,
+                                      T9SyllableCode(captured_code.begin(), captured_code.end()));
+        std::string ids;
+        for (auto id : captured_code) ids += std::to_string(id) + ",";
+        T9LOG(">> SelectCandidate: captured '%s' code=[%s] (%zu syl)",
+              captured_text.c_str(), ids.c_str(), captured_code.size());
+    }
 
     bool full_commit = right_commit_handler_.HandleRightCommit(
         ctx, candidate_pinyin, candidate_text_length, rime_consumed);
@@ -532,9 +551,29 @@ bool T9Processor::BuildEntryForPinyin(const std::string& text,
         return false;
     Code code;
     for (const auto& syl : syllables) {
+        // 声调保真：无声调音节（如调频拼音 "ji"）优先选带声调变体（jī/jí/jǐ/jì），
+        // 避免命中词库轻声音节（簸箕 ji）导致调频码丢声调（tone_display 失效）。
+        if (!HasTone(syl)) {
+            EnsureTonedSyllableMap();
+            auto toned = toned_syllable_map_.find(syl);
+            if (toned != toned_syllable_map_.end()) {
+                code.push_back(toned->second);
+                continue;
+            }
+        }
         auto it = syllabary_map_.find(syl);
-        if (it == syllabary_map_.end())
-            return false;  // 音节不在词典（如英文/符号），放弃调频
+        if (it == syllabary_map_.end()) {
+            // 带声调词典（如万象 běn）与无声调调频拼音（ben）格式差异：
+            // 表音节精确匹配失败时，借方案 Prism 解析（含 xlit 声调消除）。
+            auto prism_id = ResolveSyllableViaPrism(syl);
+            if (!prism_id) {
+                T9LOG(">> BuildEntryForPinyin: syllable '%s' not resolvable, skip",
+                      syl.c_str());
+                return false;  // 音节不在词典（如英文/符号），放弃调频
+            }
+            code.push_back(*prism_id);
+            continue;
+        }
         code.push_back(it->second);
     }
     entry->text = text;
@@ -542,40 +581,167 @@ bool T9Processor::BuildEntryForPinyin(const std::string& text,
     return true;
 }
 
-bool T9Processor::UpdateDictEntry(const std::string& text,
-                                  const std::string& pinyin,
-                                  int commits) {
+std::optional<SyllableId> T9Processor::ResolveSyllableViaPrism(
+    const std::string& syllable) {
+    if (!dict_ || !dict_->prism())
+        return std::nullopt;
+    // 用与查询侧一致的 Syllabifier 建图：Prism 内含方案 speller algebra
+    // （万象 xlit 声调消除、补丁注入的简拼派生），是"拼写→音节"的权威映射。
+    // 例：ben → běn 的 SyllableId；ji → 所有带调/轻声音节的任一命中。
+    Syllabifier syllabifier(" '");
+    SyllableGraph graph;
+    if (syllabifier.BuildSyllableGraph(syllable, *dict_->prism(), &graph) <= 0)
+        return std::nullopt;
+    // 只接受覆盖整个输入的单音节（graph.edges[start][end] 的 SpellingMap）。
+    // 多音字（如 xiang 匹配 xiāng/xiáng/xiǎng/xiàng）取任一命中即可：
+    // userdb 查询按输入音节图遍历所有声调路径（见 UserDictionary::DfsLookup），
+    // 存储任一有效变体都能被对应输入的查询路径命中（声调不影响数字码）。
+    auto start_it = graph.edges.find(0);
+    if (start_it == graph.edges.end())
+        return std::nullopt;
+    auto end_it = start_it->second.find(syllable.size());
+    if (end_it == start_it->second.end() || end_it->second.empty())
+        return std::nullopt;
+    return end_it->second.begin()->first;
+}
+
+bool T9Processor::HasTone(const std::string& syllable) {
+    // 声调字符（ā é ǐ 等）均为 UTF-8 多字节；出现非 ASCII 字节即带声调。
+    for (unsigned char c : syllable) {
+        if (c >= 0x80) return true;
+    }
+    return false;
+}
+
+void T9Processor::EnsureTonedSyllableMap() {
+    // 惰性构建 无声调拼写 → 带声调音节 映射（如 "ji" → jī 系任一，
+    // "ben" → běn），供 BuildEntryForPinyin 声调保真选择，避免命中轻声音节。
+    if (!toned_syllable_map_.empty() || syllabary_map_.empty())
+        return;
+    for (const auto& [s, id] : syllabary_map_) {
+        if (!HasTone(s)) continue;  // 跳过轻声音节（全 ASCII）
+        std::string norm = NormalizePinyinComment(s);
+        if (!norm.empty() && !toned_syllable_map_.count(norm)) {
+            toned_syllable_map_[norm] = id;  // 每个拼写取首个带调变体
+        }
+    }
+}
+
+void T9Processor::CachePhraseCode(const std::string& text,
+                                  const std::string& comment,
+                                  const Code& code) {
+    phrase_code_cache_.push_back(
+        PhraseCodeEntry{text, comment, T9SyllableCode(code.begin(), code.end())});
+}
+
+void T9Processor::ClearPhraseCodeCache() {
+    phrase_code_cache_.clear();
+}
+
+T9SyllableCode T9Processor::FindPhraseCode(
+    const std::string& text,
+    const std::string& normalized_comment) const {
+    for (const auto& e : phrase_code_cache_) {
+        if (e.text == text &&
+            NormalizePinyinComment(e.comment) == normalized_comment) {
+            return e.code;
+        }
+    }
+    return {};
+}
+
+bool T9Processor::WriteDictEntry(const std::string& text,
+                                 const Code& code,
+                                 int commits) {
     if (!user_dict_ || !user_dict_->loaded() || user_dict_->readonly())
         return false;
-    if (text.empty() || pinyin.empty())
+    if (text.empty() || code.empty())
         return false;
     DictEntry entry;
-    if (!BuildEntryForPinyin(text, pinyin, &entry))
-        return false;
+    entry.text = text;
+    entry.code = code;
     // 刷新 tick：与主翻译器的 UserDictionary 共享 db（db_pool_），
     // 但各实例独立缓存 tick_，写前同步防 tick 倒退（UpdateEntry 依赖 tick 计算权重）。
     user_dict_->Load();
     const char* op = commits > 0 ? "Memorize" : "Forget";
     if (user_dict_->UpdateEntry(entry, commits)) {
-        T9LOG(">> %sEntry OK: '%s' pinyin='%s'", op, text.c_str(), pinyin.c_str());
+        T9LOG(">> %sEntry OK: '%s'", op, text.c_str());
         return true;
     }
-    T9LOG(">> %sEntry FAIL: '%s' pinyin='%s'", op, text.c_str(), pinyin.c_str());
+    T9LOG(">> %sEntry FAIL: '%s'", op, text.c_str());
     return false;
+}
+
+bool T9Processor::UpdateDictEntry(const std::string& text,
+                                  const std::string& pinyin,
+                                  int commits) {
+    if (text.empty() || pinyin.empty())
+        return false;
+    T9LOG(">> UpdateDictEntry: FALLBACK text='%s' pinyin='%s'", text.c_str(), pinyin.c_str());
+    DictEntry entry;
+    if (!BuildEntryForPinyin(text, pinyin, &entry))
+        return false;
+    return WriteDictEntry(text, entry.code, commits);
 }
 
 bool T9Processor::MemorizeEntry(const std::string& text,
                                 const std::string& pinyin) {
+    // 优先使用右选捕获的 (text, code)（含声调真相，见 T9UndoModel::commit_captures）：
+    // 事后无声调拼音解析会命中轻声音节（计划→ji/hua 轻声）导致调频码丢声调。
+    const auto& captures = undo_model_.commit_captures();
+    T9LOG(">> MemorizeEntry: text='%s' pinyin='%s' captures=%zu",
+          text.c_str(), pinyin.c_str(), captures.size());
+    if (!captures.empty()) {
+        auto pinyin_syllables = ParseSyllables(pinyin);
+        std::string captured_text;
+        size_t total_syllables = 0;
+        for (const auto& [seg_text, code] : captures) {
+            captured_text += seg_text;
+            total_syllables += code.size();
+        }
+        // 文本拼接 + 音节数双重校验：任一不符视为序列被中断的过期捕获，
+        // 作废后回退到拼音解析（避免把残留捕获误写到本次上屏文本上）。
+        if (captured_text == text && !pinyin_syllables.empty() &&
+            total_syllables == pinyin_syllables.size()) {
+            Code full_code;
+            for (const auto& [seg_text, code] : captures)
+                full_code.insert(full_code.end(), code.begin(), code.end());
+            undo_model_.ClearCommitCaptures();
+            std::string ids;
+            for (auto id : full_code) ids += std::to_string(id) + ",";
+            T9LOG(">> MemorizeEntry: USE CAPTURE code=[%s]", ids.c_str());
+            return WriteDictEntry(text, full_code, 1);
+        }
+        T9LOG(">> MemorizeEntry: capture mismatch (join='%s'), clear + fallback",
+              captured_text.c_str());
+        undo_model_.ClearCommitCaptures();  // 不匹配 → 作废过期捕获
+    }
     return UpdateDictEntry(text, pinyin, 1);
 }
 
 bool T9Processor::ForgetEntry(const std::string& text,
                               const std::string& pinyin) {
+    // 撤销段：弹出段模型中最右选捕获的 (text, code)（Kotlin 撤销段时驱动，
+    // 与段模型生命周期一致）。text + 音节数双重校验：匹配才用捕获码回滚，
+    // 否则回退拼音解析（防止写错 key 而无法真正回滚原调频条目）。
+    auto capture = undo_model_.PopLastCommitCapture();
+    if (capture) {
+        auto pinyin_syllables = ParseSyllables(pinyin);
+        if (capture->first == text && !pinyin_syllables.empty() &&
+            capture->second.size() == pinyin_syllables.size()) {
+            // T9SyllableCode → rime::Code（同型互转）
+            Code code(capture->second.begin(), capture->second.end());
+            return WriteDictEntry(text, code, -1);
+        }
+    }
     return UpdateDictEntry(text, pinyin, -1);
 }
 
 int T9Processor::QueryRimeConsumedDigits(
-    const std::optional<std::string>& candidate_pinyin) const {
+    const std::optional<std::string>& candidate_pinyin,
+    const std::string& candidate_text,
+    Code* captured_code,
+    std::string* captured_text) const {
     // 方案 A：右选消费优先采用 RIME 候选的实际匹配范围。
     // RIME 已通过 schema 的 speller/algebra（含 derive/abbrev 派生规则）
     // 精确计算出候选在输入中的匹配结束位置（Candidate::end()），
@@ -586,6 +752,7 @@ int T9Processor::QueryRimeConsumedDigits(
     if (!ctx) return -1;
     const std::string& rime_input = ctx->input();
     const auto& comp = ctx->composition();
+    const bool match_text = !candidate_text.empty();
     for (const auto& seg : comp) {
         if (!seg.menu) continue;
         // 只遍历已生成的候选（candidate_count()），不调用 Prepare(n) 强制扩展——
@@ -597,9 +764,33 @@ int T9Processor::QueryRimeConsumedDigits(
             auto cand = seg.menu->GetCandidateAt(i);
             auto genuine = Candidate::GetGenuineCandidate(cand);
             if (!genuine) continue;
-            // T9PreeditCandidate 包装的 comment() 委托给内部候选，
-            // 与 Kotlin 传入的 candidate_pinyin（spelling_hints 拼音）一致。
-            if (genuine->comment() != *candidate_pinyin) continue;
+            // 归一化比较（声调保真）：带声调词库的 genuine comment 可能保留声调
+            // （"jì huà"），而 UI comment 经方案 lua 处理为无声调（"ji hua"）。
+            // 精确比较会漏匹配 → 调频码捕获失败 → fallback 命中轻声音节。
+            // 归一化后两者同为 "jihua"；多音字（yínháng/yínxíng）仍可区分。
+            if (NormalizePinyinComment(genuine->comment()) !=
+                NormalizePinyinComment(*candidate_pinyin))
+                continue;
+            // 注释歧义根治：Kotlin 同时传入候选文本，双条件精确定位用户点选
+            // 的候选（如 几股/击鼓 同注释 "ji gu"），避免捕获同注释他词的码。
+            // text 为空（兼容/异常兜底）时退化为仅按注释匹配的旧行为。
+            if (match_text && genuine->text() != candidate_text) continue;
+            // 顺带捕获 Phrase 的真实码（含声调真相），供调频保留声调。
+            if (captured_code || captured_text) {
+                if (auto phrase = As<Phrase>(genuine)) {
+                    if (captured_code) *captured_code = phrase->code();
+                    if (captured_text) *captured_text = phrase->text();
+                } else {
+                    // 候选被 lua filter 链重建（非 Phrase）：从 t9_filter 预存的
+                    // Phrase 码缓存兜底（filters 最前阶段候选尚为带调 Phrase）。
+                    auto cached = FindPhraseCode(
+                        genuine->text(), NormalizePinyinComment(*candidate_pinyin));
+                    if (!cached.empty()) {
+                        if (captured_code) *captured_code = Code(cached.begin(), cached.end());
+                        if (captured_text) *captured_text = genuine->text();
+                    }
+                }
+            }
             size_t end = genuine->end();
             int digits = 0;
             size_t limit = std::min(end, rime_input.size());
@@ -798,6 +989,8 @@ void T9Processor::FlushRimeInput() {
     // 埋点体现引擎调用本身耗时（含 compose_total），供对比观察。
     T9_SCOPED_TIMER_TAG("T9Processor", "FlushRimeInput");
     T9_PERF_SCOPED_TIMER("[T9] FlushRimeInput");
+    // 新 input 的候选集即将生成，作废上一轮 Phrase 码缓存（t9_filter 将重建）。
+    ClearPhraseCodeCache();
     switch (pending_action_) {
         case RimePendingAction::kNone:
             return;
@@ -841,7 +1034,7 @@ void T9Processor::EnterIdle() {
     left_column_locked_ = false;
     separator_consumed_digits_.reset();   // 修复（2026-08-06）：外部清空触发的
     last_choice_consumed_digits_.reset(); // EnterIdle 也重置分词键/左选临时状态
-    // 段模型为回退唯一真相源：清空全部段状态（2026-08-06 起命令模式已移除，无残留栈）
+    // 段模型为回退唯一真相源：清空全部段状态（含 commit_captures_ 调频捕获）。
     undo_model_.Clear();
 }
 

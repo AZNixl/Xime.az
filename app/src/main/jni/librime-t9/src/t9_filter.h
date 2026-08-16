@@ -67,7 +67,8 @@ class T9Translation : public Translation {
 public:
     T9Translation(an<Translation> translation,
                    char auto_delim,
-                   char manual_delim);
+                   char manual_delim,
+                   bool convert_preedit);
     bool Next() override;
     an<Candidate> Peek() override { return cand_; }
 
@@ -78,6 +79,8 @@ private:
     an<Candidate> cand_;
     char auto_delim_;
     char manual_delim_;
+    // false（isDisplayOriginalPreedit: true）时透传 preedit，仅缓存 Phrase 码供调频。
+    bool convert_preedit_ = false;
 };
 
 class T9Filter : public Filter {

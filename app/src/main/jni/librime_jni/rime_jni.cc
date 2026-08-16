@@ -1944,13 +1944,14 @@ Java_com_kingzcheung_xime_rime_RimeEngine_nativeIsModuleRegistered(
 
 // 右选候选：根据候选拼音与文本长度执行右侧选词（消费计算）。
 // 委托给 T9RightCommitHandler 三层消费算法（设计稿 §6.2）。
-// 注：传入候选拼音注释（comment）与候选词字数，而非索引，避免翻页后索引错位。
+// 注：传入候选拼音注释（comment）、候选文本与候选词字数，而非索引，避免翻页后索引错位。
 // 用户词典调频不在此处进行——由 Kotlin 在 full commit 上屏后经 nativeT9Memorize 单独调用。
 JNIEXPORT jboolean JNICALL
 Java_com_kingzcheung_xime_rime_RimeEngine_nativeT9SelectCandidate(
     JNIEnv* env,
     jobject thiz,
     jstring pinyin,
+    jstring text,
     jint text_length
 ) {
     rime::T9Processor* proc = rime::T9ProcessorRequire();
@@ -1960,7 +1961,15 @@ Java_com_kingzcheung_xime_rime_RimeEngine_nativeT9SelectCandidate(
     }
     const char* p = env->GetStringUTFChars(pinyin, nullptr);
     if (!p) return JNI_FALSE;
-    bool result = proc->SelectCandidate(std::string(p), text_length);
+    std::string candidate_text;
+    if (text) {
+        const char* t = env->GetStringUTFChars(text, nullptr);
+        if (t) {
+            candidate_text.assign(t);
+            env->ReleaseStringUTFChars(text, t);
+        }
+    }
+    bool result = proc->SelectCandidate(std::string(p), candidate_text, text_length);
     env->ReleaseStringUTFChars(pinyin, p);
     return result ? JNI_TRUE : JNI_FALSE;
 }

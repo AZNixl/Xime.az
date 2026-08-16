@@ -56,16 +56,27 @@ public:
 
     // 右侧候选选词，返回 true = 完整消费（full commit）
     // 委托给 T9RightCommitHandler 三层消费算法
-    // 注：传入候选拼音注释（comment）与候选词字数，而非索引；
-    //     RIME Menu::GetCandidateAt 使用绝对索引，而 Kotlin 层持有的是当前页
-    //     相对索引，直接传拼音可避免翻页后索引错位导致消费计算错误。
-    bool SelectCandidate(const std::string& candidate_pinyin, int candidate_text_length);
+    // 注：传入拼音注释（comment）、候选文本与字数而非索引，避免翻页后索引
+    //     错位；并按 (comment, text) 双条件定位（同注释歧义防错码，如
+    //     几股/击鼓 均 "ji gu"）。
+    bool SelectCandidate(const std::string& candidate_pinyin,
+                         const std::string& candidate_text,
+                         int candidate_text_length);
 
     // ── 用户词典调频（Kotlin 上屏路径为唯一真相源）──
     // 调频文本与拼音由 Kotlin 在 full commit（含 partial 拼接）时传入，
     // C++ 构造 RIME 原生 DictEntry 写入（key 由 RIME 生成）；撤销段时 ForgetEntry 回滚。
     bool MemorizeEntry(const std::string& text, const std::string& pinyin);
     bool ForgetEntry(const std::string& text, const std::string& pinyin);
+
+    // ── Phrase 码缓存（t9_filter 预存，右选调频捕获兜底）──
+    // t9_filter 位于 filters 最前，此时候选尚为带调 Phrase；后续 lua filter 链
+    // 可能重建为非 Phrase（As<Phrase> 失败），缓存保证仍能取到精确调频码。
+    void CachePhraseCode(const std::string& text, const std::string& comment, const Code& code);
+    void ClearPhraseCodeCache();
+    // 按 (text, 归一化 comment) 精确匹配返回码；未命中返回空。
+    T9SyllableCode FindPhraseCode(const std::string& text,
+                                  const std::string& normalized_comment) const;
 
     // 获取 partial commit 后剩余的数字串
     std::string GetRemainingDigits() const;
@@ -144,18 +155,40 @@ private:
 
     // ── 辅助 ──
     void LogPreeditState();
-    // 构造 DictEntry（text + 拼音音节 code）；音节不在词典 syllabary 时返回 false。
+    // 构造 DictEntry（text + 拼音音节 code）：无声调音节优先带声调变体
+    // （toned_syllable_map_，声调保真），其次精确匹配，最后 Prism 兜底；
+    // 音节完全无法解析时返回 false（如英文/符号，放弃调频）。
     bool BuildEntryForPinyin(const std::string& text, const std::string& pinyin,
                              DictEntry* entry);
+    // 通过方案 Prism（含 speller algebra：xlit 声调消除 / 简拼派生）将拼音音节
+    // 解析为词典原生 SyllableId，解决带声调词典（如万象 běn）与无声调调频拼音
+    // （ben）的格式差异。返回覆盖整个输入的单音节 id；无法解析返回 nullopt。
+    // 例：ben → běn 的 SyllableId；ji → jǐ/轻声 ji 等任一命中变体。
+    std::optional<SyllableId> ResolveSyllableViaPrism(const std::string& syllable);
+    // 惰性构建 无声调拼写 → 带声调音节 映射（调频声调保真，2026-08-16）：
+    // 万象类词库 syllables 同时含带调音节（jì）与轻声音节（ji，簸箕），
+    // 无声调调频拼音直接命中轻声会丢声调 → userdb 候选 comment 无声调。
+    // 本映射保证无声调输入优先选带调变体（jī/jí/jǐ/jì 任一）。
+    void EnsureTonedSyllableMap();
+    // 判断音节是否含声调字符（非 ASCII 字节）。
+    static bool HasTone(const std::string& syllable);
     // 调频写入/回滚公共实现（MemorizeEntry/ForgetEntry 共用）：commits=+1 记忆 / -1 回滚。
     bool UpdateDictEntry(const std::string& text, const std::string& pinyin, int commits);
+    // 使用已解析的 Code 直接写/回滚用户词典（MemorizeEntry 的右选码捕获路径复用）。
+    bool WriteDictEntry(const std::string& text, const Code& code, int commits);
 
     // 方案 A（消费算法优化）：查询 RIME 候选的实际匹配结束位置，
     // 换算为 T9 应消费的数字位数（RIME input[0:end) 中数字字符数，跳过分隔符）。
-    // 候选通过 comment（spelling_hints 拼音）匹配。
+    // 候选按 comment 归一化匹配（容忍带调/无调差异，见 NormalizePinyinComment），
+    // candidate_text 非空时再按文本双条件定位（同注释歧义防错码）。
     // 返回 -1 表示无法确定（fallback 到现有 AlignWithBuffer 消费算法）。
+    // captured_code / captured_text（可空）：命中候选为 Phrase 时顺带捕获
+    // 其真实码（含声调真相）与文本，供 MemorizeEntry 调频保留声调。
     int QueryRimeConsumedDigits(
-        const std::optional<std::string>& candidate_pinyin) const;
+        const std::optional<std::string>& candidate_pinyin,
+        const std::string& candidate_text,
+        Code* captured_code = nullptr,
+        std::string* captured_text = nullptr) const;
 
     // ════════════════════════════════════════
     // 状态成员（对应 Kotlin T9InputController 的私有字段）
@@ -190,6 +223,15 @@ private:
     // 音节→SyllableId 映射（惰性构建，与 UserDictionary::Lookup 的 RecruitEntry
     // 构造方式一致：GetSyllabary 返回顺序即 id）。用于把拼音音节转为原生 Code。
     std::unordered_map<std::string, SyllableId> syllabary_map_;
+    // 无声调拼写 → 带声调音节 SyllableId（惰性构建，见 EnsureTonedSyllableMap）。
+    std::unordered_map<std::string, SyllableId> toned_syllable_map_;
+    // Phrase 码缓存条目（t9_filter 预存，每次 flush 重建）。
+    struct PhraseCodeEntry {
+        std::string text;
+        std::string comment;  // 带调原始 comment（t9_filter 阶段，lua 尚未改写）
+        T9SyllableCode code;
+    };
+    std::vector<PhraseCodeEntry> phrase_code_cache_;
 
     // ── 异步 flush 状态（SendToRime 标记，FlushRimeInput 消费）──
     // pending_action_ / pending_input_ 的读写都发生在 RimeEngine.rimeLock

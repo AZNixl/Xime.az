@@ -309,12 +309,17 @@ class T9InputController(
      * 调频不在此进行——由服务层在 full commit 上屏后经 rimeEngine.t9Memorize 单独调用。
      *
      * @param candidatePinyin 候选词拼音注释（comment），null 表示无注释候选（如 emoji）
+     * @param candidateText 候选词文本，供 C++ (comment, text) 双条件定位（防同注释错码）
      * @param candidateTextLength 候选词字数
      */
-    fun onRightCandidateSelected(candidatePinyin: String? = null, candidateTextLength: Int = 0): Boolean {
+    fun onRightCandidateSelected(
+        candidatePinyin: String? = null,
+        candidateText: String? = null,
+        candidateTextLength: Int = 0,
+    ): Boolean {
         awaitT9Queue()
         val isFullCommit = if (candidatePinyin != null) {
-            val result = rimeEngine.t9SelectCandidate(candidatePinyin, candidateTextLength)
+            val result = rimeEngine.t9SelectCandidate(candidatePinyin, candidateText, candidateTextLength)
             rimeEngine.t9FlushRimeInput()
             result
         } else {

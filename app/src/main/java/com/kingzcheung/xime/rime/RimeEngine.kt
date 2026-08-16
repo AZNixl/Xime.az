@@ -575,17 +575,19 @@ class RimeEngine {
     // ═══════════════════════════════════════════════════════════
 
     /**
-     * 右选候选：根据候选拼音注释与文本长度执行右侧选词（消费计算）。
+     * 右选候选：根据候选拼音注释、候选文本与文本长度执行右侧选词（消费计算）。
      * 委托给 T9RightCommitHandler 三层消费算法，判断 full/partial commit。
      * 调频不在此进行——由 Kotlin 在 full commit 上屏后经 [t9Memorize] 单独调用。
      * @param pinyin 候选词的拼音注释（如 "li hua"）
+     * @param text 候选词文本（如 "丽华"）；用于 (comment, text) 双条件精确定位，
+     *   避免同注释歧义（如 几股/击鼓 均 "ji gu"）时捕获他词的调频码
      * @param textLength 候选词字数（如 "丽华" 为 2）
      */
-    fun t9SelectCandidate(pinyin: String, textLength: Int): Boolean {
+    fun t9SelectCandidate(pinyin: String, text: String?, textLength: Int): Boolean {
         if (!isInitialized) return false
         return tryLocked(false) {
             if (!nativeHasSession() && !nativeCreateSession()) return@tryLocked false
-            nativeT9SelectCandidate(pinyin, textLength)
+            nativeT9SelectCandidate(pinyin, text, textLength)
         }
     }
 
@@ -674,7 +676,7 @@ class RimeEngine {
     private external fun nativeUpdateLastBuildTime()
     private external fun nativeSetPageSize(schemaId: String, pageSize: Int)
     private external fun nativeDestroy()
-    private external fun nativeT9SelectCandidate(pinyin: String, textLength: Int): Boolean
+    private external fun nativeT9SelectCandidate(pinyin: String, text: String?, textLength: Int): Boolean
     private external fun nativeT9Memorize(text: String, pinyin: String): Boolean
     private external fun nativeT9Forget(text: String, pinyin: String): Boolean
     private external fun nativeT9SelectPinyinDirect(pinyin: String, digitLength: Int): Boolean

@@ -123,13 +123,13 @@ fun KeyboardView(
     }
 
     SideEffect {
-        callbacks.onT9RightCandidateWillBeSelected = { pinyin, textLength ->
+        callbacks.onT9RightCandidateWillBeSelected = { pinyin, text, textLength ->
             // 返回 C++ T9RightCommitHandler 的 full_commit 权威标志，
             // 不依赖 RIME 引擎 input（full_commit 后引擎 input 可能残留，判断会失真）
             if (pinyin.isNullOrBlank()) {
                 t9Controller.onRightCandidateSelectedByDirectCommit()
             } else {
-                t9Controller.onRightCandidateSelected(pinyin, textLength)
+                t9Controller.onRightCandidateSelected(pinyin, text, textLength)
             }
         }
         callbacks.onT9ForceSendToRime = {

@@ -189,3 +189,42 @@ TEST(T9PreeditConverterTest, TonedCommentPreserveExisting) {
     EXPECT_EQ(T9ConvertPreedit("5", "le"), "l");
     EXPECT_EQ(T9ConvertPreedit("9", "zhong"), "zh");
 }
+
+// ── NormalizePinyinComment（调频声调保真的基础）──
+// 归一化用于：comment 匹配（容忍带调/无调差异）与带声调变体选择。
+// 核心不变量：带调与无声调归一化结果一致。
+
+TEST(NormalizePinyinCommentTest, TonedAndTonelessEquivalent) {
+    // 核心不变量：带声调与无声调的归一化结果一致（调频匹配的前提）
+    EXPECT_EQ(rime::NormalizePinyinComment("jì huà"),
+              rime::NormalizePinyinComment("ji hua"));
+    EXPECT_EQ(rime::NormalizePinyinComment("jī"),
+              rime::NormalizePinyinComment("ji"));
+    EXPECT_EQ(rime::NormalizePinyinComment("huà"),
+              rime::NormalizePinyinComment("hua"));
+}
+
+TEST(NormalizePinyinCommentTest, Basic) {
+    EXPECT_EQ(rime::NormalizePinyinComment("jì huà"), "jihua");
+    EXPECT_EQ(rime::NormalizePinyinComment("ji hua"), "jihua");
+    EXPECT_EQ(rime::NormalizePinyinComment("jī guā"), "jigua");
+}
+
+TEST(NormalizePinyinCommentTest, NeutralTonePreserved) {
+    // 轻声音节（簸箕 ji / 笑话 hua）全 ASCII，归一化原样保留
+    EXPECT_EQ(rime::NormalizePinyinComment("bò ji"), "boji");
+    EXPECT_EQ(rime::NormalizePinyinComment("xiào hua"), "xiaohua");
+    EXPECT_EQ(rime::NormalizePinyinComment("ji"), "ji");
+    EXPECT_EQ(rime::NormalizePinyinComment("hua"), "hua");
+}
+
+TEST(NormalizePinyinCommentTest, NonLetterCharsDropped) {
+    // 非字母字符（分隔符/括号/数字）被丢弃，与无声调拼音对齐
+    EXPECT_EQ(rime::NormalizePinyinComment("〔jì〕〔huà〕"), "jihua");
+    EXPECT_EQ(rime::NormalizePinyinComment("nǐ3"), "ni");
+}
+
+TEST(NormalizePinyinCommentTest, UppercaseNormalized) {
+    EXPECT_EQ(rime::NormalizePinyinComment("JĪ HUÀ"), "jihua");
+    EXPECT_EQ(rime::NormalizePinyinComment("JI HUA"), "jihua");
+}

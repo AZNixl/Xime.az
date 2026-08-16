@@ -712,9 +712,10 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
 
         // 在 RIME 真正 select/commit 之前，先同步通知 T9 控制器消费数字。
         // 控制器返回 true 表示输入序列已被该候选词完整消费，服务层应视为 full commit。
+        // 传入候选文本用于 C++ (comment, text) 双条件精确定位（注释歧义防错码）。
         val candidateTextLength = selectedCandidate?.length ?: 0
         val fullyConsumed = if (isT9) {
-            service.keyboardCallbacks?.onT9RightCandidateWillBeSelected?.invoke(candidatePinyin, candidateTextLength) ?: false
+            service.keyboardCallbacks?.onT9RightCandidateWillBeSelected?.invoke(candidatePinyin, selectedCandidate, candidateTextLength) ?: false
         } else {
             false
         }

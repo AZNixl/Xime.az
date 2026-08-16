@@ -11,6 +11,8 @@
 #include <rime/schema.h>
 #include <rime/config.h>
 #include <rime/common.h>
+#include <rime/gear/translator_commons.h>  // Phrase（Phrase 码缓存）
+#include "t9_processor.h"  // T9ProcessorRequire / CachePhraseCode（Phrase 码缓存）
 #endif
 
 namespace rime {
@@ -342,6 +344,16 @@ void T9Translation::ConvertCurrent() {
     T9_PERF_SCOPED_TIMER("[T9Filter] ConvertCurrent");
     if (!cand_) return;
     auto genuine = Candidate::GetGenuineCandidate(cand_);
+    // 缓存 Phrase 真实码（含声调真相）：t9_filter 位于 filters 最前，候选尚为
+    // 带调 Phrase；后续 lua filter 链可能重建为非 Phrase，导致右选调频无法从
+    // 候选取码。缓存由 T9Processor 在每次 flush 重建、右选时按 (text, 归一化
+    // comment) 匹配兜底。
+    if (auto phrase = As<Phrase>(genuine)) {
+        if (auto* proc = T9ProcessorRequire()) {
+            proc->CachePhraseCode(genuine->text(), genuine->comment(), phrase->code());
+        }
+    }
+    if (!convert_preedit_) return;  // 透传：仅缓存，不改 preedit
     std::string converted = T9ConvertCandidatePreedit(genuine->preedit(),
                                                        genuine->comment(),
                                                        genuine->text());
@@ -354,10 +366,12 @@ void T9Translation::ConvertCurrent() {
 
 T9Translation::T9Translation(an<Translation> translation,
                                char auto_delim,
-                               char manual_delim)
+                               char manual_delim,
+                               bool convert_preedit)
     : translation_(translation),
       auto_delim_(auto_delim),
-      manual_delim_(manual_delim) {
+      manual_delim_(manual_delim),
+      convert_preedit_(convert_preedit) {
     // 不调用 translation_->Next()：Translation 创建时已定位在第一个候选
     if (translation_->exhausted()) {
         set_exhausted(true);
@@ -400,9 +414,11 @@ T9Filter::T9Filter(const Ticket& ticket) : Filter(ticket) {
 an<Translation> T9Filter::Apply(an<Translation> translation,
                                  CandidateList* candidates) {
     T9_PERF_SCOPED_TIMER("[T9Filter] Apply");
-    if (!convert_preedit_) return translation;
     if (!translation) return translation;
-    return New<T9Translation>(translation, auto_delimiter_, manual_delimiter_);
+    // 始终包装 T9Translation：false 时转换 preedit，true 时透传但均顺带缓存
+    // Phrase 码（供右选调频捕获兜底，见 ConvertCurrent）。
+    return New<T9Translation>(translation, auto_delimiter_, manual_delimiter_,
+                              convert_preedit_);
 }
 
 #endif  // T9_ALGO_ONLY_BUILD
