@@ -1251,7 +1251,11 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         if (RimeEngine.isInitialized()) {
             val rimeAscii = rimeEngine.isAsciiMode()
             uiState.value = uiState.value.copy(isAsciiMode = rimeAscii)
-            keyboardViewModel.resetKeyboard(rimeAscii, uiState.value.currentSchemaId)
+            // currentSchemaId 为空（如引擎重建后 updateSchemaName 尚未完成）时，
+            // 用持久化方案兜底，避免布局退化为 26 键全键盘
+            val schemaId = uiState.value.currentSchemaId
+                .ifBlank { SettingsPreferences.getCurrentSchema(this) }
+            keyboardViewModel.resetKeyboard(rimeAscii, schemaId)
         }
 
         // 先重置候选状态到初始值，避免前一 session 的残留状态影响新输入

@@ -210,10 +210,15 @@ internal class ImeSessionController(private val service: XimeInputMethodService)
         service.serviceScope.launch(Dispatchers.IO) {
             val page = service.keyboardViewModel.page.value
             val isHandwritingMode = (page as? com.kingzcheung.xime.keyboard.KeyboardPage.Main)?.type == com.kingzcheung.xime.keyboard.MainType.HANDWRITING
+            val engineSchemaId = service.rimeEngine.getCurrentSchema()
+            // session 未就绪时 getCurrentSchema() 返回空串：用持久化方案兜底，
+            // 避免空值覆盖已正确的 currentSchemaId/schemaName 导致键盘退化为全键盘
             val currentSchemaId = if (isHandwritingMode) {
                 HANDWRITING_SCHEMA_ID
+            } else if (engineSchemaId.isNotEmpty()) {
+                engineSchemaId
             } else {
-                service.rimeEngine.getCurrentSchema()
+                SettingsPreferences.getCurrentSchema(context)
             }
             val name = SchemaManager.getSchemaDisplayName(context, currentSchemaId)
 
