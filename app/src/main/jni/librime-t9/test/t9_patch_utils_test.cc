@@ -9,6 +9,7 @@
 #include "t9_patch_utils.h"
 
 using rime::t9_patch_utils::EvaluatePacksState;
+using rime::t9_patch_utils::HasPreeditLuaFilter;
 using rime::t9_patch_utils::PacksState;
 using rime::t9_patch_utils::SanitizePackName;
 using rime::t9_patch_utils::StripPacksLines;
@@ -101,4 +102,69 @@ TEST(T9PatchUtilsTest, Strip_No_Packs_Line_Keeps_Content) {
   const std::string stripped = StripPacksLines(content);
   EXPECT_NE(stripped.find("t9/isDisplayOriginalPreedit"), std::string::npos);
   EXPECT_EQ(stripped.find("translator/packs"), std::string::npos);
+}
+
+// ── HasPreeditLuaFilter（isDisplayOriginalPreedit 默认值启发式）──
+
+TEST(T9PatchUtilsTest, PreeditFilter_Detects_Wanxiang_Schema) {
+  // 万象九键：filters 段含 lua_filter@*wanxiang.super_comment_preedit
+  const std::string content =
+      "engine:\n"
+      "  filters:\n"
+      "    - lua_filter@*wanxiang.super_lookup\n"
+      "    - lua_filter@*wanxiang.super_comment_preedit\n"
+      "    - lua_filter@*wanxiang.super_filter\n"
+      "    - uniquifier\n";
+  EXPECT_TRUE(HasPreeditLuaFilter(content));
+}
+
+TEST(T9PatchUtilsTest, PreeditFilter_Detects_CustomYaml_Patch) {
+  // 用户经 custom.yaml 追加的 lua preedit filter（补丁管线亦需识别）
+  const std::string content =
+      "patch:\n"
+      "  \"engine/filters/+prepend\": [lua_filter@*wanxiang.super_comment_preedit]\n"
+      "  \"t9/isDisplayOriginalPreedit\": true\n";
+  EXPECT_TRUE(HasPreeditLuaFilter(content));
+}
+
+TEST(T9PatchUtilsTest, PreeditFilter_Ignores_PreeditFormat_Only) {
+  // 仅含 preedit_format（翻译器层格式器，非 lua preedit filter）→ 不命中
+  const std::string content =
+      "translator:\n"
+      "  preedit_format:\n"
+      "    - xlit/ABCDEFGHIJKLMNOPQRSTUVWXYZ/abcdefghijklmnopqrstuvwxyz/\n";
+  EXPECT_FALSE(HasPreeditLuaFilter(content));
+}
+
+TEST(T9PatchUtilsTest, PreeditFilter_Ignores_Comment_Mention) {
+  // 注释提及 preedit（无 lua_filter@）→ 不命中（旧全表子串扫描会误判）
+  const std::string content =
+      "engine:\n"
+      "  filters:\n"
+      "    # 注释说明：此方案由 t9_filter 管理 preedit\n"
+      "    - t9_filter\n";
+  EXPECT_FALSE(HasPreeditLuaFilter(content));
+}
+
+TEST(T9PatchUtilsTest, PreeditFilter_Ignores_LuaTranslator) {
+  // lua_translator 不是 filter（不参与候选过滤），名称含 preedit 亦不命中
+  const std::string content =
+      "engine:\n"
+      "  translators:\n"
+      "    - lua_translator@*wanxiang.preedit_demo\n";
+  EXPECT_FALSE(HasPreeditLuaFilter(content));
+}
+
+TEST(T9PatchUtilsTest, PreeditFilter_Ignores_Doc_Example_In_Comment) {
+  // 行首注释中的 lua_filter@ 示例（文档）不参与判定
+  const std::string content =
+      "# 用法示例：lua_filter@*my.preedit_filter\n"
+      "engine:\n"
+      "  filters:\n"
+      "    - uniquifier\n";
+  EXPECT_FALSE(HasPreeditLuaFilter(content));
+}
+
+TEST(T9PatchUtilsTest, PreeditFilter_Empty_Content) {
+  EXPECT_FALSE(HasPreeditLuaFilter(""));
 }

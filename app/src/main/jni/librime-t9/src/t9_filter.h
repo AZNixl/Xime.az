@@ -32,23 +32,35 @@ std::string T9ConvertCandidatePreedit(const std::string& preedit,
                                       const std::string& comment,
                                       const std::string& candidate_text);
 
+// 将拼音注释中的带声调字符归一化为纯 ASCII 小写拼音（jī huà → ji hua）。
+// 供 t9_processor 调频码声调保真复用：comment 归一化匹配、无声调音节
+// → 带声调变体选择（避免命中轻声音节）。
+std::string NormalizePinyinComment(const std::string& comment);
+
 #ifndef T9_ALGO_ONLY_BUILD
 // 包装候选，覆盖 preedit() 返回转换后的拼音，
 // 不修改原始候选对象，避免跨 .so 边界的 dynamic_cast 失效问题。
-class T9PreeditCandidate : public Candidate {
+// 继承 SimpleCandidate 而非 Candidate，使得 Lua 绑定的
+// dynamic_cast<SimpleCandidate*>(&c) 成功，从而 set_preedit()
+// 可被后续 filter（如 super_comment_preedit）通过 cand.preedit = val
+// 覆盖 preedit 值，避免锁死 bug。
+class T9PreeditCandidate : public SimpleCandidate {
 public:
     T9PreeditCandidate(an<Candidate> item, const string& preedit)
-        : Candidate(item->type() + "'t9",
-                    item->start(), item->end(), item->quality()),
-          item_(item), preedit_(preedit) {}
+        : SimpleCandidate(item->type() + "'t9",
+                          item->start(), item->end(),
+                          item->text(), item->comment(), preedit),
+          item_(item) {
+        set_quality(item->quality());
+    }
 
-    const string& text() const override { return item_->text(); }
-    string comment() const override { return item_->comment(); }
-    string preedit() const override { return preedit_; }
+    // text()/comment()/preedit() 均继承自 SimpleCandidate（存 item 副本）；
+    // set_preedit(v) 供后续 Lua filter（super_comment_preedit）覆盖 preedit。
+
+    an<Candidate> item() const { return item_; }
 
 private:
     an<Candidate> item_;
-    string preedit_;
 };
 
 class T9Translation : public Translation {

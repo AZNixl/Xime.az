@@ -66,6 +66,76 @@ static bool IsDigit(char c) {
     return c >= '0' && c <= '9';
 }
 
+// ── 声调归一化 ──
+// 带声调的拼音方案（如万象）词库编码使用 Unicode 预组合声调字符
+// （如 jī huà），comment 经 spelling_hints 暴露时保留声调。
+// 逐字节 ASCII 过滤会丢弃这些多字节字符的每个字节，导致元音丢失
+// （jī→j, huà→hu）。此处逐 Unicode 码点解码，将声调元音归一化为
+// 普通 ASCII 字母，与方案 speller algebra 的 xlit 语义一致。
+// 映射表与万象 wanxiang_t9.schema.yaml 第 139 行 xlit 对齐（大小写声调
+// 字符统一映射为小写 ASCII 字母）：
+//   āáǎà/ĀǍÁÀ→a   ēéěè/ĒĚÉÈ→e   īíǐì/ĪǏÍÌ→i   ōóǒò/ŌǑÓÒ→o
+//   ūúǔù/ŪǓÚÙ→u   ǖǘǚǜü/ǕǗǙǛÜ→v  ńňǹ/ŃŇǸ→n   ḿ/Ḿ→m
+// 注 1：万象 xlit 中的 m̀（m+组合附加符号 U+0300）不在此表——组合标记由
+//   NormalizePinyinComment 的"ASCII 字母保留 + 未识别多字节丢弃"路径隐式
+//   归一化为 m，与 xlit 语义一致（下表 ḿ/Ḿ 为预组合形式）。
+// 注 2：未识别的多字节字符（如组合用附加符号 U+0300）一律静默丢弃。
+static char ToneToAscii(uint32_t cp) {
+    switch (cp) {
+        // a: ā ǎ á à  Ā Ǎ Á À (U+0101/U+01CE/U+00E1/U+00E0/U+0100/U+01CD/U+00C1/U+00C0)
+        case 0x0101: case 0x01CE: case 0x00E1: case 0x00E0:
+        case 0x0100: case 0x01CD: case 0x00C1: case 0x00C0: return 'a';
+        // e: ē ě é è  Ē Ě É È (U+0113/U+011B/U+00E9/U+00E8/U+0112/U+011A/U+00C9/U+00C8)
+        case 0x0113: case 0x011B: case 0x00E9: case 0x00E8:
+        case 0x0112: case 0x011A: case 0x00C9: case 0x00C8: return 'e';
+        // i: ī ǐ í ì  Ī Ǐ Í Ì (U+012B/U+01D0/U+00ED/U+00EC/U+012A/U+01CF/U+00CD/U+00CC)
+        case 0x012B: case 0x01D0: case 0x00ED: case 0x00EC:
+        case 0x012A: case 0x01CF: case 0x00CD: case 0x00CC: return 'i';
+        // o: ō ǒ ó ò  Ō Ǒ Ó Ò (U+014D/U+01D2/U+00F3/U+00F2/U+014C/U+01D1/U+00D3/U+00D2)
+        case 0x014D: case 0x01D2: case 0x00F3: case 0x00F2:
+        case 0x014C: case 0x01D1: case 0x00D3: case 0x00D2: return 'o';
+        // u: ū ǔ ú ù  Ū Ǔ Ú Ù (U+016B/U+01D4/U+00FA/U+00F9/U+016A/U+01D3/U+00DA/U+00D9)
+        case 0x016B: case 0x01D4: case 0x00FA: case 0x00F9:
+        case 0x016A: case 0x01D3: case 0x00DA: case 0x00D9: return 'u';
+        // ü/v: ǖ ǘ ǚ ǜ ü  Ǖ Ǘ Ǚ Ǜ Ü (U+01D6/U+01D8/U+01DA/U+01DC/U+00FC/U+01D5/U+01D7/U+01D9/U+01DB/U+00DC)
+        case 0x01D6: case 0x01D8: case 0x01DA: case 0x01DC: case 0x00FC:
+        case 0x01D5: case 0x01D7: case 0x01D9: case 0x01DB: case 0x00DC: return 'v';
+        // n: ń ň ǹ  Ń Ň Ǹ (U+0144/U+0148/U+01F9/U+0143/U+0147/U+01F8)
+        case 0x0144: case 0x0148: case 0x01F9:
+        case 0x0143: case 0x0147: case 0x01F8: return 'n';
+        // m: ḿ Ḿ (U+1E3F/U+1E3E)
+        case 0x1E3F: case 0x1E3E: return 'm';
+        default: return 0;
+    }
+}
+
+// 将 comment 中的带声调拼音归一化为纯 ASCII 小写拼音。
+// 逐码点解码：声调字符 → 对应 ASCII 字母，ASCII 字母统一转小写，
+// 其他字符（分隔符、括号等）丢弃。非 static：供 t9_processor 复用。
+std::string NormalizePinyinComment(const std::string& comment) {
+    std::string result;
+    const char* p = comment.c_str();
+    const char* end = p + comment.size();
+    while (p < end) {
+        const char* prev = p;
+        uint32_t cp = DecodeUtf8(p, end);
+        if (cp == 0) continue;
+        if (cp < 0x80) {
+            if ((cp >= 'a' && cp <= 'z') || (cp >= 'A' && cp <= 'Z')) {
+                // 统一小写：归一化用于比较与音节选择，须大小写不敏感。
+                result += static_cast<char>(std::tolower(static_cast<unsigned char>(cp)));
+            }
+        } else {
+            char mapped = ToneToAscii(cp);
+            if (mapped != 0) {
+                result += mapped;
+            }
+            // 未识别的多字节字符（如组合用附加符号 U+0300）静默丢弃
+        }
+    }
+    return result;
+}
+
 // ── 输入分段 ──
 
 struct InputPart {
@@ -151,14 +221,10 @@ std::string T9ConvertPreedit(const std::string& preedit,
         std::string word;
         while (iss >> word) {
             if (!word.empty()) {
-                // 过滤 comment_format 引入的非字母字符（如雾凇方案的「」
-                // 确保 pinyin_parts 只包含纯拼音，避免 T9ConvertPreedit 输出异常字符
-                std::string filtered;
-                for (char c : word) {
-                    if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
-                        filtered += c;
-                    }
-                }
+                // 过滤 comment_format 引入的非字母字符（如雾凇方案的「」），
+                // 同时归一化带声调的预组合字符（如万象方案的 jī huà），
+                // 确保 pinyin_parts 只包含纯 ASCII 拼音。
+                std::string filtered = NormalizePinyinComment(word);
                 if (!filtered.empty()) {
                     pinyin_parts.push_back(filtered);
                 }
