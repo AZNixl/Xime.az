@@ -142,19 +142,24 @@ object WebDavSyncHelper {
             val remoteFiles = listRemoteDirRecursive(client, remoteBase, headers)
 
             for (remoteFile in remoteFiles.filter { !it.isDirectory && isSyncableFile(it.name) }) {
-                // 计算相对于 remoteBase 的相对路径
+                // 计算相对于 remoteBase 的相对路径（URL 编码，便于下载时原样请求）
                 val remoteFileUrl = remoteFile.path
-                val relativePath = if (remoteFileUrl.startsWith(remoteBase)) {
-                    remoteFileUrl.removePrefix(remoteBase).trimStart('/')
-                } else {
-                    remoteFile.name
+                val relativePathEncoded = resolveRelativePath(remoteFileUrl, remoteBase)
+                // 本地文件名解码（中文/空格等），GET 用原始 href 保持编码
+                val relativePath = try {
+                    java.net.URLDecoder.decode(relativePathEncoded, "UTF-8")
+                } catch (e: Exception) {
+                    relativePathEncoded
                 }
 
                 val localFile = File(rimeDir, relativePath)
                 localFile.parentFile?.mkdirs()
 
-                val fullUrl = if (remoteFileUrl.startsWith("http")) remoteFileUrl
-                    else "$remoteBase/$relativePath"
+                val fullUrl = if (remoteFileUrl.startsWith("http://") || remoteFileUrl.startsWith("https://")) {
+                    remoteFileUrl
+                } else {
+                    "$remoteBase/$relativePathEncoded"
+                }
 
                 onProgress("下载 $relativePath")
                 val err = downloadFile(client, fullUrl, localFile, headers)
@@ -179,6 +184,31 @@ object WebDavSyncHelper {
             normalized = "https://$normalized"
         }
         return normalized
+    }
+
+    /**
+     * 计算 PROPFIND href 相对 remoteBase 的路径。
+     * 兼容三种 href 形式：完整 URL（https://host/dav/rime/x）、根相对路径（/dav/rime/x）、
+     * 相对目录路径（x）。修复了旧实现把子目录文件退化为文件名导致 GET 404 的问题。
+     */
+    private fun resolveRelativePath(href: String, remoteBase: String): String {
+        val basePath = rootPathOf(remoteBase)
+        val hrefPath = rootPathOf(href)
+        return when {
+            hrefPath.startsWith("$basePath/") -> hrefPath.removePrefix("$basePath/")
+            hrefPath.startsWith("/") -> hrefPath.trimStart('/')
+            else -> hrefPath
+        }
+    }
+
+    /** 归一化为根相对路径（如 /dav/rime），兼容完整 URL 与相对路径；去尾斜杠与查询串。 */
+    private fun rootPathOf(raw: String): String {
+        val noQuery = raw.substringBefore('?').trimEnd('/')
+        if (noQuery.startsWith("http://") || noQuery.startsWith("https://")) {
+            val path = noQuery.substringAfter("://").substringAfter('/')
+            return "/$path".trimEnd('/')
+        }
+        return noQuery
     }
 
     private fun ensureRemoteDir(
