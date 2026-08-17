@@ -97,4 +97,21 @@ class ManifestParseTest {
         val config = (InstallerManager.parseManifestContent(content) as PluginParseResult.Success).config
         assertEquals("demo", config.id)
     }
+
+    @Test
+    fun `插件 id 支持反域名命名空间`() {
+        assertTrue("反域名 id 应合法", InstallerManager.isValidPluginId("com.kingzcheung.xime.plugin.funasr_asr"))
+        assertTrue("下划线/连字符 id 应合法", InstallerManager.isValidPluginId("webdav-clipboard_sync"))
+    }
+
+    @Test
+    fun `非法插件 id 被拒绝`() {
+        assertTrue("空 id 非法", !InstallerManager.isValidPluginId(""))
+        assertTrue("含点号连续出现非法", !InstallerManager.isValidPluginId("a..b"))
+        assertTrue("点号开头非法", !InstallerManager.isValidPluginId(".abc"))
+        assertTrue("点号结尾非法", !InstallerManager.isValidPluginId("abc."))
+        assertTrue("含斜杠非法", !InstallerManager.isValidPluginId("a/b"))
+        assertTrue("超过 64 非法", !InstallerManager.isValidPluginId("a".repeat(65)))
+        assertTrue("含中文非法", !InstallerManager.isValidPluginId("插件a"))
+    }
 }

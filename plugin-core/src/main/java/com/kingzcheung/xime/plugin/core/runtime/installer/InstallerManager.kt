@@ -71,13 +71,15 @@ class InstallerManager(
         private const val PLUGINS_DIR = "plugins"
         private const val MANIFEST_YAML = "manifest.yaml"
 
-        /** 插件 id 白名单：仅字母/数字/下划线/连字符，最长 64，杜绝路径穿越。 */
-        private val PLUGIN_ID_REGEX = Regex("^[A-Za-z0-9_-]{1,64}$")
+        /** 插件 id 白名单：字母/数字/下划线/连字符，点号仅作命名空间分段（禁止 .. / 空段 / /），最长 64，杜绝路径穿越。 */
+        private val PLUGIN_ID_REGEX = Regex("^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_-]+)*$")
+        private const val PLUGIN_ID_MAX_LENGTH = 64
 
         /** 入口脚本：普通文件名，不允许路径分隔符与 ".."。 */
         private val ENTRY_SCRIPT_REGEX = Regex("^[A-Za-z0-9_.-]{1,128}$")
 
-        private fun isValidPluginId(id: String): Boolean = PLUGIN_ID_REGEX.matches(id)
+        internal fun isValidPluginId(id: String): Boolean =
+            id.length <= PLUGIN_ID_MAX_LENGTH && PLUGIN_ID_REGEX.matches(id)
 
         private fun isValidEntryScript(name: String): Boolean =
             ENTRY_SCRIPT_REGEX.matches(name) && !name.contains("..")
@@ -147,7 +149,7 @@ class InstallerManager(
         }
         val pluginId = pluginConfig.id
         if (!isValidPluginId(pluginId)) {
-            return@withContext InstallResult.Failure("非法插件 id: $pluginId（仅允许字母/数字/下划线/连字符）")
+            return@withContext InstallResult.Failure("非法插件 id: $pluginId（仅允许字母/数字/下划线/连字符，点号分段，最长 64）")
         }
         val entryScript = pluginConfig.entryScript ?: "main.lua"
         if (!isValidEntryScript(entryScript)) {
