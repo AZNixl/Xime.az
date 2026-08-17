@@ -798,7 +798,7 @@ private fun T9KeyboardContent(
             ResetKey(
                 onClick = {
                     controller.clearAll()
-                    // 重输 = 只清输入态（预编辑/候选/左栏），不动已上屏文本（对标搜狗 2026-08-11）：
+                    // 重输 = 只清输入态（预编辑/候选/左栏），不动已上屏文本（对标主流输入法 2026-08-11）：
                     //   · 输入态点重输 → 清除输入态内容
                     //   · 空闲态点重输 → 无反应（clear_composition 无可清内容）
                     onKeyPress("clear_composition")

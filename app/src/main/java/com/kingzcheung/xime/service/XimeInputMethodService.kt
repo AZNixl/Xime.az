@@ -28,7 +28,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBars
+
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -804,18 +804,24 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                 val floatingCardContentHeight = effectiveKeyboardHeight + floatingDragBarHeight
                 
                 val density = LocalDensity.current
-                // 优先使用 Compose 的 navigationBars 检测（标准设备正常返回值）
-                val composeNavPx = WindowInsets.navigationBars.getBottom(density)
-                // 如果 Compose 返回 0（如 iQOO 不把底部工具栏归为 nav），fallback 到 View 层多类型检测
-                val activeBottomPx = if (composeNavPx > 0) composeNavPx else bottomInsetPxState.value
+                // 统一使用 View 层多类型检测的 insets，避免 Compose
+                // navigationBars 恒为手势条高度导致与系统栏（三键导航）差异被抹平。
+                val activeBottomPx = bottomInsetPxState.value
                 val rawDp = if (activeBottomPx > 0) {
                     with(density) { activeBottomPx.toDp().value.toInt() }
                 } else 0
-                // 保证底部最小留白（替换原来键盘内部 10dp 的作用）。
-                // 手势导航下 navigationBars/systemBars 可能全为 0，此时也必须兜底，
-                // 否则键盘背景画不到屏幕底部，手势条区域会露出白色窗口背景。
-                val minBottomDp = 26
-                val activeBottomDp = if (rawDp < minBottomDp) minBottomDp else rawDp
+                // 底部留白整体缩减量（dp）：让键盘比系统导航栏实际高度再低一点，
+                // 键盘背景已 edge-to-edge 延伸到系统栏后，留白可小于系统栏高度。
+                val bottomInsetShrinkDp = 8
+                // 标准（三键）导航栏 inset 明显大于手势条，额外多减一点，
+                // 让标准模式高度更接近抬高模式，但保留可辨识的差异。
+                val extraShrinkDp = if (rawDp >= 120) 8 else 0
+                val bottomSpaceDp = if (rawDp > 0) (rawDp - bottomInsetShrinkDp - extraShrinkDp).coerceAtLeast(0) else 0
+                // 兜底仅用于彻底检测不到任何底部 inset 的场景（全屏沉浸），
+                // 不再把已有差异（标准 44dp / 手势 16dp）强行垫平。
+                val minBottomDp = 18
+                val activeBottomDp = if (bottomSpaceDp == 0) minBottomDp else bottomSpaceDp
+                android.util.Log.d("ImeWindowInsets", "viewState=${bottomInsetPxState.value} rawDp=$rawDp shrink=$bottomInsetShrinkDp extra=$extraShrinkDp activeBottomDp=$activeBottomDp")
                 val navBarDp = activeBottomDp.dp
                 val hasNavBar = navBarDp > 0.dp
 

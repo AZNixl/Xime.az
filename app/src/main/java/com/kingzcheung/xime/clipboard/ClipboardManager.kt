@@ -387,7 +387,7 @@ class ClipboardManager private constructor(private val context: Context) {
     /**
      * 生成图片 content URI。
      *
-     * 优先使用 FileProvider；Android 12+ 部分厂商 ROM（如一加）上
+     * 优先使用 FileProvider；Android 12+ 部分厂商 ROM 上
      * FileProvider.getUriForFile 内部 resolveContentProvider 以 USER_ALL(-10000)
      * 校验跨用户权限时抛 "Invalid userId -10000"，此时降级为 MediaStore
      * 插入图片获取系统 content URI（API 29+ 免权限）。

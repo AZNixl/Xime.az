@@ -19,8 +19,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material3.Icon
@@ -41,7 +39,6 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -174,12 +171,7 @@ fun EditKeyboardLayout(
         }
 
         Spacer(
-            modifier = Modifier.height(
-                maxOf(
-                    bottomPaddingDp.dp,
-                    with(LocalDensity.current) { WindowInsets.navigationBars.getBottom(this).toDp() }
-                )
-            )
+            modifier = Modifier.height(bottomPaddingDp.dp)
         )
     }
 }

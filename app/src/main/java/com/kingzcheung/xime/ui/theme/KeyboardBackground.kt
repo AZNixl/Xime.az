@@ -128,7 +128,7 @@ fun Modifier.keyboardBackground(
                 return this.then(
                     Modifier.drawWithContent {
                         drawImageBackground(bitmap, fit)
-                        // 半透明黑色遮罩压暗背景，提升按键对比度（Gboard 风格）
+                        // 半透明黑色遮罩压暗背景，提升按键对比度
                         if (overlayAlpha != null && overlayAlpha > 0f) {
                             drawRect(
                                 color = Color.Black.copy(alpha = overlayAlpha.coerceIn(0f, 1f)),

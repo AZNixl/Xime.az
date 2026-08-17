@@ -18,7 +18,7 @@
 using namespace rime;
 
 // ── 农历数据表 ──
-// 来源于白霜拼音 lunar.lua，7 字符 hex 编码
+// 来源于 lunar.lua，7 字符 hex 编码
 // 索引 0 对应 1899 年（1900 年春节前计算用）
 // 索引 1 对应 1900 年，依此类推至索引 201 对应 2100 年
 static const char* kLunarData[] = {
@@ -215,7 +215,7 @@ static string YearToChinese(int year) {
 
 // ── 公历转农历 ──
 // 支持 1900-2100 年
-// 参考白霜拼音 lunar.lua 的 Date2LunarDate 实现
+// 参考 lunar.lua 的 Date2LunarDate 实现
 T9DateTranslator::LunarDate T9DateTranslator::GregorianToLunar(
     int year, int month, int day) {
     LunarDate ld = {};

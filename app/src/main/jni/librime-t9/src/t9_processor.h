@@ -161,12 +161,12 @@ private:
     bool BuildEntryForPinyin(const std::string& text, const std::string& pinyin,
                              DictEntry* entry);
     // 通过方案 Prism（含 speller algebra：xlit 声调消除 / 简拼派生）将拼音音节
-    // 解析为词典原生 SyllableId，解决带声调词典（如万象 běn）与无声调调频拼音
+    // 解析为词典原生 SyllableId，解决带声调词典（如带声调方案 běn）与无声调调频拼音
     // （ben）的格式差异。返回覆盖整个输入的单音节 id；无法解析返回 nullopt。
     // 例：ben → běn 的 SyllableId；ji → jǐ/轻声 ji 等任一命中变体。
     std::optional<SyllableId> ResolveSyllableViaPrism(const std::string& syllable);
     // 惰性构建 无声调拼写 → 带声调音节 映射（调频声调保真，2026-08-16）：
-    // 万象类词库 syllables 同时含带调音节（jì）与轻声音节（ji，簸箕），
+    // 带声调类词库 syllables 同时含带调音节（jì）与轻声音节（ji，簸箕），
     // 无声调调频拼音直接命中轻声会丢声调 → userdb 候选 comment 无声调。
     // 本映射保证无声调输入优先选带调变体（jī/jí/jǐ/jì 任一）。
     void EnsureTonedSyllableMap();

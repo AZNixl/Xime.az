@@ -107,7 +107,7 @@ TEST(T9PatchUtilsTest, Strip_No_Packs_Line_Keeps_Content) {
 // ── HasPreeditLuaFilter（isDisplayOriginalPreedit 默认值启发式）──
 
 TEST(T9PatchUtilsTest, PreeditFilter_Detects_Wanxiang_Schema) {
-  // 万象九键：filters 段含 lua_filter@*wanxiang.super_comment_preedit
+  // 带声调九键方案：filters 段含 lua_filter@*super_comment_preedit 引用
   const std::string content =
       "engine:\n"
       "  filters:\n"

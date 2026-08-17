@@ -2,7 +2,7 @@
 
 > 目标：插件（如 funasr ASR、其他在线 ASR 平台）只声明字段/表单与识别能力，由主 App 负责 UI 渲染、配置存储与麦克风采集。
 > 实现"一个插件 = 一个平台"，同时让主 App 完整掌控 Compose 的 R8 压缩与混淆，避免插件包体积膨胀。
-> 本方案的 ASR 契约参考了 BiBi-Keyboard `asr/` 模块的多供应商抽象（`StreamingAsrEngine.Listener` / `PcmBatchRecognizer` / `GenericPushFileAsrAdapter` / `CancelableAsrEngine` / 能力声明 / 会话工厂）。
+> 本方案的 ASR 契约参考了开源输入法 `asr/` 模块的多供应商抽象（`StreamingAsrEngine.Listener` / `PcmBatchRecognizer` / `GenericPushFileAsrAdapter` / `CancelableAsrEngine` / 能力声明 / 会话工厂）。
 
 ## 一、核心设计
 
@@ -49,7 +49,7 @@ data class PluginSettingField(
 
 - `IPluginConfigurable` 是独立接口，任何类型插件（emoji / prediction / asr）都可实现；`AsrPlugin` 继承它。
 - 插件零 Compose 依赖。
-- 表单能力对齐多平台需求（参考 BiBi 各平台配置）：单 token → `SECRET`；区域/模型/语言单选 → `SELECT`；多语言 hints → `MULTI_SELECT`（存逗号分隔）；自定义 endpoint → `TEXT`；静音灵敏度/线程数 → `NUMBER`；VAD/DDC 等开关 → `SWITCH`；模型列表这类运行时接口数据 → `getOptions(key)` 动态拉取。
+- 表单能力对齐多平台需求（参考各平台配置）：单 token → `SECRET`；区域/模型/语言单选 → `SELECT`；多语言 hints → `MULTI_SELECT`（存逗号分隔）；自定义 endpoint → `TEXT`；静音灵敏度/线程数 → `NUMBER`；VAD/DDC 等开关 → `SWITCH`；模型列表这类运行时接口数据 → `getOptions(key)` 动态拉取。
 
 ## 三、宿主提供「按插件隔离」的配置存储
 
@@ -122,14 +122,14 @@ interface AsrPlugin : IPluginEntryClass, IPluginConfigurable {
 }
 ```
 
-设计要点（参考 BiBi 逐条对照）：
+设计要点（与参考实现逐条对照）：
 
-- **宿主采集、插件消费（Push PCM）**：宿主 `SpeechRecognitionManager.RecordingThread` 统一产出 16k/mono/PCM16LE chunk，无论 `inputMode` 是什么都只调 `processAudioChunk()` 推流。插件内部决定"实时转发 WS"（STREAMING）还是"累积后 stop() 提交"（BATCH，对应 BiBi `PcmBatchRecognizer` + `GenericPushFileAsrAdapter`）。上传编码（WAV/m4a/opus）是插件内部职责，宿主不关心。
-- **会话工厂 `createBackend()`**：引擎持有每次会话状态（WS/缓冲），配置变更下次创建即生效；对应 BiBi `AsrDirectMicrophoneEngineFactory`。宿主可按现有习惯复用后端实例（initialize 一次、start/stop 多次）。
-- **`cancel()` 丢弃语义**：对应 BiBi `CancelableAsrEngine`，BATCH 引擎清空缓冲不提交。
-- **`onStopped()`**：对应 BiBi `StreamingAsrEngine.Listener.onStopped()`，WS 引擎"松手后仍在等 task-finished"时 UI 需要复位麦克风。
-- **`maxRecordDurationMillis`**：对应 BiBi 各 File 引擎的上限（如 DashScope 3 分钟），防 BATCH 模式内存膨胀（3 分钟 PCM ≈ 5.7MB，可接受）。
-- **错误文案插件自带**：BiBi 用宿主 `R.string.error_xxx` 统一映射；插件是独立 APK 有自己资源，`onError(message)` 直接传已格式化文案，无需共享错误分类协议。
+- **宿主采集、插件消费（Push PCM）**：宿主 `SpeechRecognitionManager.RecordingThread` 统一产出 16k/mono/PCM16LE chunk，无论 `inputMode` 是什么都只调 `processAudioChunk()` 推流。插件内部决定"实时转发 WS"（STREAMING）还是"累积后 stop() 提交"（BATCH，对应参考实现 `PcmBatchRecognizer` + `GenericPushFileAsrAdapter`）。上传编码（WAV/m4a/opus）是插件内部职责，宿主不关心。
+- **会话工厂 `createBackend()`**：引擎持有每次会话状态（WS/缓冲），配置变更下次创建即生效；对应参考实现 `AsrDirectMicrophoneEngineFactory`。宿主可按现有习惯复用后端实例（initialize 一次、start/stop 多次）。
+- **`cancel()` 丢弃语义**：对应参考实现 `CancelableAsrEngine`，BATCH 引擎清空缓冲不提交。
+- **`onStopped()`**：对应参考实现 `StreamingAsrEngine.Listener.onStopped()`，WS 引擎"松手后仍在等 task-finished"时 UI 需要复位麦克风。
+- **`maxRecordDurationMillis`**：对应各 File 引擎的上限（如 DashScope 3 分钟），防 BATCH 模式内存膨胀（3 分钟 PCM ≈ 5.7MB，可接受）。
+- **错误文案插件自带**：参考实现用宿主 `R.string.error_xxx` 统一映射；插件是独立 APK 有自己资源，`onError(message)` 直接传已格式化文案，无需共享错误分类协议。
 
 ## 五、宿主渲染「通用配置表单」
 

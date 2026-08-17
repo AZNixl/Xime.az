@@ -299,7 +299,7 @@ TEST(T9UndoModelTest, Variant2_JiuGu_FullUndoSequence) {
     EXPECT_TRUE(m.Backspace());
     EXPECT_EQ("", m.segments()[1].digits);
 
-    // bs7: undo 九（字母段 j 非 merge_first，对标搜狗 2026-08-06）→ j 回 selected，digits 保留
+    // bs7: undo 九（字母段 j 非 merge_first，对标主流输入法 2026-08-06）→ j 回 selected，digits 保留
     EXPECT_TRUE(m.Backspace());
     EXPECT_EQ(T9Segment::kSelected, m.segments()[0].phase);
     EXPECT_EQ("5", m.segments()[0].digits);
@@ -565,7 +565,7 @@ TEST(T9UndoModelTest, SyncRightCommit_JiuGu_RealCommandBuffer_UndoTrace) {
     EXPECT_TRUE(m.Backspace());
     EXPECT_EQ("", m.segments()[1].digits);
 
-    // bs7: undo 九（字母段 j 非 merge_first，对标搜狗 2026-08-06）→ j 回 selected
+    // bs7: undo 九（字母段 j 非 merge_first，对标主流输入法 2026-08-06）→ j 回 selected
     EXPECT_TRUE(m.Backspace());
     EXPECT_EQ(T9Segment::kSelected, m.segments()[0].phase);
     EXPECT_EQ("5", m.segments()[0].digits);
@@ -1355,11 +1355,11 @@ TEST(T9UndoModelTest, Scenario29_JG_Jiu_UndoRCFirst) {
 }
 
 // 场景30（文档 L435-463）：54482 左选 j、g、g，右选三个单字"九、感、干"（commit 段0/1/2）→ 回退 11 次。
-// 修复（2026-08-06，adb 日志实证 + 用户对标搜狗裁定）：
+// 修复（2026-08-06，adb 日志实证 + 用户对标主流输入法裁定）：
 //   ① SyncRightCommit 一一对应匹配（修复"感"漏 commit：相同 g 段"存在即匹配"误判）；
 //   ② NeedsDefer 去"逻辑首段"限制（感（段1）也延后：先撤销其下段2 g 再 undo 感）；
 //   ③ merge_first 仅完整拼音段（digit_length >= 2）——字母段 j undo 回 selected，用户单独 undo j
-//      （对标搜狗：九/股 9 次、场景30 11 次，之前 merge_first 一步为错误）。
+//      （对标主流输入法：九/股 9 次、场景30 11 次，之前 merge_first 一步为错误）。
 TEST(T9UndoModelTest, Scenario30_JGG_JiuGanGan) {
     T9UndoModel m;
     for (char d : std::string("54482")) m.DigitPressed(d);
@@ -1415,7 +1415,7 @@ TEST(T9UndoModelTest, Scenario30_JGG_JiuGanGan) {
 // 场景31（文档 L463-489）：54482 左选 j、g、g、t，右选两组双字词组"价格"（{0,1}）、"共同"（{2,3}）→ 回退 11 次。
 // 修复（2026-08-06，adb 日志实证"⌫3 就撤销了价格"）：NeedsDefer 去掉"多段 commit 不延后"限制——
 // 多段词组（价格 {0,1}）也延后：先撤销其下未被本 RC commit 的 selected 段（段3 t、段2 g），
-// 再整体撤销价格（对标搜狗）。
+// 再整体撤销价格（对标主流输入法）。
 TEST(T9UndoModelTest, Scenario31_JGGT_JiaGe_GongTong) {
     T9UndoModel m;
     for (char d : std::string("54482")) m.DigitPressed(d);

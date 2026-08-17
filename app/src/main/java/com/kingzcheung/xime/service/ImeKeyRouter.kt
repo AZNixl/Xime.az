@@ -98,7 +98,7 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
                     needsUIUpdate = true
                 }
                 "clear_all" -> {
-                    // 上滑清空 = 多次退格快捷方式（对标搜狗）：输入态只清输入态，空闲态清空全部已上屏。
+                    // 上滑清空 = 多次退格快捷方式（对标主流输入法）：输入态只清输入态，空闲态清空全部已上屏。
                     // 输入态判定见 hasInputState()——不能用 RIME getInput()，tryLocked 锁竞争时静默返回空。
                     if (hasInputState(candState)) {
                         // 输入态：只清输入态（等价于 clear_composition），并记录 lastClearedText 供下滑撤回。

@@ -69,16 +69,16 @@ static bool IsDigit(char c) {
 }
 
 // ── 声调归一化 ──
-// 带声调的拼音方案（如万象）词库编码使用 Unicode 预组合声调字符
+// 带声调的拼音方案（如带声调方案）词库编码使用 Unicode 预组合声调字符
 // （如 jī huà），comment 经 spelling_hints 暴露时保留声调。
 // 逐字节 ASCII 过滤会丢弃这些多字节字符的每个字节，导致元音丢失
 // （jī→j, huà→hu）。此处逐 Unicode 码点解码，将声调元音归一化为
 // 普通 ASCII 字母，与方案 speller algebra 的 xlit 语义一致。
-// 映射表与万象 wanxiang_t9.schema.yaml 第 139 行 xlit 对齐（大小写声调
+// 映射表与带声调方案的 xlit 对齐（大小写声调
 // 字符统一映射为小写 ASCII 字母）：
 //   āáǎà/ĀǍÁÀ→a   ēéěè/ĒĚÉÈ→e   īíǐì/ĪǏÍÌ→i   ōóǒò/ŌǑÓÒ→o
 //   ūúǔù/ŪǓÚÙ→u   ǖǘǚǜü/ǕǗǙǛÜ→v  ńňǹ/ŃŇǸ→n   ḿ/Ḿ→m
-// 注 1：万象 xlit 中的 m̀（m+组合附加符号 U+0300）不在此表——组合标记由
+// 注 1：带声调方案 xlit 中的 m̀（m+组合附加符号 U+0300）不在此表——组合标记由
 //   NormalizePinyinComment 的"ASCII 字母保留 + 未识别多字节丢弃"路径隐式
 //   归一化为 m，与 xlit 语义一致（下表 ḿ/Ḿ 为预组合形式）。
 // 注 2：未识别的多字节字符（如组合用附加符号 U+0300）一律静默丢弃。
@@ -223,8 +223,8 @@ std::string T9ConvertPreedit(const std::string& preedit,
         std::string word;
         while (iss >> word) {
             if (!word.empty()) {
-                // 过滤 comment_format 引入的非字母字符（如雾凇方案的「」），
-                // 同时归一化带声调的预组合字符（如万象方案的 jī huà），
+                // 过滤 comment_format 引入的非字母字符（如「」括号），
+                // 同时归一化带声调的预组合字符（如带声调方案的 jī huà），
                 // 确保 pinyin_parts 只包含纯 ASCII 拼音。
                 std::string filtered = NormalizePinyinComment(word);
                 if (!filtered.empty()) {

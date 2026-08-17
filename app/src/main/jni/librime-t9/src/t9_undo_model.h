@@ -140,7 +140,7 @@ public:
 
     // ── 右选序列的调频捕获（text+code，与段模型同生命周期）──
     // 每次右选 push 一条；码含声调真相（Phrase::code），供调频保留声调
-    // （无声调拼音解析会命中轻声音节，如万象 计划→ji/hua 轻声，导致丢声调）。
+    // （无声调拼音解析会命中轻声音节，如带声调方案 计划→ji/hua 轻声，导致丢声调）。
     // Clear() 一并清空；MemorizeEntry 全量消费、ForgetEntry 弹栈回滚。
     void PushCommitCapture(const std::string& text, const T9SyllableCode& code);
     // 全部捕获（按选择顺序）；MemorizeEntry 校验文本拼接/音节数后消费。

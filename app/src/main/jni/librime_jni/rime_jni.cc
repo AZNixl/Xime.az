@@ -1475,7 +1475,7 @@ static jboolean DoEnsureT9SchemaPatches(
     // 收集需要追加的补丁行（幂等：schema 或 custom 已含该组件则跳过）。
     std::vector<std::string> patch_lines;
 
-    // 方案自带 preedit 管理型 lua filter（万象 super_comment_preedit，
+    // 方案自带 preedit 管理型 lua filter（如带声调方案的 super_comment_preedit，
     // HasPreeditLuaFilter 判定）→ 默认 isDisplayOriginalPreedit: true（透传，
     // 让方案 lua 管理 preedit）；否则（t9_pinyin 无声调方案）默认 false。
     // schema/custom 显式声明的 isDisplayOriginalPreedit 始终优先（下方补丁跳过）。

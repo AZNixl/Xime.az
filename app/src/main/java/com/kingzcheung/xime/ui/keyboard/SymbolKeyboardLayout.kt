@@ -17,8 +17,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -39,7 +37,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -185,7 +182,7 @@ fun SymbolKeyboardLayout(
         }
 
         // 底部留空（至少覆盖导航栏 inset 与键盘底部内边距）
-        Spacer(modifier = Modifier.height(maxOf(bottomPaddingDp.dp, with(LocalDensity.current) { WindowInsets.navigationBars.getBottom(this).toDp() })))
+        Spacer(modifier = Modifier.height(bottomPaddingDp.dp))
     }
 }
 
