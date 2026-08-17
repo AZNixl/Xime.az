@@ -128,3 +128,103 @@ TEST(T9PreeditConverterTest, UppercaseComment) {
 TEST(T9PreeditConverterTest, MixedCaseComment) {
     EXPECT_EQ(T9ConvertPreedit("54482", "Ji Gua"), "jigua");
 }
+
+// ── 带声调 comment（万象方案场景）──
+// 声调元音通过 NormalizePinyinComment 归一化为纯 ASCII 字母，
+// 不依赖逐字节 ASCII 过滤（避免 jī→j、huà→hu 的 bug）。
+
+TEST(T9PreeditConverterTest, TonedCommentRegular) {
+    // "54482" + "jī huà" → "jihua"（声调字符归一化后与无声调一致）
+    EXPECT_EQ(T9ConvertPreedit("54482", "jī huà"), "jihua");
+}
+
+TEST(T9PreeditConverterTest, TonedCommentThreeSyllable) {
+    // "5482" + "jī huà" → "jihua"
+    EXPECT_EQ(T9ConvertPreedit("5482", "jī huà"), "jihua");
+}
+
+TEST(T9PreeditConverterTest, TonedCommentAllTones) {
+    // 覆盖全部四种声调：āáǎà ēéěè īíǐì ōóǒò ūúǔù ǖǘǚǜ
+    EXPECT_EQ(T9ConvertPreedit("54482", "ī í ǐ ì"), "iiii");
+    EXPECT_EQ(T9ConvertPreedit("54482", "ā á ǎ à"), "aaaa");
+    EXPECT_EQ(T9ConvertPreedit("54482", "ē é ě è"), "eeee");
+    EXPECT_EQ(T9ConvertPreedit("54482", "ō ó ǒ ò"), "oooo");
+    EXPECT_EQ(T9ConvertPreedit("54482", "ū ú ǔ ù"), "uuuu");
+    // ü 映射为 v（与 speller xlit 一致）
+    EXPECT_EQ(T9ConvertPreedit("54482", "ǖ ǘ ǚ ǜ"), "vvvv");
+    EXPECT_EQ(T9ConvertPreedit("54482", "ü"), "v");
+}
+
+TEST(T9PreeditConverterTest, TonedCommentNandM) {
+    // ńňǹ→n, ḿ→m
+    EXPECT_EQ(T9ConvertPreedit("54482", "ń ň ǹ"), "nnn");
+    EXPECT_EQ(T9ConvertPreedit("54482", "ḿ"), "m");
+}
+
+TEST(T9PreeditConverterTest, TonedCommentWeirdDelimiter) {
+    // 带声调 comment 混合雾凇风格括号 → 括号被过滤，声调被归一化
+    EXPECT_EQ(T9ConvertPreedit("54482", "〔jī〕〔huà〕"), "jihua");
+}
+
+TEST(T9PreeditConverterTest, TonedCommentSingleDigitJianpin) {
+    // "5" + "jī" → "j"（单数字段取首字母，不依赖完整拼音）
+    EXPECT_EQ(T9ConvertPreedit("5", "jī"), "j");
+}
+
+TEST(T9PreeditConverterTest, TonedCommentSingleSegmentMulti) {
+    // "54482" + "jī huà" → "jihua"（单段多音节，合并输出）
+    // 验证 NormalizePinyinComment 替代逐字节过滤后单段多音节分支仍能正确拼接
+    EXPECT_EQ(T9ConvertPreedit("54482", "jī huà"), "jihua");
+}
+
+TEST(T9PreeditConverterTest, TonedCommentMixedCase) {
+    // 大写声调 comment → 归一化后小写
+    EXPECT_EQ(T9ConvertPreedit("54482", "JĪ HUÀ"), "jihua");
+}
+
+TEST(T9PreeditConverterTest, TonedCommentPreserveExisting) {
+    // 有声调 comment 已有的无声调场景不受影响（回归）
+    EXPECT_EQ(T9ConvertPreedit("54482", "ji gua"), "jigua");
+    EXPECT_EQ(T9ConvertPreedit("54482", "ji hua"), "jihua");
+    EXPECT_EQ(T9ConvertPreedit("5", "le"), "l");
+    EXPECT_EQ(T9ConvertPreedit("9", "zhong"), "zh");
+}
+
+// ── NormalizePinyinComment（调频声调保真的基础）──
+// 归一化用于：comment 匹配（容忍带调/无调差异）与带声调变体选择。
+// 核心不变量：带调与无声调归一化结果一致。
+
+TEST(NormalizePinyinCommentTest, TonedAndTonelessEquivalent) {
+    // 核心不变量：带声调与无声调的归一化结果一致（调频匹配的前提）
+    EXPECT_EQ(rime::NormalizePinyinComment("jì huà"),
+              rime::NormalizePinyinComment("ji hua"));
+    EXPECT_EQ(rime::NormalizePinyinComment("jī"),
+              rime::NormalizePinyinComment("ji"));
+    EXPECT_EQ(rime::NormalizePinyinComment("huà"),
+              rime::NormalizePinyinComment("hua"));
+}
+
+TEST(NormalizePinyinCommentTest, Basic) {
+    EXPECT_EQ(rime::NormalizePinyinComment("jì huà"), "jihua");
+    EXPECT_EQ(rime::NormalizePinyinComment("ji hua"), "jihua");
+    EXPECT_EQ(rime::NormalizePinyinComment("jī guā"), "jigua");
+}
+
+TEST(NormalizePinyinCommentTest, NeutralTonePreserved) {
+    // 轻声音节（簸箕 ji / 笑话 hua）全 ASCII，归一化原样保留
+    EXPECT_EQ(rime::NormalizePinyinComment("bò ji"), "boji");
+    EXPECT_EQ(rime::NormalizePinyinComment("xiào hua"), "xiaohua");
+    EXPECT_EQ(rime::NormalizePinyinComment("ji"), "ji");
+    EXPECT_EQ(rime::NormalizePinyinComment("hua"), "hua");
+}
+
+TEST(NormalizePinyinCommentTest, NonLetterCharsDropped) {
+    // 非字母字符（分隔符/括号/数字）被丢弃，与无声调拼音对齐
+    EXPECT_EQ(rime::NormalizePinyinComment("〔jì〕〔huà〕"), "jihua");
+    EXPECT_EQ(rime::NormalizePinyinComment("nǐ3"), "ni");
+}
+
+TEST(NormalizePinyinCommentTest, UppercaseNormalized) {
+    EXPECT_EQ(rime::NormalizePinyinComment("JĪ HUÀ"), "jihua");
+    EXPECT_EQ(rime::NormalizePinyinComment("JI HUA"), "jihua");
+}

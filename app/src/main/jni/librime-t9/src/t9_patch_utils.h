@@ -44,6 +44,12 @@ PacksState EvaluatePacksState(const std::string& custom_yaml_content,
 // 返回值末尾无多余的连续空行，供调用方继续追加合法补丁。
 std::string StripPacksLines(const std::string& custom_yaml_content);
 
+// 判定内容是否自带 preedit 管理型 lua filter（如万象 super_comment_preedit）：
+// 任意 `lua_filter@` 引用名含 "preedit" 即命中。相较旧版全表 "preedit" 子串
+// 扫描，不误伤仅含 preedit_format / 注释提及 preedit 的三方方案。
+// 命中时 DoEnsureT9SchemaPatches 默认 t9/isDisplayOriginalPreedit: true。
+bool HasPreeditLuaFilter(const std::string& content);
+
 }  // namespace t9_patch_utils
 }  // namespace rime
 

@@ -1,14 +1,21 @@
 #ifndef T9_SEGMENT_MODEL_H_
 #define T9_SEGMENT_MODEL_H_
 
+#include <cstdint>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "t9_buffer.h"
 #include "t9_pinyin_map.h"
 
 namespace rime {
+
+// 音节码的 RIME 无关表示（int32_t 与 rime::SyllableId 同型）：
+// 段模型属纯算法层（T9_ALGO_ONLY_BUILD），不依赖 RIME 头文件；
+// 处理器在边界与 rime::Code 互转（迭代器拷贝即可）。
+using T9SyllableCode = std::vector<int32_t>;
 
 // 段（Segment）：一个拼音音节的完整生命周期（设计文档 §3）。
 //
@@ -131,6 +138,20 @@ public:
     // 清空全部状态（对应 EnterIdle / ClearComposition 的 undo_model 同步）
     void Clear();
 
+    // ── 右选序列的调频捕获（text+code，与段模型同生命周期）──
+    // 每次右选 push 一条；码含声调真相（Phrase::code），供调频保留声调
+    // （无声调拼音解析会命中轻声音节，如万象 计划→ji/hua 轻声，导致丢声调）。
+    // Clear() 一并清空；MemorizeEntry 全量消费、ForgetEntry 弹栈回滚。
+    void PushCommitCapture(const std::string& text, const T9SyllableCode& code);
+    // 全部捕获（按选择顺序）；MemorizeEntry 校验文本拼接/音节数后消费。
+    const std::vector<std::pair<std::string, T9SyllableCode>>& commit_captures() const {
+        return commit_captures_;
+    }
+    // 弹出最近一次右选捕获（撤销段时由 ForgetEntry 消费）；空栈返回 nullopt。
+    std::optional<std::pair<std::string, T9SyllableCode>> PopLastCommitCapture();
+    // 仅清空捕获（MemorizeEntry 消费后调用；Clear() 内部也调用）。
+    void ClearCommitCaptures() { commit_captures_.clear(); }
+
     // 是否存在未撤销的 commit 操作（kRC/kTailConsume）——对应命令模式
     // HasPendingRightCommit（EnterIdle 时决定是否清空撤销栈）。
     bool HasPendingCommit() const;
@@ -250,6 +271,9 @@ private:
     bool last_backspace_undid_commit_ = false;
     // 撤销的 commit 操作计数（kRC/kTailConsume 各计 1），ConsumeUndoneCommitCount 清零
     int undone_commit_count_ = 0;
+    // 右选序列的调频捕获（text+code，按选择顺序）。生命周期见上方公开 API：
+    // Clear() 一并清空（EnterIdle 会话边界），Memorize/Forget 由处理器经访问器驱动。
+    std::vector<std::pair<std::string, T9SyllableCode>> commit_captures_;
 };
 
 }  // namespace rime

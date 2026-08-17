@@ -190,6 +190,20 @@ void T9UndoModel::Clear() {
     delete_mode_ = false;
     delete_min_pos_ = -1;
     last_backspace_undid_commit_ = false;
+    // 右选序列的调频捕获随段模型一并清空（EnterIdle 会话边界）。
+    commit_captures_.clear();
+}
+
+void T9UndoModel::PushCommitCapture(const std::string& text, const T9SyllableCode& code) {
+    commit_captures_.emplace_back(text, code);
+}
+
+std::optional<std::pair<std::string, T9SyllableCode>> T9UndoModel::PopLastCommitCapture() {
+    if (commit_captures_.empty())
+        return std::nullopt;
+    auto capture = std::move(commit_captures_.back());
+    commit_captures_.pop_back();
+    return capture;
 }
 
 bool T9UndoModel::HasPendingCommit() const {

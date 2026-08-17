@@ -1474,6 +1474,14 @@ static jboolean DoEnsureT9SchemaPatches(
 
     // 收集需要追加的补丁行（幂等：schema 或 custom 已含该组件则跳过）。
     std::vector<std::string> patch_lines;
+
+    // 方案自带 preedit 管理型 lua filter（万象 super_comment_preedit，
+    // HasPreeditLuaFilter 判定）→ 默认 isDisplayOriginalPreedit: true（透传，
+    // 让方案 lua 管理 preedit）；否则（t9_pinyin 无声调方案）默认 false。
+    // schema/custom 显式声明的 isDisplayOriginalPreedit 始终优先（下方补丁跳过）。
+    const bool has_schema_preedit_filter =
+        rime::t9_patch_utils::HasPreeditLuaFilter(schema_content) ||
+        rime::t9_patch_utils::HasPreeditLuaFilter(existing_content);
     if (schema_content.find("t9_processor") == std::string::npos &&
         existing_content.find("t9_processor") == std::string::npos) {
         patch_lines.push_back("  \"engine/processors/@before 0\": t9_processor");
@@ -1484,7 +1492,11 @@ static jboolean DoEnsureT9SchemaPatches(
     }
     if (schema_content.find("isDisplayOriginalPreedit") == std::string::npos &&
         existing_content.find("isDisplayOriginalPreedit") == std::string::npos) {
-        patch_lines.push_back("  \"t9/isDisplayOriginalPreedit\": false");
+        // 透传 true：避免 t9_filter 转换与方案 lua 的 preedit 管理冲突；
+        // 默认 false：t9_filter 管理 preedit（无声调方案）。
+        const char* preedit_default = has_schema_preedit_filter ? "true" : "false";
+        patch_lines.push_back(
+            std::string("  \"t9/isDisplayOriginalPreedit\": ") + preedit_default);
     }
     if (schema_content.find("t9_date_translator") == std::string::npos &&
         existing_content.find("t9_date_translator") == std::string::npos) {
@@ -1932,13 +1944,14 @@ Java_com_kingzcheung_xime_rime_RimeEngine_nativeIsModuleRegistered(
 
 // 右选候选：根据候选拼音与文本长度执行右侧选词（消费计算）。
 // 委托给 T9RightCommitHandler 三层消费算法（设计稿 §6.2）。
-// 注：传入候选拼音注释（comment）与候选词字数，而非索引，避免翻页后索引错位。
+// 注：传入候选拼音注释（comment）、候选文本与候选词字数，而非索引，避免翻页后索引错位。
 // 用户词典调频不在此处进行——由 Kotlin 在 full commit 上屏后经 nativeT9Memorize 单独调用。
 JNIEXPORT jboolean JNICALL
 Java_com_kingzcheung_xime_rime_RimeEngine_nativeT9SelectCandidate(
     JNIEnv* env,
     jobject thiz,
     jstring pinyin,
+    jstring text,
     jint text_length
 ) {
     rime::T9Processor* proc = rime::T9ProcessorRequire();
@@ -1948,7 +1961,15 @@ Java_com_kingzcheung_xime_rime_RimeEngine_nativeT9SelectCandidate(
     }
     const char* p = env->GetStringUTFChars(pinyin, nullptr);
     if (!p) return JNI_FALSE;
-    bool result = proc->SelectCandidate(std::string(p), text_length);
+    std::string candidate_text;
+    if (text) {
+        const char* t = env->GetStringUTFChars(text, nullptr);
+        if (t) {
+            candidate_text.assign(t);
+            env->ReleaseStringUTFChars(text, t);
+        }
+    }
+    bool result = proc->SelectCandidate(std::string(p), candidate_text, text_length);
     env->ReleaseStringUTFChars(pinyin, p);
     return result ? JNI_TRUE : JNI_FALSE;
 }

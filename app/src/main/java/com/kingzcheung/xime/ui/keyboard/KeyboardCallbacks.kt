@@ -48,9 +48,10 @@ data class KeyboardCallbacks(
      * 右侧候选词即将被 RIME select 前同步通知 T9 控制器。
      * 返回 true 表示控制器判断输入序列已被该候选词完整消费。
      * @param pinyin RIME 候选词注释
+     * @param text 候选词文本（可空），用于 C++ (comment, text) 双条件精确定位
      * @param textLength 候选词文字长度（汉字数），0 表示未知
      */
-    var onT9RightCandidateWillBeSelected: ((String?, Int) -> Boolean)? = null,
+    var onT9RightCandidateWillBeSelected: ((String?, String?, Int) -> Boolean)? = null,
     /**
      * T9 键盘切换离开（至数字/英文键盘）时调用。
      * 服务层负责提交首位候选词并清理 T9 状态。

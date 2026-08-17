@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <sstream>
 
 namespace rime {
 namespace t9_patch_utils {
@@ -93,6 +94,34 @@ std::string StripPacksLines(const std::string& custom_yaml_content) {
     pos = eol + 1;
   }
   return result;
+}
+
+bool HasPreeditLuaFilter(const std::string& content) {
+  // 逐行扫描 `lua_filter@` 引用名，含 "preedit" 即命中。
+  // 行首注释跳过（避免示例误判）；引用名用"包含"匹配（兼容
+  // *wanxiang.super_comment_preedit 前缀写法）。
+  std::istringstream iss(content);
+  std::string line;
+  while (std::getline(iss, line)) {
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    const size_t first = line.find_first_not_of(" \t");
+    if (first == std::string::npos || line[first] == '#') continue;
+
+    const size_t pos = line.find("lua_filter@");
+    if (pos == std::string::npos) continue;
+    size_t name_start = pos + std::string("lua_filter@").size();
+    size_t name_end = name_start;
+    while (name_end < line.size() && line[name_end] != ' ' && line[name_end] != '\t' &&
+           line[name_end] != '#' && line[name_end] != ']' && line[name_end] != '"' &&
+           line[name_end] != '\r') {
+      ++name_end;
+    }
+    const std::string ref = line.substr(name_start, name_end - name_start);
+    if (ref.find("preedit") != std::string::npos) {
+      return true;
+    }
+  }
+  return false;
 }
 
 }  // namespace t9_patch_utils
