@@ -629,6 +629,12 @@ private fun PluginsMarketTab(
     var isRefreshing by remember { mutableStateOf(false) }
     val pullRefreshState = rememberPullToRefreshState()
 
+    // 每次进入插件 Tab 时刷新本地已安装状态（如从插件设置页卸载后返回），
+    // 不重新拉取网络索引，避免缓存 installed=true 残留
+    LaunchedEffect(Unit) {
+        viewModel.refreshInstalledState()
+    }
+
     LaunchedEffect(uiState.toastMessage) {
         uiState.toastMessage?.let { message ->
             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
@@ -1840,6 +1846,11 @@ fun PluginMarketDetailContent(
     val viewModel: PluginMarketViewModel = viewModel()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
+    // 进入详情页时刷新本地已安装状态（卸载后返回不再残留 installed=true）
+    LaunchedEffect(Unit) {
+        viewModel.refreshInstalledState()
+    }
+
     LaunchedEffect(uiState.toastMessage) {
         uiState.toastMessage?.let { message ->
             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
@@ -1904,7 +1915,7 @@ private fun PluginDetailBody(
     val selectedVersion = uiState.selectedVersions[plugin.id]
         ?: plugin.resolvedVersion()?.version.orEmpty()
 
-    val installedPlugin = remember(item.plugin.id) {
+    val installedPlugin = remember(item.plugin.id, item.installed) {
         if (item.installed) {
             PluginManager.getAllInstallPlugins().find { it.id == item.plugin.id }
         } else {

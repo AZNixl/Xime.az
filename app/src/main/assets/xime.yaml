@@ -11,8 +11,8 @@ xime_index:
   # 可替换为自建代理/镜像，下载器按顺序依次尝试，直到成功为止。
   # 末尾需要 /。
   base_urls:
-    # - "https://cdn.jsdelivr.net/gh/ximeiorg/xime-index@master/"
-    # - "https://fastly.jsdelivr.net/gh/ximeiorg/xime-index@master/"
+    - "https://cdn.jsdelivr.net/gh/ximeiorg/xime-index@master/"
+    - "https://fastly.jsdelivr.net/gh/ximeiorg/xime-index@master/"
     - "https://index.ximei.me/"
     - "https://raw.githubusercontent.com/ximeiorg/xime-index/refs/heads/main/"
 

@@ -100,6 +100,29 @@ class PluginMarketViewModel(application: Application) : AndroidViewModel(applica
         loadPlugins()
     }
 
+    /**
+     * 仅重新计算已安装状态（不重新拉取网络索引）。
+     * 卸载插件后从其他页面返回市场时调用，避免缓存 installed=true 残留。
+     */
+    fun refreshInstalledState() {
+        viewModelScope.launch {
+            val installed = withContext(Dispatchers.IO) { installedVersions() }
+            _uiState.update { st ->
+                st.copy(
+                    plugins = st.plugins.map { p ->
+                        val isInstalled = p.plugin.id in installed
+                        if (p.installed != isInstalled || p.installedVersion != installed[p.plugin.id]) {
+                            p.copy(
+                                installed = isInstalled,
+                                installedVersion = installed[p.plugin.id],
+                            )
+                        } else p
+                    },
+                )
+            }
+        }
+    }
+
     fun selectCategory(category: String?) {
         _uiState.update { it.copy(selectedCategory = category) }
     }
