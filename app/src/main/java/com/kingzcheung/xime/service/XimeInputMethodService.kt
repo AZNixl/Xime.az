@@ -838,6 +838,10 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                             // 键盘内容在 Compose 内贴底，由 onComputeInsets 报告键盘内容顶部。
                             if (state.isCompact || state.isFloatingMode) {
                                 keyboardContainer.updateHeight(totalDp)
+                            } else {
+                                // 从悬浮/紧凑模式切回时恢复容器为 MATCH_PARENT，
+                                // 否则容器高度残留悬浮时的固定值导致布局异常。
+                                keyboardContainer.resetHeight()
                             }
                             currentEffectiveKeyboardHeight = if (state.isFloatingMode) keyboardHeight + floatingDragBarHeight + 50 + state.keyboardBottomPaddingDp
                                 else if (state.isCompact) HARDWARE_CANDIDATE_BAR_HEIGHT
