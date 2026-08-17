@@ -1248,7 +1248,9 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
 
         // 重置键盘布局到初始状态，避免切换应用后仍残留之前的布局（如英文、数字、符号）。
         // 必须携带当前 schemaId，否则 T9/笔画等专用布局会被错误重置为默认全键盘。
-        if (RimeEngine.isInitialized()) {
+        // restarting=true 表示同一输入会话内的状态刷新（应用 restartInput），此时不应
+        // 重置布局，否则数字/符号面板会在输入中被切回全键盘。
+        if (RimeEngine.isInitialized() && !restarting) {
             val rimeAscii = rimeEngine.isAsciiMode()
             uiState.value = uiState.value.copy(isAsciiMode = rimeAscii)
             // currentSchemaId 为空（如引擎重建后 updateSchemaName 尚未完成）时，
