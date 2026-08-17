@@ -226,7 +226,10 @@ class KeyboardViewModel(application: Application) : AndroidViewModel(application
             }
             is KeyboardDispatchAction.InputSessionStarted -> {
                 val currentPage = _page.value
-                if (currentPage is KeyboardPage.Main && currentPage.type == MainType.HANDWRITING) {
+                // 面板（数字/符号）不应被新会话事件重置，否则输入一个数字后键盘会切回全键盘
+                if (current is KeyboardViewState.NumberPanel || current is KeyboardViewState.CommonSymbolPanel) {
+                    Triple(current, _page.value, _keyboardState.value)
+                } else if (currentPage is KeyboardPage.Main && currentPage.type == MainType.HANDWRITING) {
                     Triple(_viewState.value, currentPage, _keyboardState.value)
                 } else {
                     val kb = initialKeyboardLayoutState(action.isAsciiMode, action.schemaId)
