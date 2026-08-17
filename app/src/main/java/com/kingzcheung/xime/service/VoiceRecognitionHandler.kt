@@ -202,7 +202,7 @@ class VoiceRecognitionHandler(
         onVoiceComplete()
     }
     
-    // BiBi 模式：先结束 composing，再只提交增量，避免重复与整段重写。
+    // 增量语音模式：先结束 composing，再只提交增量，避免重复与整段重写。
     private fun commitFinal(ic: InputConnection, finalText: String, partial: String) {
         ic.finishComposingText()
         if (partial.isNotEmpty() && finalText.startsWith(partial)) {

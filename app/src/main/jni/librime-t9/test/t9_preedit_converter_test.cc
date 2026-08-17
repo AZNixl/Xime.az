@@ -129,7 +129,7 @@ TEST(T9PreeditConverterTest, MixedCaseComment) {
     EXPECT_EQ(T9ConvertPreedit("54482", "Ji Gua"), "jigua");
 }
 
-// ── 带声调 comment（万象方案场景）──
+// ── 带声调 comment（带声调方案场景）──
 // 声调元音通过 NormalizePinyinComment 归一化为纯 ASCII 字母，
 // 不依赖逐字节 ASCII 过滤（避免 jī→j、huà→hu 的 bug）。
 
@@ -162,7 +162,7 @@ TEST(T9PreeditConverterTest, TonedCommentNandM) {
 }
 
 TEST(T9PreeditConverterTest, TonedCommentWeirdDelimiter) {
-    // 带声调 comment 混合雾凇风格括号 → 括号被过滤，声调被归一化
+    // 带声调 comment 混合全角括号 → 括号被过滤，声调被归一化
     EXPECT_EQ(T9ConvertPreedit("54482", "〔jī〕〔huà〕"), "jihua");
 }
 

@@ -99,7 +99,7 @@ std::string StripPacksLines(const std::string& custom_yaml_content) {
 bool HasPreeditLuaFilter(const std::string& content) {
   // 逐行扫描 `lua_filter@` 引用名，含 "preedit" 即命中。
   // 行首注释跳过（避免示例误判）；引用名用"包含"匹配（兼容
-  // *wanxiang.super_comment_preedit 前缀写法）。
+  // *super_comment_preedit 前缀写法）。
   std::istringstream iss(content);
   std::string line;
   while (std::getline(iss, line)) {

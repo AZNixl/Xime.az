@@ -52,24 +52,41 @@ internal class ImeTextCommit(private val service: XimeInputMethodService) {
                 Log.e(XimeInputMethodService.TAG, "Image file not found: $imagePath")
                 return false
             }
-            
+
+            // 按扩展名修正真实 MIME 类型（PNG/GIF/WebP 表情不应声明为 image/jpeg）
+            val actualMimeType = when (imageFile.extension.lowercase()) {
+                "png" -> "image/png"
+                "gif" -> "image/gif"
+                "webp" -> "image/webp"
+                "jpg", "jpeg" -> "image/jpeg"
+                else -> mimeType
+            }
+
+            // 宿主未声明支持图片 MIME 时 commitContent 必然失败，
+            // 提前返回 false，由调用方降级为复制到剪贴板
+            val supportedMimeTypes = service.currentInputEditorInfo?.contentMimeTypes
+            if (!supportsMimeType(supportedMimeTypes, actualMimeType)) {
+                Log.i(XimeInputMethodService.TAG, "Host does not support image commit (contentMimeTypes=${supportedMimeTypes?.contentToString()}), falling back to clipboard")
+                return false
+            }
+
             val cacheDir = File(service.cacheDir, "emoji_cache")
-            if (!service.cacheDir.exists()) {
-                service.cacheDir.mkdirs()
+            if (!cacheDir.exists()) {
+                cacheDir.mkdirs()
             }
             
-            val cacheFile = File(service.cacheDir, imageFile.name)
+            val cacheFile = File(cacheDir, imageFile.name)
             FileInputStream(imageFile).use { input ->
                 cacheFile.outputStream().use { output ->
                     input.copyTo(output)
                 }
             }
             
-            val uri = getContentUriForImage(cacheFile, mimeType) ?: return false
+            val uri = getContentUriForImage(cacheFile, actualMimeType) ?: return false
             
             val inputContentInfo = InputContentInfo(
                 uri,
-                android.content.ClipDescription("emoji_image", arrayOf(mimeType)),
+                android.content.ClipDescription("emoji_image", arrayOf(actualMimeType)),
                 null
             )
             
@@ -84,6 +101,16 @@ internal class ImeTextCommit(private val service: XimeInputMethodService) {
         } catch (e: Exception) {
             Log.e(XimeInputMethodService.TAG, "Failed to commit image", e)
             false
+        }
+    }
+
+    /** 判断宿主声明的 contentMimeTypes 是否支持指定 MIME 类型（支持通配符匹配）。 */
+    private fun supportsMimeType(declaredMimeTypes: Array<String>?, mimeType: String): Boolean {
+        if (declaredMimeTypes.isNullOrEmpty()) return false
+        return declaredMimeTypes.any { declared ->
+            declared == "*/*" ||
+                declared.equals(mimeType, ignoreCase = true) ||
+                (declared.endsWith("/*") && mimeType.startsWith(declared.removeSuffix("/*"), ignoreCase = true))
         }
     }
     
@@ -114,7 +141,7 @@ internal class ImeTextCommit(private val service: XimeInputMethodService) {
     /**
      * 生成图片 content URI。
      *
-     * 优先使用 FileProvider；Android 12+ 部分厂商 ROM（如一加）上
+     * 优先使用 FileProvider；Android 12+ 部分厂商 ROM 上
      * FileProvider.getUriForFile 内部 resolveContentProvider 以 USER_ALL(-10000)
      * 校验跨用户权限时抛 "Invalid userId -10000"，此时降级为 MediaStore
      * 插入图片获取系统 content URI（API 29+ 免权限）。

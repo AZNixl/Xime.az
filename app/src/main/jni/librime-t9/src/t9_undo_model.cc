@@ -496,7 +496,7 @@ bool T9UndoModel::UndoOp(const T9SegmentOp& op) {
             // （digit_length >= 2，如 li/ji）+ 逻辑首段（前面无非空段）+ 其后无活跃段 + tail 空。
             //   - 场景13 undo 里（li 2 位完整拼音）：合并撤销 LC，li 回 unassigned（9 次）。
             //   - 九/股 undo 九、场景30 undo 九（j 1 位字母段）：**不合并**，j 回 selected（拼音
-            //     保留），用户随后单独 undo LC(j)（删 5）——对标搜狗（九/股 9 次、场景30 11 次，
+            //     保留），用户随后单独 undo LC(j)（删 5）——对标主流输入法（九/股 9 次、场景30 11 次，
             //     2026-08-06 用户裁定，之前九/股 8 次为错误）。
             //   - 场景16/17/18 undo 价格/结婚后（tail 有数字）：非合并，段回 selected。
             bool merge_first =

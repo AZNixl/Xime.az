@@ -190,7 +190,13 @@ fun KeyboardView(
     val floatScaleFactor = if (state.isFloatingMode) cardWidthDp.toFloat() / screenW.toFloat() else 0.85f
     val floatFontScale = if (state.isFloatingMode) cardWidthDp.toFloat() / portraitScreenWidth.toFloat() else 1f
 
-    val contentModifier = modifier.keyboardBackground(themeScheme.keyboardBackground, state.isDarkTheme, keyboardBgColor)
+    val contentModifier = if (state.isFloatingMode) {
+        modifier.keyboardBackground(themeScheme.keyboardBackground, state.isDarkTheme, keyboardBgColor)
+    } else {
+        // 非浮动模式：渐变背景由 XimeInputMethodService 外层 Box 统一绘制（含导航栏区，
+        // 保证延伸到屏幕底部时渐变连续），此处不再叠加第二层背景。
+        modifier
+    }
     FloatingKeyboardContainer(
         isFloatingMode = state.isFloatingMode,
         scaleFactor = floatScaleFactor,
@@ -992,7 +998,7 @@ fun KeyboardView(
         }
         }
     }
-    }
+}
 }
 
 

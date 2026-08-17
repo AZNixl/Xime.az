@@ -563,7 +563,7 @@ bool T9Processor::BuildEntryForPinyin(const std::string& text,
         }
         auto it = syllabary_map_.find(syl);
         if (it == syllabary_map_.end()) {
-            // 带声调词典（如万象 běn）与无声调调频拼音（ben）格式差异：
+            // 带声调词典（如带声调方案 běn）与无声调调频拼音（ben）格式差异：
             // 表音节精确匹配失败时，借方案 Prism 解析（含 xlit 声调消除）。
             auto prism_id = ResolveSyllableViaPrism(syl);
             if (!prism_id) {
@@ -586,7 +586,7 @@ std::optional<SyllableId> T9Processor::ResolveSyllableViaPrism(
     if (!dict_ || !dict_->prism())
         return std::nullopt;
     // 用与查询侧一致的 Syllabifier 建图：Prism 内含方案 speller algebra
-    // （万象 xlit 声调消除、补丁注入的简拼派生），是"拼写→音节"的权威映射。
+    // （带声调方案的 xlit 声调消除、补丁注入的简拼派生），是"拼写→音节"的权威映射。
     // 例：ben → běn 的 SyllableId；ji → 所有带调/轻声音节的任一命中。
     Syllabifier syllabifier(" '");
     SyllableGraph graph;
@@ -1049,7 +1049,7 @@ void T9Processor::DeriveStateMachineFromUndoModel() {
     //   SELECTION：存在 selected 段 → 高亮最后 selected 段（优先于 INPUT，
     //     实测确认：左选段存在时左侧候选显示最后选中段的候选）
     //   INPUT：无 selected 但存在 unassigned 段/tail → 显示其候选
-    //   IDLE：全部 committed 或已删 → 空闲态（产品决策，与搜狗对齐）
+    //   IDLE：全部 committed 或已删 → 空闲态（产品决策，与主流输入法对齐）
     if (undo_model_.IsEmpty()) {
         state_machine_.EnterIdle();
         left_column_locked_ = false;

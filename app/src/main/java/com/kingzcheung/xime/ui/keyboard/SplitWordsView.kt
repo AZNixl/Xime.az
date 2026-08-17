@@ -45,12 +45,9 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.navigationBars
 import com.kingzcheung.xime.viewmodel.KeyboardViewModel
 import kotlin.math.max
 
@@ -308,6 +305,6 @@ fun SplitWordsView(
         }
 
         // 底部留空
-        Spacer(modifier = Modifier.height(if (isLandscape) 15.dp else maxOf(bottomPaddingDp.dp, with(LocalDensity.current) { WindowInsets.navigationBars.getBottom(this).toDp() })))
+        Spacer(modifier = Modifier.height(if (isLandscape) 15.dp else bottomPaddingDp.dp))
     }
 }
