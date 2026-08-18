@@ -301,16 +301,17 @@ private fun NumberRows(
                             .fillMaxHeight()
                             .weight(1f),
                     ) {
-                        IconKeyButton(
-                            icon = rememberVectorPainter(Icons.AutoMirrored.Filled.ArrowBack),
-                            onClick = { onKeyPress("abc") },
+                        KeyButton(
+                            text = "符号",
+                            onClick = { onKeyPress("symbol") },
                             backgroundColor = specialKeyBackgroundColor,
-                            iconColor = specialKeyTextColor,
+                            textColor = specialKeyTextColor,
                             modifier = Modifier.weight(1f),
-                            onPress = { onKeyPressDown?.invoke("abc") },
+                            onPress = { onKeyPressDown?.invoke("symbol") },
                             shadowEnabled = shadowEnabled,
                             shadowElevation = shadowElevation,
                             shadowShapeRadius = shadowShapeRadius,
+                            fontSize = ctrlFontSize,
                         )
                     }
 
@@ -397,17 +398,17 @@ private fun NumberRows(
                             .weight(1f),
                     ) {
 
-                        KeyButton(
-                            text = "符号",
-                            onClick = { onKeyPress("symbol") },
+
+                        IconKeyButton(
+                            icon = rememberVectorPainter(Icons.AutoMirrored.Filled.ArrowBack),
+                            onClick = { onKeyPress("abc") },
                             backgroundColor = specialKeyBackgroundColor,
-                            textColor = specialKeyTextColor,
+                            iconColor = specialKeyTextColor,
                             modifier = Modifier.weight(1f),
-                            onPress = { onKeyPressDown?.invoke("symbol") },
+                            onPress = { onKeyPressDown?.invoke("abc") },
                             shadowEnabled = shadowEnabled,
                             shadowElevation = shadowElevation,
                             shadowShapeRadius = shadowShapeRadius,
-                            fontSize = ctrlFontSize,
                         )
                         KeyButton(
                             text = "0",
