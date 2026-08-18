@@ -356,10 +356,16 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
                     
                     // 所有按键统一经过 Rime 引擎
                     // 字母键不进入此分支（即使 pendingEnglish 非空），需要继续积累编码
-                    if (pendingEnglish.isNotEmpty() && !key.matches(Regex("[a-zA-Z]"))) {
+                    // 英文模式（isAsciiMode）下非字母键（QWERTY 上滑的数字/符号、数字/符号面板）
+                    // 直接上屏，不进入 Rime 引擎与 pendingEnglish 累积（上滑字符即输即上）。
+                    if ((state.isAsciiMode || pendingEnglish.isNotEmpty()) && !key.matches(Regex("[a-zA-Z]"))) {
                         val finalKey = key
                         withContext(Dispatchers.Main) {
-                            service.commitText(pendingEnglish + finalKey)
+                            if (pendingEnglish.isNotEmpty()) {
+                                service.commitText(pendingEnglish + finalKey)
+                            } else {
+                                service.commitText(finalKey)
+                            }
                             service.candidateState.value = service.candidateState.value.copy(
                                 pendingEnglishText = "",
                                 associationCandidates = emptyList()
