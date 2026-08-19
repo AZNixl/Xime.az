@@ -204,7 +204,23 @@ fun KeyboardLayoutScreen(
             }
 
             is KeyboardLayoutState.T9Pinyin -> {
-                if (t9Controller != null) {
+                if (isHandwritingLookup) {
+                    HandwritingLookupKeyboard(
+                        keyTextColor = keyTextColor,
+                        specialKeyBgColor = specialKeyBgColor,
+                        keyboardBgColor = keyboardBgColor,
+                        shadowEnabled = kbShadow.enabled,
+                        shadowElevation = kbShadow.elevation.dp,
+                        shadowShapeRadius = kbShadow.shapeRadius.dp,
+                        onKeyPress = onKeyPress,
+                        onButtonFeedback = onHandwritingButtonFeedback,
+                        onCandidates = onHandwritingCandidates,
+                        onExit = { onHandwritingLookupExit?.invoke() },
+                        clearSignal = handwritingClearSignal,
+                        uiState = uiState,
+                        modifier = modifier,
+                    )
+                } else if (t9Controller != null) {
                     T9KeyboardLayout(
                         onKeyPress = onKeyPress,
                         callbacks = callbacks,
