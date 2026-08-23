@@ -30,6 +30,7 @@ fun SettingsScreen(
                 onNavigateToTheme = { navController.navigate(SettingsRoutes.Theme) },
                 onNavigateToKeyEffect = { navController.navigate(SettingsRoutes.KeyEffect) },
                 onNavigateToLayoutDisplay = { navController.navigate(SettingsRoutes.LayoutDisplay) },
+                onNavigateToKeySymbolEdit = { navController.navigate(SettingsRoutes.KeySymbolEdit) },
                 onNavigateToDictionary = { navController.navigate(SettingsRoutes.Dictionary) },
                 onNavigateToPlugins = { navController.navigate(SettingsRoutes.Plugins) },
                 onNavigateToModelLocal = { navController.navigate(SettingsRoutes.ModelLocal) },
@@ -147,6 +148,11 @@ fun SettingsScreen(
         }
         composable(SettingsRoutes.LayoutDisplay) {
             LayoutDisplaySettingsContent(
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(SettingsRoutes.KeySymbolEdit) {
+            KeySymbolEditContent(
                 onBack = { navController.popBackStack() }
             )
         }

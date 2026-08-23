@@ -69,6 +69,8 @@ fun NumberKeyboardLayout(
     onKeyPressDown: ((String) -> Unit)? = null,
     isFloatingMode: Boolean = false,
     specialKeyTextColor: Color = Color.White,
+    fifthRowEnabled: Boolean = false,
+    fifthRowHeightWeight: Float = 1f,
 ) {
 
     val configuration = LocalConfiguration.current
@@ -220,6 +222,15 @@ fun NumberKeyboardLayout(
                             bottom = bounds.bottom - keyboardBounds.top
                         )
                     })
+
+                // ── 增高行：与主键盘同步的底部空白 ──
+                if (fifthRowEnabled) {
+                    Spacer(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(fifthRowHeightWeight)
+                    )
+                }
             }
             }
         }

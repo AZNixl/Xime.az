@@ -1,0 +1,139 @@
+# ============================================================================
+# Xime 键盘自定义覆盖配置（xime.custom.yaml）
+# ============================================================================
+#
+# 【使用方法】
+# 1. 把本文件重命名为 xime.custom.yaml
+# 2. 放到手机：内部存储/Documents/Xime/rime/xime.custom.yaml
+# 3. 打开 Xime 设置页触发重载，或强行停止 Xime 后重开
+#
+# 【注意】
+# - 本文件是「覆盖配置」：只需写你想改的键，不用复制完整默认配置
+# - YAML 缩进必须是空格，冒号后要有空格
+# - qwerty   = 中文 26 键键盘
+# - qwerty_en = 英文 26 键键盘
+# ============================================================================
+
+keyboard:
+
+  # ── 全局按键外观（可选）────────────────────────────────────────────
+  # colors:
+  #   key_bg_color: 0xFFFFFF              # 按键底色（亮色）
+  #   key_bg_color_dark: 0x60FFFFFF       # 按键底色（暗色）
+  #   key_text_color: 0x202124            # 按键文字色（亮色）
+  #   key_text_color_dark: 0xE8EAED       # 按键文字色（暗色）
+  #   candidate_text_color: 0x202124      # 候选文字色（亮色）
+  #   candidate_text_color_dark: 0xE8EAED # 候选文字色（暗色）
+  # key:
+  #   corner_radius: 8                    # 按键圆角（dp）
+  # shadow:
+  #   enabled: true                       # 是否启用按键阴影
+  #   elevation: 0.5                      # 阴影高度（dp）
+
+  # ── 中文键盘 qwerty ───────────────────────────────────────────────
+  qwerty:
+    # button_layout: standard             # standard=默认布局 / compact=紧凑布局
+    # layout:
+    #   rows:
+    #     - [q, w, e, r, t, y, u, i, o, p]
+    #     - [a, s, d, f, g, h, j, k, l]
+    #     - [z, x, c, v, b, n, m]
+    keys:
+      # ── 手势说明 ────────────────────────────────────────────────
+      # tap:        点按
+      # swipe_up:   上滑（快速输入符号）
+      # swipe_down: 下滑（默认显示五笔字根提示，action:none 仅显示不上屏）
+      # long_press: 长按（display:"bubble" 弹气泡，values 为候选列表）
+      #
+      # 每个手势的值可以是：
+      #   - 字符串简写：tap: "q"            → 上屏 q
+      #   - 完整写法：  tap: { label: "，", value: "," }
+      #                 label = 键帽显示文字，value = 实际上屏字符
+      #   - 命令：     { label: "清空", action: "command", value: "clear_composition" }
+      #                 可用命令：clear_composition, show_ime_picker
+      #   - 动作：     select_all / copy / cut / paste / line_start / line_end
+      #                 / undo / none / repeat
+      # ────────────────────────────────────────────────────────────
+
+      # ── 第一行（字母键 + 上滑数字）─────────────────────────────
+      q: { tap: "q", swipe_up: "1", swipe_down: { label: "金 钅𠂊勺㐅 犭𱼀", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["q", "Q"] } }
+      w: { tap: "w", swipe_up: "2", swipe_down: { label: "人亻八癶", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["w", "W"] } }
+      e: { tap: "e", swipe_up: "3", swipe_down: { label: "月⺼彡乃用爫彡𧘇豕", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["e", "E", "è", "é", "ê", "ë"] } }
+      r: { tap: "r", swipe_up: "4", swipe_down: { label: "白手龵扌斤𰀪𠂆", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["r", "R"] } }
+      t: { tap: "t", swipe_up: "5", swipe_down: { label: "禾竹丿𠂉彳夂攵", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["t", "T"] } }
+      y: { tap: "y", swipe_up: "6", swipe_down: { label: "言讠文方广亠丶乀", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["y", "Y", "ÿ"] } }
+      u: { tap: "u", swipe_up: "7", swipe_down: { label: "立六辛冫丬门疒丷䒑", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["u", "U", "ù", "ú", "û", "ü"] } }
+      i: { tap: "i", swipe_up: "8", swipe_down: { label: "水氵小氺头𭕄⺌", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["i", "I", "ì", "í", "î", "ï"] } }
+      o: { tap: "o", swipe_up: "9", swipe_down: { label: "火灬米", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["o", "O", "ò", "ó", "ô", "õ", "ö", "ø"] } }
+      p: { tap: "p", swipe_up: "0", swipe_down: { label: "之辶冖宀廴礻", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["p", "P"] } }
+
+      # ── 第二行 ────────────────────────────────────────────────
+      a: { tap: "a", swipe_up: { label: "～", value: "~" }, swipe_down: { label: "工匚戈艹廿龷七弋戈", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["a", "A", "à", "á", "â", "ã", "ä", "å", "æ"] } }
+      s: { tap: "s", swipe_up: { label: "／", value: "/" }, swipe_down: { label: "木丁西", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["s", "S", "ß"] } }
+      d: { tap: "d", swipe_up: { label: "：", value: ":" }, swipe_down: { label: "大犬三古龵镸石厂丆", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["d", "D"] } }
+      f: { tap: "f", swipe_up: { label: "；", value: ";" }, swipe_down: { label: "土士二干十寸雨", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["f", "F"] } }
+      g: { tap: "g", swipe_up: { label: "“", value: "“" }, swipe_down: { label: "王龶五一戋", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["g", "G"] } }
+      h: { tap: "h", swipe_up: { label: "”", value: "”" }, swipe_down: { label: "目丨卜⺊上止龰", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["h", "H"] } }
+      j: { tap: "j", swipe_up: { label: "－", value: "-" }, swipe_down: { label: "日曰早廾刂虫丿Ⅱ", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["j", "J"] } }
+      k: { tap: "k", swipe_up: { label: "（", value: "(" }, swipe_down: { label: "口Ⅲ川", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["k", "K"] } }
+      l: { tap: "l", swipe_up: { label: "）", value: ")" }, swipe_down: { label: "田甲囗四罒车皿力", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["l", "L"] } }
+
+      # ── 第三行 ────────────────────────────────────────────────
+      z: { tap: "z", swipe_up: { label: "＊", value: "*" }, swipe_down: { label: "", action: "none", display: "key" }, long_press: { display: "bubble", values: ["z", "Z"] } }
+      x: { tap: "x", swipe_up: { label: "＠", value: "@" }, swipe_down: { label: "弓匕纟幺弓𠤎", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["x", "X"] } }
+      c: { tap: "c", swipe_up: { label: "、", value: "、" }, swipe_down: { label: "又巴马厶龴ス", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["c", "C", "ç"] } }
+      v: { tap: "v", swipe_up: { label: "？", value: "?" }, swipe_down: { label: "女刀九臼巛彐", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["v", "V"] } }
+      b: { tap: "b", swipe_up: { label: "！", value: "!" }, swipe_down: { label: "子耳了也阝卩㔾凵", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["b", "B"] } }
+      n: { tap: "n", swipe_up: { label: "％", value: "%" }, swipe_down: { label: "已己巳心忄羽乙𠃜", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["n", "N", "ñ"] } }
+      m: { tap: "m", swipe_up: { label: "＃", value: "#" }, swipe_down: { label: "山由贝冂冎几", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["m", "M"] } }
+
+      # ── 第四行（空格两侧的符号键）──────────────────────────────
+      # 左键：点按逗号，长按气泡选叹号
+      "'": { tap: { label: "，", value: "," }, long_press: { display: "bubble", values: [ { label: "！", action: "commit", value: "!" } ] } }
+      # 右键：点按句号，长按气泡选问号 / 选择输入法
+      earth: { tap: { label: "。", value: "." }, long_press: { display: "bubble", values: [ { label: "？", action: "commit", value: "?" }, { label: "选择输入法", action: "command", value: "show_ime_picker" } ] } }
+
+  # ── 英文键盘 qwerty_en ────────────────────────────────────────────
+  qwerty_en:
+    # button_layout: standard
+    # layout:
+    #   rows:
+    #     - [q, w, e, r, t, y, u, i, o, p]
+    #     - [a, s, d, f, g, h, j, k, l]
+    #     - [z, x, c, v, b, n, m]
+    keys:
+      # ── 第一行 ────────────────────────────────────────────────
+      q: { tap: "q", swipe_up: "1", long_press: { display: "bubble", values: ["q", "Q"] } }
+      w: { tap: "w", swipe_up: "2", long_press: { display: "bubble", values: ["w", "W"] } }
+      e: { tap: "e", swipe_up: "3", long_press: { display: "bubble", values: ["e", "E"] } }
+      r: { tap: "r", swipe_up: "4", long_press: { display: "bubble", values: ["r", "R"] } }
+      t: { tap: "t", swipe_up: "5", long_press: { display: "bubble", values: ["t", "T"] } }
+      y: { tap: "y", swipe_up: "6", long_press: { display: "bubble", values: ["y", "Y"] } }
+      u: { tap: "u", swipe_up: "7", long_press: { display: "bubble", values: ["u", "U"] } }
+      i: { tap: "i", swipe_up: "8", long_press: { display: "bubble", values: ["i", "I"] } }
+      o: { tap: "o", swipe_up: "9", long_press: { display: "bubble", values: ["o", "O"] } }
+      p: { tap: "p", swipe_up: "0", long_press: { display: "bubble", values: ["p", "P"] } }
+
+      # ── 第二行 ────────────────────────────────────────────────
+      a: { tap: "a", swipe_up: "~", long_press: { display: "bubble", values: ["a", "A"] } }
+      s: { tap: "s", swipe_up: "/", long_press: { display: "bubble", values: ["s", "S"] } }
+      d: { tap: "d", swipe_up: ":", long_press: { display: "bubble", values: ["d", "D"] } }
+      f: { tap: "f", swipe_up: ";", long_press: { display: "bubble", values: ["f", "F"] } }
+      g: { tap: "g", swipe_up: "\"", long_press: { display: "bubble", values: ["g", "G"] } }
+      h: { tap: "h", swipe_up: "\"", long_press: { display: "bubble", values: ["h", "H"] } }
+      j: { tap: "j", swipe_up: "-", long_press: { display: "bubble", values: ["j", "J"] } }
+      k: { tap: "k", swipe_up: "(", long_press: { display: "bubble", values: ["k", "K"] } }
+      l: { tap: "l", swipe_up: ")", long_press: { display: "bubble", values: ["l", "L"] } }
+
+      # ── 第三行 ────────────────────────────────────────────────
+      z: { tap: "z", swipe_up: "*", long_press: { display: "bubble", values: ["z", "Z"] } }
+      x: { tap: "x", swipe_up: "@", long_press: { display: "bubble", values: ["x", "X"] } }
+      c: { tap: "c", swipe_up: "、", long_press: { display: "bubble", values: ["c", "C"] } }
+      v: { tap: "v", swipe_up: "?", long_press: { display: "bubble", values: ["v", "V"] } }
+      b: { tap: "b", swipe_up: "!", long_press: { display: "bubble", values: ["b", "B"] } }
+      n: { tap: "n", swipe_up: "%", long_press: { display: "bubble", values: ["n", "N"] } }
+      m: { tap: "m", swipe_up: "#", long_press: { display: "bubble", values: ["m", "M"] } }
+
+      # ── 第四行 ────────────────────────────────────────────────
+      "'": { tap: { label: ",", value: "," }, long_press: { display: "bubble", values: ["!", "，"] } }
+      earth: { tap: { label: ".", value: "." }, long_press: { display: "bubble", values: ["?", "。", { label: "选择输入法", action: "command", value: "show_ime_picker" }] } }

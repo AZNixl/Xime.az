@@ -73,6 +73,7 @@ fun SettingsMainContent(
     onNavigateToTheme: () -> Unit,
     onNavigateToKeyEffect: () -> Unit,
     onNavigateToLayoutDisplay: () -> Unit,
+    onNavigateToKeySymbolEdit: () -> Unit = {},
     onNavigateToDictionary: () -> Unit,
     onNavigateToPlugins: () -> Unit,
     onNavigateToModelLocal: () -> Unit = {},
@@ -234,6 +235,18 @@ fun SettingsMainContent(
                         title = "布局与显示",
                         subtitle = "候选词显示、键盘布局等",
                         onClick = onNavigateToLayoutDisplay,
+                        showArrow = true
+                    )
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = 56.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+                    SettingsItem(
+                        icon = Icons.TwoTone.KeyboardAlt,
+                        title = "键盘符号编辑",
+                        subtitle = "自定义按键符号、滑动与长按功能",
+                        onClick = onNavigateToKeySymbolEdit,
                         showArrow = true
                     )
                 })

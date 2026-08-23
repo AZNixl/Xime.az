@@ -55,8 +55,9 @@ jobs:
             native-${{ runner.os }}-
 
       - name: Download native deps (ONNX Runtime)
-        run: ./gradlew downloadOnnx --no-daemon
-        
+        timeout-minutes: 15
+        run: ./gradlew downloadOnnx --no-daemon --info
+
       - name: Cache CMake build
         uses: actions/cache@v6
         with:

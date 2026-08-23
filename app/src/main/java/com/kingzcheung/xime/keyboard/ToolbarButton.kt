@@ -14,6 +14,7 @@ import androidx.compose.material.icons.twotone.Quickreply
 import androidx.compose.material.icons.twotone.SelectAll
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Create
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PictureInPicture
 import androidx.compose.material.icons.outlined.Gesture
@@ -39,6 +40,7 @@ enum class ToolbarButton(
     END("end", "段尾", Icons.AutoMirrored.TwoTone.LastPage),
     HANDWRITING_LOOKUP("handwriting_lookup", "手写找字", Icons.Outlined.Gesture),
     EDIT("edit", "编辑", Icons.TwoTone.Edit),
+    ASCII_SWITCH("ascii_switch", "中英切换", Icons.Default.Language),
     VOICE("voice", "语音", Icons.TwoTone.Mic);
 
     companion object {

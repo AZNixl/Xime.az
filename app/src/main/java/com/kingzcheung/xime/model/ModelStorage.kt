@@ -2,6 +2,7 @@ package com.kingzcheung.xime.model
 
 import android.content.Context
 import com.kingzcheung.xime.util.FileLogger
+import com.kingzcheung.xime.util.XimeStorage
 import java.io.File
 
 /**
@@ -18,7 +19,7 @@ object ModelStorage {
     private const val TAG = "ModelStorage"
 
     /** 统一根目录：filesDir/models/ */
-    fun getModelsRoot(context: Context): File = File(context.filesDir, "models")
+    fun getModelsRoot(context: Context): File = XimeStorage.modelsDir(context)
 
     /** 某模型的目录：filesDir/models/<modelId>/ */
     fun getModelDir(context: Context, modelId: String): File {
@@ -31,14 +32,14 @@ object ModelStorage {
      */
     private fun legacyDirFor(context: Context, modelId: String): File? {
         return when (modelId) {
-            "predictive-text-small" -> context.filesDir
+            "predictive-text-small" -> XimeStorage.root(context)
             // base 联想模型是新增版本，无旧路径，无需迁移
             "predictive-text-base" -> null
             // 手写模型：旧版在 filesDir 根目录
-            "ochwpro" -> context.filesDir
+            "ochwpro" -> XimeStorage.root(context)
             else -> {
                 // ASR 类：旧目录为 filesDir/asr_models/<id>/
-                val asrDir = File(context.filesDir, "asr_models/$modelId")
+                val asrDir = File(XimeStorage.root(context), "asr_models/$modelId")
                 if (asrDir.exists() && asrDir.isDirectory) asrDir else null
             }
         }
@@ -55,14 +56,14 @@ object ModelStorage {
         if (modelId == "predictive-text-small") {
             return migrateLegacy(
                 context, modelId,
-                listOf(context.filesDir),
+                listOf(XimeStorage.root(context)),
                 listOf("vocab.json", "model_int8_dynamic.onnx")
             )
         }
         if (modelId == "ochwpro") {
             return migrateLegacy(
                 context, modelId,
-                listOf(context.filesDir),
+                listOf(XimeStorage.root(context)),
                 listOf("ochwpro.onnx", "char_index.json")
             )
         }

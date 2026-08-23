@@ -235,6 +235,8 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     /** 键盘回调引用，用于在 RIME selectCandidate 前同步通知 T9 控制器 */
     internal var keyboardCallbacks: KeyboardCallbacks? = null
     internal var isChineseMode = true
+    /** 当前输入框是否为密码字段（onStartInputView 时根据 EditorInfo 检测） */
+    internal var isPasswordField = false
     internal var currentEffectiveKeyboardHeight: Int = 0
     internal var currentFloatingCardHeightDp: Int = 0
     internal var previousSchemaId: String = ""
@@ -1154,6 +1156,10 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         }
     }
 
+    override fun selectCandidate(index: Int) {
+        keyRouter.selectCandidate(index)
+    }
+
     // ── 原有方法 ──
 
     
@@ -1323,6 +1329,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         info?.let { updateEnterKeyText(it) }
+        isPasswordField = info?.let { isPasswordInputType(it.inputType) } ?: false
         hasHardwareKeyboard = resources.configuration.keyboard != android.content.res.Configuration.KEYBOARD_NOKEYS
         applyCompactMode()
         applyWindowBackground()
@@ -1470,6 +1477,18 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             lp.y = (lp.y + dy).coerceAtLeast(0)
             win.attributes = lp
         }
+    }
+
+    /** 检测 EditorInfo.inputType 是否为密码类输入（文本/数字/网页密码及可见密码） */
+    private fun isPasswordInputType(inputType: Int): Boolean {
+        val variation = inputType and android.text.InputType.TYPE_MASK_VARIATION
+        val klass = inputType and android.text.InputType.TYPE_MASK_CLASS
+        return (klass == android.text.InputType.TYPE_CLASS_TEXT &&
+                (variation == android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD ||
+                 variation == android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD ||
+                 variation == android.text.InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD)) ||
+               (klass == android.text.InputType.TYPE_CLASS_NUMBER &&
+                variation == android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD)
     }
 
     private fun updateEnterKeyText(editorInfo: EditorInfo) {

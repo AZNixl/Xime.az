@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import com.kingzcheung.xime.util.XimeStorage
 import java.io.File
 import java.io.FileOutputStream
 import java.net.URL
@@ -38,7 +39,7 @@ object SchemaConfigHelper {
     }
 
     fun checkSchemaFilesExist(context: Context, schemaId: String): Pair<Boolean, Boolean> {
-        val rimeDir = File(context.filesDir, "rime")
+        val rimeDir = XimeStorage.rimeDir(context)
         val schemaFile = File(rimeDir, "$schemaId.schema.yaml")
         val dictFile = File(rimeDir, "$schemaId.dict.yaml")
         return Pair(schemaFile.exists(), dictFile.exists())
@@ -52,7 +53,7 @@ object SchemaConfigHelper {
     suspend fun downloadSchema(context: Context, schemaId: String): Boolean {
         return withContext(Dispatchers.IO) {
             try {
-                val rimeDir = File(context.filesDir, "rime")
+                val rimeDir = XimeStorage.rimeDir(context)
                 if (!rimeDir.exists()) rimeDir.mkdirs()
 
                 val baseUrl = schemaDownloadUrls[schemaId]

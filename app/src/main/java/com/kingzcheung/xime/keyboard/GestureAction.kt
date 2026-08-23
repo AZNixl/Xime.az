@@ -37,6 +37,12 @@ interface ActionExecutor {
 
     /** 重复上一次输入。 */
     fun repeatLastInput()
+
+    /**
+     * 选择指定索引的候选词。
+     * @param index 候选词索引，从 0 开始；select_2 对应索引 1
+     */
+    fun selectCandidate(index: Int)
 }
 
 /**
@@ -121,6 +127,14 @@ enum class GestureAction(val value: String) {
     REPEAT("repeat") {
         override fun execute(context: ActionExecutor, value: String) {
             context.repeatLastInput()
+        }
+    },
+
+    /** 选择第二候选词（次选）。value 为候选索引，默认 1。 */
+    SELECT_SECOND_CANDIDATE("select_2") {
+        override fun execute(context: ActionExecutor, value: String) {
+            val index = value.toIntOrNull()?.coerceAtLeast(0) ?: 1
+            context.selectCandidate(index)
         }
     },
 

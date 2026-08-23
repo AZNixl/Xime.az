@@ -8,6 +8,7 @@ import android.util.Log
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
 import com.kingzcheung.xime.plugin.core.runtime.PluginManager
+import com.kingzcheung.xime.util.XimeStorage
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.*
@@ -107,7 +108,7 @@ class WirelessImportHelper(private val context: Context) {
                 }
                 // 返回 app 数据目录树（filesDir 下递归），供前端右侧展示
                 get("/tree") {
-                    val root = context.filesDir
+                    val root = XimeStorage.root(context)
                     if (root == null) {
                         call.respond(HttpStatusCode.InternalServerError)
                     } else {
@@ -161,7 +162,7 @@ class WirelessImportHelper(private val context: Context) {
                     }
                 }
                 post("/upload") {
-                    val rimeDir = File(context.filesDir, "rime")
+                    val rimeDir = XimeStorage.rimeDir(context)
                     rimeDir.mkdirs()
                     val tmpFile = File.createTempFile("upload_", ".tmp", rimeDir)
                     var lastName = ""
@@ -305,7 +306,7 @@ class WirelessImportHelper(private val context: Context) {
     /** 解析前端传来的路径（filesDir 的绝对路径或其相对路径），阻止目录穿越（..）。 */
     private fun safeResolve(rawPath: String?): File? {
         if (rawPath.isNullOrBlank()) return null
-        val root = context.filesDir ?: return null
+        val root = XimeStorage.root(context)
         val normalized = rawPath.replace('\\', '/')
         val candidate = File(normalized).canonicalFile
         val rootCanonical = root.canonicalFile

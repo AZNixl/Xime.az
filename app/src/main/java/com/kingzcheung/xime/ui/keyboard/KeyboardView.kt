@@ -197,6 +197,9 @@ fun KeyboardView(
         // 保证延伸到屏幕底部时渐变连续），此处不再叠加第二层背景。
         modifier
     }
+    // 全局自定义字体（含候选栏、键盘区），null = 系统默认
+    val globalFontFamily = AppFonts.getKeyboardFontFamily(LocalContext.current)
+    CompositionLocalProvider(LocalKeyboardFontFamily provides globalFontFamily) {
     FloatingKeyboardContainer(
         isFloatingMode = state.isFloatingMode,
         scaleFactor = floatScaleFactor,
@@ -305,6 +308,7 @@ fun KeyboardView(
                         ToolbarButton.PASTE -> ({ callbacks.onToolbarEditingAction?.invoke("paste") })
                         ToolbarButton.HOME -> ({ callbacks.onToolbarEditingAction?.invoke("home") })
                         ToolbarButton.END -> ({ callbacks.onToolbarEditingAction?.invoke("end") })
+                        ToolbarButton.ASCII_SWITCH -> ({ callbacks.onKeyPress("ime_switch", state.isAsciiMode) })
                         ToolbarButton.FLOAT -> ({ callbacks.onFloatingModeChange?.invoke(!state.isFloatingMode) })
                         ToolbarButton.HANDWRITING_LOOKUP -> ({ isHandwritingLookup = !isHandwritingLookup })
                         ToolbarButton.EDIT -> ({ viewModel.showOverlay(OverlayRoute.Edit) })
@@ -387,6 +391,7 @@ fun KeyboardView(
                             callbacks.onAssociationSelect?.invoke(index)
                         }
                     },
+                    onCursorMove = callbacks.onCursorMove,
                 ),
                 inlineSuggestions = inlineSuggestions,
             )
@@ -396,57 +401,6 @@ fun KeyboardView(
                 val mainType = (page as KeyboardPage.Main).type
                 when (mainType) {
                     MainType.FULL -> {
-                        val currentOnCursorMove = rememberUpdatedState(callbacks.onCursorMove)
-                        val suppressCursorMove = remember { mutableStateOf(false) }
-                        val cursorMod = if (callbacks.onCursorMove != null) {
-                            Modifier.pointerInput(Unit) {
-                                val stepThresholdPx = 25.dp.toPx()
-                                val activationThresholdPx = 60.dp.toPx()
-                                awaitEachGesture {
-                                    suppressCursorMove.value = false
-                                    val down = awaitFirstDown(requireUnconsumed = false)
-                                    var isCursorGesture = false
-                                    var lastSteps = 0
-                                    var activationAnchorX = down.position.x
-
-                                    do {
-                                        val event = awaitPointerEvent()
-                                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                                        val dx = change.position.x - down.position.x
-                                        val dy = change.position.y - down.position.y
-
-                                        if (!change.pressed) {
-                                            if (isCursorGesture) {
-                                                event.changes.forEach { it.consume() }
-                                            }
-                                            break
-                                        }
-                                        if (suppressCursorMove.value) break
-                                        if (abs(dx) > abs(dy) * 4f) {
-
-                                            if (!isCursorGesture && abs(dx) > activationThresholdPx) {
-                                                isCursorGesture = true
-                                                activationAnchorX = change.position.x
-                                            }
-
-                                            if (isCursorGesture) {
-                                                event.changes.forEach { it.consume() }
-                                                val dxFromAnchor = change.position.x - activationAnchorX
-                                                val steps = (dxFromAnchor / stepThresholdPx).toInt()
-                                                if (steps != lastSteps) {
-                                                    val delta = steps - lastSteps
-                                                    currentOnCursorMove.value?.invoke(delta)
-                                                    lastSteps = steps
-                                                }
-                                            }
-                                        }
-                                    } while (true)
-                                }
-                            }
-                        } else {
-                            Modifier
-                        }
-
                         val context = LocalContext.current
 
                         var modeChangeTarget: KeyboardLayoutAction by remember {
@@ -594,7 +548,7 @@ fun KeyboardView(
                             is KeyboardLayoutState.T9Pinyin -> t9OnKeyPress
                             is KeyboardLayoutState.Symbol -> symbolOnKeyPress
                         }
-                        CompositionLocalProvider(LocalSuppressCursorMove provides suppressCursorMove) {
+                        CompositionLocalProvider(LocalSuppressCursorMove provides remember { mutableStateOf(false) }) {
                             KeyboardLayoutScreen(
                                 keyboardState = keyboardState,
                                 uiState = state,
@@ -602,7 +556,7 @@ fun KeyboardView(
                                 viewModel = viewModel,
                                 callbacks = callbacks,
                                 onKeyPress = currentOnKeyPress,
-                                modifier = Modifier.weight(1f).then(cursorMod),
+                                modifier = Modifier.weight(1f),
                                 isHandwritingLookup = isHandwritingLookup,
                                 onHandwritingCandidates = { candidates ->
                                     val chars = candidates.map { it.char }
@@ -735,10 +689,15 @@ fun KeyboardView(
                         shadowEnabled = kbShadow.enabled,
                         shadowElevation = kbShadow.elevation.dp,
                         shadowShapeRadius = kbShadow.shapeRadius.dp,
-                        keyCornerRadius = kbKey.cornerRadius.dp,
+                        keyCornerRadius = run {
+                            val o = SettingsPreferences.getKeyCornerRadius(LocalContext.current)
+                            (if (o > 0) o else kbKey.cornerRadius).dp
+                        },
                         onKeyPressDown = callbacks.onKeyPressDown,
                         isFloatingMode = state.isFloatingMode,
                         specialKeyTextColor = specialKeyTextColor,
+                        fifthRowEnabled = SettingsPreferences.isFifthRowEnabled(LocalContext.current),
+                        fifthRowHeightWeight = SettingsPreferences.getFifthRowHeightWeight(LocalContext.current) / 10f,
                         modifier = Modifier.weight(1f).fillMaxWidth()
                     )
 
@@ -761,10 +720,15 @@ fun KeyboardView(
                         shadowEnabled = kbShadow.enabled,
                         shadowElevation = kbShadow.elevation.dp,
                         shadowShapeRadius = kbShadow.shapeRadius.dp,
-                        keyCornerRadius = kbKey.cornerRadius.dp,
+                        keyCornerRadius = run {
+                            val o = SettingsPreferences.getKeyCornerRadius(LocalContext.current)
+                            (if (o > 0) o else kbKey.cornerRadius).dp
+                        },
                         onKeyPressDown = callbacks.onKeyPressDown,
                         isFloatingMode = state.isFloatingMode,
                         specialKeyTextColor = specialKeyTextColor,
+                        fifthRowEnabled = SettingsPreferences.isFifthRowEnabled(LocalContext.current),
+                        fifthRowHeightWeight = SettingsPreferences.getFifthRowHeightWeight(LocalContext.current) / 10f,
                         modifier = Modifier.weight(1f).fillMaxWidth()
                     )
 
@@ -998,6 +962,7 @@ fun KeyboardView(
         }
         }
     }
+}
 }
 }
 

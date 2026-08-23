@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.PowerManager
 import android.util.Log
 import com.kingzcheung.xime.util.FileLogger
+import com.kingzcheung.xime.util.XimeStorage
 import com.charleskorn.kaml.Yaml
 import com.charleskorn.kaml.YamlConfiguration
 import com.charleskorn.kaml.YamlList
@@ -79,7 +80,7 @@ object SchemaManager {
         .build()
 
     fun getRimeDir(context: Context): File =
-        File(context.filesDir, "rime")
+        XimeStorage.rimeDir(context)
 
     /** 清空 rime/ 目录除 default.yaml、xime.yaml 及受保护文件之外的所有文件。 */
     fun cleanRimeDir(context: Context) {
@@ -102,7 +103,7 @@ object SchemaManager {
 
     /** market 根目录（与 rime/ 同级，不属于 Rime 数据）。 */
     fun getMarketDir(context: Context): File =
-        File(context.filesDir, "market")
+        File(XimeStorage.root(context), "market")
 
     /** 每个方案在 market 下的独立子目录：market/{schemeId}/ */
     fun getMarketDir(context: Context, schemeId: String): File =

@@ -1,5 +1,6 @@
 package com.kingzcheung.xime.service
 
+import com.kingzcheung.xime.util.XimeStorage
 import android.content.Intent
 import android.os.SystemClock
 import android.util.Log
@@ -51,8 +52,19 @@ internal class ImeSchemaController(private val service: XimeInputMethodService) 
             }
         }
         service.rimeEngine.toggleAsciiMode()
-        service.sessionController.persistSchemaOption("ascii_mode", service.rimeEngine.isAsciiMode())
+        val newAsciiMode = service.rimeEngine.isAsciiMode()
+        service.sessionController.persistSchemaOption("ascii_mode", newAsciiMode)
         service.updateUI()
+        // 强制同步键盘布局状态，避免偶发的 Compose 重组延迟导致布局与 ascii_mode 不一致
+        withContext(Dispatchers.Main) {
+            service.keyboardViewModel.dispatch(
+                com.kingzcheung.xime.ui.keyboard.KeyboardDispatchAction.AsciiModeChanged(
+                    newAsciiMode,
+                    service.uiState.value.currentSchemaId
+                        .ifBlank { SettingsPreferences.getCurrentSchema(service) }
+                )
+            )
+        }
     }
     
     internal fun reloadConfig() {
@@ -68,7 +80,7 @@ internal class ImeSchemaController(private val service: XimeInputMethodService) 
                 // 重新加载配色方案（用户可能在 xime.custom.yaml 中修改了 color_schemes）
                 KeyboardThemes.reload(service)
                 
-                val userDataDir = File(service.filesDir, "rime")
+                val userDataDir = XimeStorage.rimeDir(service)
                 
                 // 清空 build 目录，强制 Rime 全量重新编译
                 val buildDir = File(userDataDir, "build")

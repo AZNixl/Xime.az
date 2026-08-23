@@ -1,5 +1,6 @@
 package com.kingzcheung.xime.plugin
 
+import com.kingzcheung.xime.util.XimeStorage
 import android.content.Context
 import android.util.Log
 import com.kingzcheung.xime.plugin.core.api.AsrPlugin
@@ -69,7 +70,7 @@ object ExtensionManager {
             return null
         }
         
-        val iconDir = File(context.filesDir, "plugin_icons")
+        val iconDir = File(XimeStorage.root(context), "plugin_icons")
         if (!iconDir.exists()) iconDir.mkdirs()
         
         val iconFile = File(iconDir, "${pluginId}_$assetName")

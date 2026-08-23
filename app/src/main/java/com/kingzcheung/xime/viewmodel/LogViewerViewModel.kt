@@ -1,5 +1,6 @@
 package com.kingzcheung.xime.viewmodel
 
+import com.kingzcheung.xime.util.XimeStorage
 import android.app.Application
 import android.content.ContentValues
 import android.content.Intent
@@ -61,7 +62,7 @@ class LogViewerViewModel(application: Application) : AndroidViewModel(applicatio
             _uiState.update { it.copy(isLoading = true, errorMsg = null) }
             
             try {
-                val logsDir = File(context.filesDir, "logs")
+                val logsDir = XimeStorage.logsDir(context)
                 if (!logsDir.exists()) {
                     logsDir.mkdirs()
                     Log.i(TAG, "Created logs directory: ${logsDir.absolutePath}")

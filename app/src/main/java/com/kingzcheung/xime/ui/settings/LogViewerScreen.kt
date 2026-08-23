@@ -1,5 +1,6 @@
 package com.kingzcheung.xime.ui.settings
 
+import com.kingzcheung.xime.util.XimeStorage
 import android.util.Log
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -317,7 +318,7 @@ private fun LogFilesList(
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
                         Text(
-                            text = "日志目录: ${context.filesDir.absolutePath}/logs/",
+                            text = "日志目录: ${XimeStorage.logsDir(context).absolutePath}/",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                         )
@@ -346,7 +347,7 @@ private fun LogFilesList(
             item {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "日志位置: ${context.filesDir.absolutePath}/logs/",
+                    text = "日志位置: ${XimeStorage.logsDir(context).absolutePath}/",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                 )

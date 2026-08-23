@@ -1,5 +1,6 @@
 package com.kingzcheung.xime.association
 
+import com.kingzcheung.xime.util.XimeStorage
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
@@ -21,7 +22,7 @@ class UserNgramCache(private val context: Context) {
     private val recentInputs = mutableListOf<String>()
     
     private val cacheFile: File
-        get() = File(context.filesDir, CACHE_FILE_NAME)
+        get() = File(XimeStorage.root(context), CACHE_FILE_NAME)
     
     suspend fun initialize(): Boolean = withContext(Dispatchers.IO) {
         try {

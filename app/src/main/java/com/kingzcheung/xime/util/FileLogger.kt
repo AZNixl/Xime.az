@@ -1,5 +1,6 @@
 package com.kingzcheung.xime.util
 
+import com.kingzcheung.xime.util.XimeStorage
 import android.content.Context
 import android.util.Log
 import com.kingzcheung.xime.BuildConfig
@@ -38,7 +39,7 @@ object FileLogger {
     fun init(context: Context) {
         if (isInitialized) return
         try {
-            logsDir = File(context.filesDir, "logs")
+            logsDir = XimeStorage.logsDir(context)
             if (!logsDir!!.exists()) {
                 logsDir!!.mkdirs()
             }
@@ -217,7 +218,7 @@ object FileLogger {
 
     private fun cleanRimeLogs(context: Context) {
         try {
-            val rimeLogDir = File(File(context.filesDir, "rime"), "logs")
+            val rimeLogDir = File(XimeStorage.rimeDir(context), "logs")
             if (!rimeLogDir.exists()) return
             rimeLogDir.listFiles()
                 ?.filter { it.isFile && it.name.endsWith(".log") }

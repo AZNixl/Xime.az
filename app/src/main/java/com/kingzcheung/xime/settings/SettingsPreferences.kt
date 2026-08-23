@@ -41,6 +41,7 @@ object SettingsPreferences {
     
     const val KEY_SWIPE_UP_HINTS_ENABLED = "swipe_up_hints_enabled"
     const val KEY_SWIPE_DOWN_HINTS_ENABLED = "swipe_down_hints_enabled"
+    const val KEY_SYMBOL_HINTS_ENABLED = "symbol_hints_enabled"
     const val KEY_SHOW_PRESS_BUBBLE = "show_press_bubble"
 
     private const val KEY_MODE_CHANGE_TARGET = "mode_change_target"
@@ -430,6 +431,19 @@ object SettingsPreferences {
         getPrefs(context).edit().putBoolean(KEY_SWIPE_DOWN_HINTS_ENABLED, enabled).apply()
     }
 
+    // ── 符号显示总开关：一键开/关全部上滑+下滑符号提示 ──
+    fun isSymbolHintsEnabled(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_SYMBOL_HINTS_ENABLED, true)
+    }
+
+    fun setSymbolHintsEnabled(context: Context, enabled: Boolean) {
+        getPrefs(context).edit()
+            .putBoolean(KEY_SYMBOL_HINTS_ENABLED, enabled)
+            .putBoolean(KEY_SWIPE_UP_HINTS_ENABLED, enabled)
+            .putBoolean(KEY_SWIPE_DOWN_HINTS_ENABLED, enabled)
+            .apply()
+    }
+
     fun shouldShowPressBubble(context: Context): Boolean {
         return getPrefs(context).getBoolean(KEY_SHOW_PRESS_BUBBLE, true)
     }
@@ -626,5 +640,142 @@ object SettingsPreferences {
 
     fun setClipboardSyncPluginId(context: Context, pluginId: String) {
         getPrefs(context).edit().putString(KEY_CLIPBOARD_SYNC_PLUGIN_ID, pluginId).apply()
+    }
+
+    // ── 滑动灵敏度（同时作用于退格键滑动选中删除、空格键滑动移动光标）──
+
+    private const val KEY_SWIPE_SENSITIVITY = "swipe_sensitivity"
+
+    /** 默认滑动灵敏度（dp）：开始触发手势所需的滑动距离 */
+    const val DEFAULT_SWIPE_SENSITIVITY_DP = 12
+
+    /** 获取滑动灵敏度（dp，5~30，越小越灵敏） */
+    fun getSwipeSensitivityDp(context: Context): Int {
+        return getPrefs(context).getInt(KEY_SWIPE_SENSITIVITY, DEFAULT_SWIPE_SENSITIVITY_DP)
+    }
+
+    /** 保存滑动灵敏度（dp，5~30，越小越灵敏） */
+    fun setSwipeSensitivityDp(context: Context, sensitivityDp: Int) {
+        getPrefs(context).edit().putInt(KEY_SWIPE_SENSITIVITY, sensitivityDp.coerceIn(5, 30)).apply()
+    }
+
+    // ── 空格键自定义显示 ──
+
+    private const val KEY_SPACE_CUSTOM_LABEL = "space_custom_label"
+
+    /** 空格键自定义显示内容；空字符串表示显示方案名称（默认） */
+    fun getSpaceCustomLabel(context: Context): String {
+        return getPrefs(context).getString(KEY_SPACE_CUSTOM_LABEL, "") ?: ""
+    }
+
+    /** 设置空格键自定义显示内容；传空字符串恢复显示方案名称 */
+    fun setSpaceCustomLabel(context: Context, label: String) {
+        getPrefs(context).edit().putString(KEY_SPACE_CUSTOM_LABEL, label).apply()
+    }
+
+    // ── 键盘逐行高度（第 1~4 行权重，默认 10 表示 1.0f；范围 5~20 即 0.5~2.0）──
+
+    private const val KEY_ROW_HEIGHT_PREFIX = "row_height_weight_"
+    const val DEFAULT_ROW_HEIGHT_WEIGHT = 10
+
+    /** 获取第 [row] 行（0-based，0~3）的高度权重（整数，10 = 1.0f） */
+    fun getRowHeightWeight(context: Context, row: Int): Int {
+        return getPrefs(context).getInt("$KEY_ROW_HEIGHT_PREFIX$row", DEFAULT_ROW_HEIGHT_WEIGHT)
+    }
+
+    /** 设置第 [row] 行（0-based，0~3）的高度权重（整数，10 = 1.0f，范围 5~20） */
+    fun setRowHeightWeight(context: Context, row: Int, weight: Int) {
+        getPrefs(context).edit().putInt("$KEY_ROW_HEIGHT_PREFIX$row", weight.coerceIn(5, 20)).apply()
+    }
+
+    // ── 第五行（增高行/快捷栏）开关 ──
+
+    private const val KEY_FIFTH_ROW_ENABLED = "fifth_row_enabled"
+
+    /** 第五行（快捷栏：剪贴板 + 语音键）是否显示，默认开启 */
+    fun isFifthRowEnabled(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_FIFTH_ROW_ENABLED, true)
+    }
+
+    /** 设置第五行是否显示 */
+    fun setFifthRowEnabled(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_FIFTH_ROW_ENABLED, enabled).apply()
+    }
+
+    // ── 增高行高度权重（10 = 1.0f，范围 2~20 即 0.2x~2.0x）──
+
+    private const val KEY_FIFTH_ROW_HEIGHT_WEIGHT = "fifth_row_height_weight"
+
+    /** 增高行高度权重（整数，10 = 1.0f） */
+    fun getFifthRowHeightWeight(context: Context): Int {
+        return getPrefs(context).getInt(KEY_FIFTH_ROW_HEIGHT_WEIGHT, DEFAULT_ROW_HEIGHT_WEIGHT)
+    }
+
+    /** 设置增高行高度权重（整数，10 = 1.0f，范围 2~20） */
+    fun setFifthRowHeightWeight(context: Context, weight: Int) {
+        getPrefs(context).edit().putInt(KEY_FIFTH_ROW_HEIGHT_WEIGHT, weight.coerceIn(2, 20)).apply()
+    }
+
+    // ── 按键圆角（dp，0 = 跟随 xime.yaml keyboard.key.corner_radius）──
+
+    const val KEY_KEY_CORNER_RADIUS = "key_corner_radius"
+
+    /** 按键圆角（dp），0 表示未自定义（用 xime.yaml 默认） */
+    fun getKeyCornerRadius(context: Context): Int {
+        return getPrefs(context).getInt(KEY_KEY_CORNER_RADIUS, 0)
+    }
+
+    /** 设置按键圆角（dp，范围 0~24；0 = 恢复默认） */
+    fun setKeyCornerRadius(context: Context, radius: Int) {
+        getPrefs(context).edit().putInt(KEY_KEY_CORNER_RADIUS, radius.coerceIn(0, 24)).apply()
+    }
+
+    // ── 英文键盘跟随中文键盘符号（中文区自定义符号自动同步到英文区）──
+
+    const val KEY_EN_FOLLOW_ZH_SYMBOLS = "en_follow_zh_symbols"
+
+    fun isEnFollowZhSymbols(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_EN_FOLLOW_ZH_SYMBOLS, false)
+    }
+
+    fun setEnFollowZhSymbols(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_EN_FOLLOW_ZH_SYMBOLS, enabled).apply()
+    }
+
+    // ── 英文模式输入码直接上屏（默认 false = 词典联想 + 空格确认）──
+
+    private const val KEY_ENGLISH_DIRECT_COMMIT = "english_direct_commit"
+
+    /** 英文状态下输入码是否直接上屏（true=直接上屏；false=英文词典联想，空格确认上屏） */
+    fun isEnglishDirectCommit(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_ENGLISH_DIRECT_COMMIT, false)
+    }
+
+    fun setEnglishDirectCommit(context: Context, direct: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_ENGLISH_DIRECT_COMMIT, direct).apply()
+    }
+
+    // ── 键盘字体（/Documents/Xime/fonts/ 下的 ttf/otf 文件名列表，逗号分隔；空 = 系统默认）──
+    // 顺序即回退顺序：第一个字体缺少的字形依次用后续字体补，最后自动回退系统默认+内置 ChaiPUA。
+
+    private const val KEY_KEYBOARD_FONT = "keyboard_font"
+
+    /** 获取键盘字体文件名有序列表（先选优先）；空列表表示系统默认字体 */
+    fun getKeyboardFonts(context: Context): List<String> {
+        val raw = getPrefs(context).getString(KEY_KEYBOARD_FONT, "") ?: ""
+        return raw.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+    }
+
+    /** 兼容旧调用：取第一个字体文件名；空字符串表示系统默认 */
+    fun getKeyboardFont(context: Context): String = getKeyboardFonts(context).firstOrNull() ?: ""
+
+    /** 设置键盘字体文件名有序列表（fonts 目录下的文件名）；传空列表恢复默认 */
+    fun setKeyboardFonts(context: Context, fontFileNames: List<String>) {
+        getPrefs(context).edit().putString(KEY_KEYBOARD_FONT, fontFileNames.joinToString(",")).apply()
+    }
+
+    /** 兼容旧调用：单字体设置 */
+    fun setKeyboardFont(context: Context, fontFileName: String) {
+        setKeyboardFonts(context, if (fontFileName.isEmpty()) emptyList() else listOf(fontFileName))
     }
 }

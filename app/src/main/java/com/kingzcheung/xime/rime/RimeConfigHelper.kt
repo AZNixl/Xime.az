@@ -8,6 +8,7 @@ import com.kingzcheung.xime.settings.SchemaConfigHelper
 import com.kingzcheung.xime.settings.SchemaManifestManager
 import com.kingzcheung.xime.settings.SchemaManager
 import com.kingzcheung.xime.settings.SettingsPreferences
+import com.kingzcheung.xime.util.XimeStorage
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -23,7 +24,7 @@ object RimeConfigHelper {
     private val deploymentLock = Any()
     
     suspend fun initializeRimeDataAsync(context: Context): Pair<String, String> {
-        val rimeDir = File(context.filesDir, "rime")
+        val rimeDir = XimeStorage.rimeDir(context)
         
         // 迁移旧目录结构 (rime/shared/ + rime/user/) → 单一 rime/ 目录
         migrateOldStructure(context, rimeDir)
@@ -36,6 +37,7 @@ object RimeConfigHelper {
         }
         
         copyAssetsToRimeDir(context, rimeDir)
+        exportKeyboardConfigFiles(context, rimeDir)
         // F1: assets 会用内置 default.yaml 覆盖，这里把启用方案重新写回 schema_list
         SchemaManager.applyEnabledSchemasToDefaultYaml(context)
         // 为所有启用方案打个人词库补丁
@@ -64,7 +66,7 @@ object RimeConfigHelper {
                 return true
             }
             Log.i(TAG, "Deployment hash mismatch or missing")
-            val buildDir = File(context.filesDir, "rime/build")
+            val buildDir = File(XimeStorage.rimeDir(context), "build")
             val buildExists = buildDir.exists() && buildDir.listFiles()?.isNotEmpty() == true
             val engine = RimeEngine.getInstance()
             val deployed: Boolean
@@ -95,7 +97,7 @@ object RimeConfigHelper {
     }
     
     fun initializeRimeData(context: Context): Pair<String, String> {
-        val rimeDir = File(context.filesDir, "rime")
+        val rimeDir = XimeStorage.rimeDir(context)
         
         migrateOldStructure(context, rimeDir)
         
@@ -104,6 +106,7 @@ object RimeConfigHelper {
         }
         
         copyAssetsToRimeDir(context, rimeDir)
+        exportKeyboardConfigFiles(context, rimeDir)
         // F1: 同步初始化路径也写回 default.yaml 的 schema_list
         SchemaManager.applyEnabledSchemasToDefaultYaml(context)
         runBlocking { PersonalDictManager.ensureSchemaPacks(context) }
@@ -120,7 +123,7 @@ object RimeConfigHelper {
     }
 
     fun isDeploymentComplete(context: Context): Boolean {
-        val rimeDir = File(context.filesDir, "rime")
+        val rimeDir = XimeStorage.rimeDir(context)
         val buildDir = File(rimeDir, "build")
         if (!buildDir.exists()) return false
 
@@ -161,7 +164,7 @@ object RimeConfigHelper {
     }
 
     private fun computeDeploymentHash(context: Context): String {
-        val rimeDir = File(context.filesDir, "rime")
+        val rimeDir = XimeStorage.rimeDir(context)
         val digest = java.security.MessageDigest.getInstance("SHA-256")
 
         val enabledSchemas = SchemaManager.getEnabledSchemas(context)
@@ -289,9 +292,17 @@ object RimeConfigHelper {
         }
     }
 
+    /**
+     * 键盘配置导出已停用：键盘符号/手势统一在设置页「键盘符号编辑」维护，
+     * 不再向 /Documents/Xime/rime/ 导出 xime.yaml / xime.custom.yaml.example。
+     */
+    private fun exportKeyboardConfigFiles(context: Context, rimeDir: File) {
+        // no-op
+    }
+
     private fun migrateOldStructure(context: Context, rimeDir: File) {
-        val oldSharedDir = File(context.filesDir, "rime/shared")
-        val oldUserDir = File(context.filesDir, "rime/user")
+        val oldSharedDir = File(XimeStorage.rimeDir(context), "shared")
+        val oldUserDir = File(XimeStorage.rimeDir(context), "user")
         
         if (!oldSharedDir.exists() && !oldUserDir.exists()) return
         
@@ -328,7 +339,7 @@ object RimeConfigHelper {
 
     /** 迁移旧版 market 目录（rime/market/ → market/）。 */
     private fun migrateOldMarketDir(context: Context) {
-        val oldMarket = File(context.filesDir, "rime/market")
+        val oldMarket = File(XimeStorage.rimeDir(context), "market")
         if (!oldMarket.exists()) return
 
         val newMarket = SchemaManager.getMarketDir(context)

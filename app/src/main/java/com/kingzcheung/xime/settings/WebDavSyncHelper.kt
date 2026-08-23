@@ -1,5 +1,6 @@
 package com.kingzcheung.xime.settings
 
+import com.kingzcheung.xime.util.XimeStorage
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
@@ -74,6 +75,14 @@ object WebDavSyncHelper {
         return name.endsWith(".yaml") || name.endsWith(".txt")
     }
 
+    // 同步根目录：/Documents/Xime/（fonts、build 等本地资源目录不同步）
+    private val excludedSyncDirs = setOf("fonts", "build")
+
+    private fun isExcludedSyncPath(relativePath: String): Boolean {
+        val top = relativePath.substringBefore('/')
+        return top in excludedSyncDirs
+    }
+
     suspend fun uploadSchemas(
         context: Context,
         baseUrl: String,
@@ -85,16 +94,18 @@ object WebDavSyncHelper {
         try {
             val headers = authHeaders(username, password)
             val base = normalizeUrl(baseUrl)
-            val remoteBase = "$base/$remotePath/rime"
+            val remoteBase = "$base/$remotePath"
 
-            val rimeDir = File(context.filesDir, "rime")
+            // 同步整个 /Documents/Xime/ 根目录（rime/ 等子目录）
+            val rootDir = XimeStorage.root(context)
 
             ensureRemoteDir(client, remoteBase, headers)
 
-            if (rimeDir.exists()) {
-                rimeDir.walkTopDown().forEach { file ->
+            if (rootDir.exists()) {
+                rootDir.walkTopDown().forEach { file ->
                     if (file.isFile && isSyncableFile(file.name)) {
-                        val relativePath = file.relativeTo(rimeDir).path
+                        val relativePath = file.relativeTo(rootDir).path
+                        if (isExcludedSyncPath(relativePath)) return@forEach
                         val remoteUrl = "$remoteBase/$relativePath"
 
                         // 确保远程父目录存在
@@ -133,10 +144,11 @@ object WebDavSyncHelper {
         try {
             val headers = authHeaders(username, password)
             val base = normalizeUrl(baseUrl)
-            val remoteBase = "$base/$remotePath/rime"
+            val remoteBase = "$base/$remotePath"
 
-            val rimeDir = File(context.filesDir, "rime")
-            if (!rimeDir.exists()) rimeDir.mkdirs()
+            // 同步整个 /Documents/Xime/ 根目录
+            val rootDir = XimeStorage.root(context)
+            if (!rootDir.exists()) rootDir.mkdirs()
 
             onProgress("读取远程文件列表...")
             val remoteFiles = listRemoteDirRecursive(client, remoteBase, headers)
@@ -151,8 +163,9 @@ object WebDavSyncHelper {
                 } catch (e: Exception) {
                     relativePathEncoded
                 }
+                if (isExcludedSyncPath(relativePath)) continue
 
-                val localFile = File(rimeDir, relativePath)
+                val localFile = File(rootDir, relativePath)
                 localFile.parentFile?.mkdirs()
 
                 val fullUrl = if (remoteFileUrl.startsWith("http://") || remoteFileUrl.startsWith("https://")) {

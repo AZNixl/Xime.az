@@ -1,5 +1,6 @@
 package com.kingzcheung.xime.settings
 
+import com.kingzcheung.xime.util.XimeStorage
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
@@ -51,7 +52,7 @@ object RimeExportManager {
         try {
             val dateStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
             val fileName = "Xime配置-$dateStr.zip"
-            val rimeDir = File(context.filesDir, "rime")
+            val rimeDir = XimeStorage.rimeDir(context)
             if (!rimeDir.exists()) {
                 return Result.failure(Exception("Rime 目录不存在"))
             }

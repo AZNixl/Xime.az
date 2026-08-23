@@ -19,6 +19,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
@@ -265,6 +266,41 @@ fun LayoutDisplaySettingsContent(
 
             item {
                 SettingsSection(title = "按键手势", content = {
+                    // 符号显示总开关（一键开/关全部上滑+下滑符号）
+                    var symbolHintsEnabled by remember {
+                        mutableStateOf(SettingsPreferences.isSymbolHintsEnabled(context))
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "符号显示",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                text = "开启显示全部符号，关闭则全部不显示",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = symbolHintsEnabled,
+                            onCheckedChange = { newValue ->
+                                symbolHintsEnabled = newValue
+                                SettingsPreferences.setSymbolHintsEnabled(context, newValue)
+                            }
+                        )
+                    }
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = 16.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
                     var swipeUpEnabled by remember {
                         mutableStateOf(SettingsPreferences.isSwipeUpHintsEnabled(context))
                     }
@@ -362,8 +398,341 @@ fun LayoutDisplaySettingsContent(
                             }
                         )
                     }
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = 16.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+                    // ── 滑动灵敏度（退格滑动选中删除 + 空格/键盘区滑动移动光标）──
+                    var swipeSensitivity by remember {
+                        mutableStateOf(SettingsPreferences.getSwipeSensitivityDp(context).toFloat())
+                    }
+                    Column(
+                        modifier = Modifier.padding(16.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "滑动灵敏度",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(
+                                    text = "作用于候选栏滑动移动光标；数值越小越灵敏",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "${swipeSensitivity.toInt()} dp",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Slider(
+                            value = swipeSensitivity,
+                            onValueChange = { swipeSensitivity = it },
+                            onValueChangeFinished = {
+                                SettingsPreferences.setSwipeSensitivityDp(context, swipeSensitivity.toInt())
+                            },
+                            valueRange = 5f..30f,
+                            steps = 24
+                        )
+                    }
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = 16.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+                    // ── 空格键自定义显示 ──
+                    var spaceCustomLabel by remember {
+                        mutableStateOf(SettingsPreferences.getSpaceCustomLabel(context))
+                    }
+                    Column(
+                        modifier = Modifier.padding(16.dp)
+                    ) {
+                        Text(
+                            text = "空格键自定义显示",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = "设置后空格键显示自定义内容；留空则显示当前方案名称",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = spaceCustomLabel,
+                            onValueChange = {
+                                spaceCustomLabel = it
+                                SettingsPreferences.setSpaceCustomLabel(context, it)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            placeholder = { Text("留空显示方案名称") }
+                        )
+                    }
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = 16.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+                    // ── 英文输入码直接上屏 ──
+                    var englishDirectCommit by remember {
+                        mutableStateOf(SettingsPreferences.isEnglishDirectCommit(context))
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "英文直接上屏",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                text = "开启后英文状态输入码即输即上屏；关闭则为英文词典联想、空格确认上屏（密码框内始终直接上屏）",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = englishDirectCommit,
+                            onCheckedChange = { newValue ->
+                                englishDirectCommit = newValue
+                                SettingsPreferences.setEnglishDirectCommit(context, newValue)
+                            }
+                        )
+                    }
+                })
+            }
+
+            // ── 键盘行高（第 1~4 行各自可调 + 第五行开关）──
+            item {
+                SettingsSection(title = "键盘行高", content = {
+                    // 第五行（增高行）开关
+                    var fifthRowEnabled by remember {
+                        mutableStateOf(SettingsPreferences.isFifthRowEnabled(context))
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "增高行",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                text = "在键盘底部增加一行空白区域，关闭后键盘整体变矮",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = fifthRowEnabled,
+                            onCheckedChange = { newValue ->
+                                fifthRowEnabled = newValue
+                                SettingsPreferences.setFifthRowEnabled(context, newValue)
+                            }
+                        )
+                    }
+                    // 增高行高度（仅在开启时显示）
+                    if (fifthRowEnabled) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(start = 16.dp),
+                            thickness = 0.5.dp,
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        )
+                        var fifthHeight by remember {
+                            mutableStateOf(SettingsPreferences.getFifthRowHeightWeight(context).toFloat())
+                        }
+                        Column(
+                            modifier = Modifier.padding(16.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "增高行高度",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Text(
+                                    text = String.format("%.1fx", fifthHeight / 10f),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            Slider(
+                                value = fifthHeight,
+                                onValueChange = { fifthHeight = it },
+                                onValueChangeFinished = {
+                                    SettingsPreferences.setFifthRowHeightWeight(context, fifthHeight.toInt())
+                                },
+                                valueRange = 2f..20f,
+                                steps = 17
+                            )
+                        }
+                    }
+                })
+            }
+
+            // ── 按键圆角 ──
+            item {
+                SettingsSection(title = "按键圆角", content = {
+                    var radius by remember {
+                        mutableStateOf(SettingsPreferences.getKeyCornerRadius(context).toFloat())
+                    }
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "圆角半径",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Text(
+                                text = if (radius <= 0f) "默认" else "${radius.toInt()} dp",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        Slider(
+                            value = radius,
+                            onValueChange = { radius = it },
+                            onValueChangeFinished = {
+                                SettingsPreferences.setKeyCornerRadius(context, radius.toInt())
+                            },
+                            valueRange = 0f..24f,
+                            steps = 23
+                        )
+                        Text(
+                            text = "0 为跟随默认（xime.yaml corner_radius）",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                })
+            }
+
+            // ── 键盘字体（/Documents/Xime/fonts/，多选，顺序即回退顺序）──
+            item {
+                SettingsSection(title = "键盘字体", content = {
+                    var selectedFonts by remember {
+                        mutableStateOf(SettingsPreferences.getKeyboardFonts(context))
+                    }
+                    // 进入页面时刷新字体列表
+                    val availableFonts = remember {
+                        com.kingzcheung.xime.ui.keyboard.AppFonts.listAvailableFonts(context)
+                    }
+                    Column(
+                        modifier = Modifier.padding(16.dp)
+                    ) {
+                        Text(
+                            text = "可多选，勾选顺序即回退顺序：第一个字体缺的字依次用后面的补，最后自动回退系统默认+内置拆字字体",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // 系统默认选项（清空多选）
+                        FontOptionRow(
+                            label = "系统默认",
+                            selected = selectedFonts.isEmpty(),
+                            onClick = {
+                                selectedFonts = emptyList()
+                                SettingsPreferences.setKeyboardFonts(context, emptyList())
+                                com.kingzcheung.xime.ui.keyboard.AppFonts.invalidateCustomFont()
+                            }
+                        )
+                        // 可用字体列表（多选，点按切换选中，序号=回退优先级）
+                        availableFonts.forEach { fontName ->
+                            val idx = selectedFonts.indexOf(fontName)
+                            val isChecked = idx >= 0
+                            FontCheckRow(
+                                label = if (isChecked) "${idx + 1}. $fontName" else fontName,
+                                checked = isChecked,
+                                onClick = {
+                                    val newList = if (isChecked) {
+                                        selectedFonts - fontName
+                                    } else {
+                                        selectedFonts + fontName
+                                    }
+                                    selectedFonts = newList
+                                    SettingsPreferences.setKeyboardFonts(context, newList)
+                                    com.kingzcheung.xime.ui.keyboard.AppFonts.invalidateCustomFont()
+                                }
+                            )
+                        }
+                        if (availableFonts.isEmpty()) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "未检测到字体文件，请将 ttf/otf 放入 /Documents/Xime/fonts/",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
                 })
             }
         }
+    }
+}
+
+@Composable
+private fun FontCheckRow(label: String, checked: Boolean, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        androidx.compose.material3.Checkbox(
+            checked = checked,
+            onCheckedChange = { onClick() }
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium
+        )
+    }
+}
+
+@Composable
+private fun FontOptionRow(label: String, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        androidx.compose.material3.RadioButton(
+            selected = selected,
+            onClick = onClick
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium
+        )
     }
 }

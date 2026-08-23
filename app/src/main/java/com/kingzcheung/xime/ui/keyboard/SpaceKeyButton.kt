@@ -51,7 +51,7 @@ fun SpaceKeyButton(
     shadowShapeRadius: Dp = 8.dp,
 ) {
     var isPressed by remember { mutableStateOf(false) }
-    val longPressTimeout = 400L
+    val longPressTimeout = 180L
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val shadowModifier = remember(shadowEnabled, shadowElevation, shadowShapeRadius, density, backgroundColor) {

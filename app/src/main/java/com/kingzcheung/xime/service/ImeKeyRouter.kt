@@ -328,6 +328,20 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
                         calculatorEngine = service.calculatorEngine,
                     )
                     if (routeResult is com.kingzcheung.xime.calculator.CalculatorRouteResult.Handled) {
+                        // 符号键盘单字符：中文模式下先送入 Rime（识别 reverse_lookup 反查引导符，如 ` 笔画反查），
+                        // Rime 未消费（非引导符）再走原逻辑直接上屏。
+                        if (isCommonSymbolKeyboard && routeResult.commitText.length == 1 && !state.isAsciiMode) {
+                            val ch = routeResult.commitText[0].code
+                            if (service.rimeEngine.processKey(ch, 0)) {
+                                val result = service.rimeEngine.getProcessResult(true)
+                                service.uiEventChannel.trySend {
+                                    if (result.committedText.isNotEmpty()) service.commitText(result.committedText)
+                                    service.sessionController.updateUIWithResult(result)
+                                }
+                                needsUIUpdate = true
+                                return@launch
+                            }
+                        }
                         withContext(Dispatchers.Main) { service.commitText(routeResult.commitText) }
                         if (isNumberKeyboard) updateCalculatorCandidates()
                         needsUIUpdate = true
@@ -335,7 +349,24 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
                     }
 
                     val pendingEnglish = candState.pendingEnglishText
-                    
+
+                    // 英文直出：密码框内 或 用户在设置中开启"英文直接上屏"时，
+                    // 英文模式下的字母/数字键直接上屏，不进入 pendingEnglish 累积与词典联想
+                    val englishDirectCommit = state.isAsciiMode &&
+                            (service.isPasswordField || SettingsPreferences.isEnglishDirectCommit(service))
+                    if (englishDirectCommit && key.matches(Regex("[a-zA-Z0-9]"))) {
+                        val charToCommit = if (isShifted) key.uppercase() else key
+                        withContext(Dispatchers.Main) {
+                            service.commitText(charToCommit)
+                            service.candidateState.value = service.candidateState.value.copy(
+                                pendingEnglishText = "",
+                                associationCandidates = emptyList()
+                            )
+                        }
+                        needsUIUpdate = true
+                        return@launch
+                    }
+
                     // 非计算器键清除计算器状态
                     if (!key.matches(Regex("[0-9]")) && key !in listOf("+", "-", "*", "/", ".")) {
                         if (service.calculatorEngine.isActive() || service.calculatorEngine.getCandidate() != null) {
@@ -508,7 +539,7 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
                             hasPrevPage = capturedHasPrev
                         )
                         service.uiState.value = service.uiState.value.copy(isAsciiMode = capturedIsAscii)
-                        if (pendingEnglish.isNotEmpty()) {
+                        if (pendingEnglish.isNotEmpty() && !service.isPasswordField) {
                             service.serviceScope.launch {
                                 val candidates = service.predictionManager.getEnglishAssociations(pendingEnglish, PredictionManager.MAX_ASSOCIATION_COUNT)
                                 withContext(Dispatchers.Main) {

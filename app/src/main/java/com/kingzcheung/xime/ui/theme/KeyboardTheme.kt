@@ -1,5 +1,6 @@
 package com.kingzcheung.xime.ui.theme
 
+import com.kingzcheung.xime.util.XimeStorage
 import android.content.Context
 import android.graphics.BitmapFactory
 import androidx.compose.ui.graphics.Color
@@ -18,7 +19,7 @@ import kotlin.math.max
  * 找不到再回退到内置 assets/<src>。
  */
 fun openThemeImageStream(context: Context, src: String): InputStream? {
-    val rimeBase = File(context.filesDir, "rime").canonicalFile
+    val rimeBase = XimeStorage.rimeDir(context).canonicalFile
     val userFile = File(rimeBase, src).canonicalFile
     if (userFile.isFile && userFile.path.startsWith(rimeBase.path + File.separator)) {
         return FileInputStream(userFile)
@@ -243,7 +244,7 @@ object KeyboardThemes {
 
     /** 生成种子色缓存键：src + 文件大小/修改时间，文件变化后自动失效。 */
     private fun themeSeedCacheKey(context: Context, src: String): String {
-        val userFile = File(context.filesDir, "rime/$src")
+        val userFile = File(XimeStorage.rimeDir(context), src)
         val file = if (userFile.isFile) userFile else null
         val size = file?.length() ?: -1L
         val mtime = file?.lastModified() ?: -1L

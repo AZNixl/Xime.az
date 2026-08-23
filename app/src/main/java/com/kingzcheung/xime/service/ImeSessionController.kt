@@ -87,7 +87,7 @@ internal class ImeSessionController(private val service: XimeInputMethodService)
         )
         service.uiState.value = service.uiState.value.copy(isAsciiMode = isAsciiMode)
 
-        if (pendingEnglish.isNotEmpty()) {
+        if (pendingEnglish.isNotEmpty() && !service.isPasswordField) {
             service.serviceScope.launch {
                 val candidates = service.predictionManager.getEnglishAssociations(pendingEnglish, PredictionManager.MAX_ASSOCIATION_COUNT)
                 withContext(Dispatchers.Main) {
@@ -185,8 +185,8 @@ internal class ImeSessionController(private val service: XimeInputMethodService)
             hasPrevPage = result.hasPrevPage
         )
         service.uiState.value = service.uiState.value.copy(isAsciiMode = isAsciiMode)
-        
-        if (pendingEnglish.isNotEmpty()) {
+
+        if (pendingEnglish.isNotEmpty() && !service.isPasswordField) {
             service.serviceScope.launch {
                 val candidates = service.predictionManager.getEnglishAssociations(pendingEnglish, PredictionManager.MAX_ASSOCIATION_COUNT)
                 withContext(Dispatchers.Main) {

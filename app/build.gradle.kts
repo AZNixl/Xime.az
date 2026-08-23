@@ -43,7 +43,7 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.kingzcheung.xime"
+        applicationId = "com.kingzcheung.xime.az"
         minSdk = 28
         targetSdk = 35
         versionCode = 20260819
@@ -52,10 +52,10 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // NDK 配置
-        ndk {
-            abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
-        }
+        // NDK 配置（自用版：仅 arm64-v8a；splits.abi 已做架构过滤）
+        // ndk {
+        //     abiFilters += listOf("arm64-v8a")
+        // }
 
         // 构建信息
         buildConfigField("String", "GIT_HASH", "\"${getGitHash()}\"")
@@ -134,13 +134,13 @@ android {
         checkDependencies = true
     }
 
-    // 分架构打包
+    // 分架构打包（自用版：仅 arm64-v8a）
     splits {
         abi {
             isEnable = true
             reset()
-            include("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
-            isUniversalApk = true
+            include("arm64-v8a")
+            isUniversalApk = false
         }
     }
 }

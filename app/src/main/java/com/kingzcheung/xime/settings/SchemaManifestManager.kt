@@ -1,5 +1,6 @@
 package com.kingzcheung.xime.settings
 
+import com.kingzcheung.xime.util.XimeStorage
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
@@ -44,10 +45,10 @@ object SchemaManifestManager {
     private const val REGISTRY_VERSION = 1
 
     fun getRegistryFile(context: Context): File =
-        File(context.filesDir, REGISTRY_FILE)
+        File(XimeStorage.root(context), REGISTRY_FILE)
 
     fun getManifestsDir(context: Context): File =
-        File(context.filesDir, MANIFESTS_DIR)
+        File(XimeStorage.root(context), MANIFESTS_DIR)
 
     fun getManifestFile(context: Context, schemeId: String): File =
         File(getManifestsDir(context), "$schemeId.json")

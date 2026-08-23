@@ -24,6 +24,7 @@ import com.kingzcheung.xime.rime.RimeConfigHelper
 import com.kingzcheung.xime.rime.RimeEngine
 import com.kingzcheung.xime.settings.SchemaManager
 import com.kingzcheung.xime.settings.SettingsPreferences
+import com.kingzcheung.xime.util.XimeStorage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -31,6 +32,7 @@ import kotlinx.coroutines.withContext
 
 enum class SetupStep {
     EnableIme,
+    StorageAccess,
     SelectSchemas,
     SwitchToIme
 }
@@ -90,6 +92,9 @@ fun SetupWizardScreen(
                 ) { step ->
                     when (step) {
                         SetupStep.EnableIme -> EnableImeStep(
+                            onNext = { currentStep = SetupStep.StorageAccess }
+                        )
+                        SetupStep.StorageAccess -> StorageAccessStep(
                             onNext = { currentStep = SetupStep.SelectSchemas }
                         )
                         SetupStep.SelectSchemas -> SelectSchemasStep(
@@ -183,6 +188,7 @@ private fun StepIndicator(currentStep: SetupStep) {
                 Text(
                     text = when (step) {
                         SetupStep.EnableIme -> "启用"
+                        SetupStep.StorageAccess -> "存储"
                         SetupStep.SelectSchemas -> "选方案"
                         SetupStep.SwitchToIme -> "切换"
                     },
@@ -307,6 +313,95 @@ private fun checkImeEnabled(context: Context): Boolean {
 }
 
 @Composable
+private fun StorageAccessStep(onNext: () -> Unit) {
+    val context = LocalContext.current
+    var hasAccess by remember { mutableStateOf(XimeStorage.hasStorageAccess()) }
+    val scope = rememberCoroutineScope()
+
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Spacer(Modifier.weight(1f))
+
+        Text(
+            text = "步骤 2：开启文件访问",
+            fontSize = 20.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        Spacer(Modifier.height(12.dp))
+        Text(
+            text = "为了让你能在文件管理器里直接看到并修改键盘配置，数据将保存到：",
+            fontSize = 14.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = "/Documents/Xime/",
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary,
+            textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(12.dp))
+        Text(
+            text = "Android 11 及以上需要授予「所有文件访问」权限。授予后可随时在系统设置中关闭。",
+            fontSize = 13.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(24.dp))
+
+        if (!hasAccess) {
+            Button(
+                onClick = {
+                    context.startActivity(XimeStorage.buildAccessIntent(context))
+                },
+                modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp)
+            ) {
+                Text("去授权文件访问")
+            }
+            Spacer(Modifier.height(12.dp))
+            OutlinedButton(
+                onClick = {
+                    scope.launch { hasAccess = XimeStorage.hasStorageAccess() }
+                },
+                modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp)
+            ) {
+                Text("检查授权状态")
+            }
+        } else {
+            Text(
+                text = "✓ 文件访问权限已开启",
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.SemiBold
+            )
+            Spacer(Modifier.height(16.dp))
+            Button(
+                onClick = onNext,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp)
+            ) {
+                Text("下一步")
+            }
+        }
+
+        Spacer(Modifier.weight(1f))
+    }
+
+    LaunchedEffect(Unit) {
+        while (!hasAccess) {
+            delay(2000)
+            val granted = XimeStorage.hasStorageAccess()
+            if (granted) {
+                hasAccess = true
+                break
+            }
+        }
+    }
+}
+
+@Composable
 private fun SelectSchemasStep(
     enabledSchemas: List<String>,
     deployReminder: String? = null,
@@ -320,7 +415,7 @@ private fun SelectSchemasStep(
         Spacer(Modifier.weight(1f))
 
         Text(
-            text = "步骤 2：选择输入方案",
+            text = "步骤 3：选择输入方案",
             fontSize = 20.sp,
             fontWeight = FontWeight.SemiBold
         )
