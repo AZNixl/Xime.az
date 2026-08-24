@@ -1719,6 +1719,21 @@ private fun LandscapeKeyboardContent(
                     val k4SwipeLabelRaw = if (isAsciiMode) k4SwipeValue
                         else (k4Gesture?.swipeUp?.label?.takeIf { it.isNotEmpty() } ?: k4SwipeValue)
                     val k4SwipeLabel = if (swipeUpHintsEnabled) k4SwipeLabelRaw else null
+                    val k4SwipeUpAction = k4Gesture?.swipeUp?.action
+                    val k4OnSwipe: ((String) -> Unit)? = if (k4SwipeValue != null && k4SwipeUpAction != null && k4SwipeUpAction != GestureAction.NONE) {
+                        remember(k4SwipeUpAction, k4SwipeValue, k4SwipeLabelRaw, onKeyPress, onGestureAction, onCommitText) {
+                            val action = k4SwipeUpAction
+                            val label = k4SwipeLabelRaw ?: k4SwipeValue
+                            { _: String ->
+                                if (action == GestureAction.COMMIT) {
+                                    (onCommitText ?: onKeyPress)(k4SwipeValue.ifEmpty { label })
+                                } else {
+                                    onGestureAction?.invoke(action, k4SwipeValue.ifEmpty { label } ?: label)
+                                }
+                                Unit
+                            }
+                        }
+                    } else null
                     SwipeableKeyButtonLandscape(
                         text = k4Label,
                         onClick = {
@@ -1733,8 +1748,7 @@ private fun LandscapeKeyboardContent(
                         modifier = Modifier.weight(0.8f),
                         swipeText = k4SwipeLabel,
                         swipeUpExecuteValue = k4SwipeValue ?: k4SwipeLabelRaw,
-                        onSwipe = if (k4SwipeValue != null) { { onKeyPress(k4SwipeValue) } } else null,
-                        // TODO landscape earth 上滑暂未读取 action，后续补充
+                        onSwipe = k4OnSwipe,
                         onPress = { onKeyPressDown?.invoke(k4Value) },
                         onRelease = { onKeyRelease?.invoke(k4Value) },
                         shadowEnabled = shadowEnabled,
