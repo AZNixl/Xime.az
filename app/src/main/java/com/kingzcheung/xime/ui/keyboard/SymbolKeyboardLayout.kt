@@ -216,6 +216,7 @@ private fun SymbolButton(
             fontSize = 16.sp,
             textAlign = TextAlign.Center,
             color = textColor,
+            fontFamily = LocalKeyboardFontFamily.current,
         )
     }
 }

@@ -89,7 +89,8 @@ private val LONG_PRESS_DISPLAYS = listOf(
 @Composable
 fun KeySymbolEditContent(onBack: () -> Unit) {
     val context = LocalContext.current
-    var isAsciiSection by remember { mutableStateOf(false) } // false=中文 qwerty, true=英文 qwerty_en
+    // 自 v2.6.2 起中英文键盘共用同一套符号配置（qwerty）
+    val section = "qwerty"
     var editingKey by remember { mutableStateOf<String?>(null) }
     var refreshTick by remember { mutableStateOf(0) }
 
@@ -119,48 +120,11 @@ fun KeySymbolEditContent(onBack: () -> Unit) {
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // 中/英文键盘切换
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
-                    selected = !isAsciiSection,
-                    onClick = { isAsciiSection = false },
-                    label = { Text("中文键盘") }
-                )
-                FilterChip(
-                    selected = isAsciiSection,
-                    onClick = { isAsciiSection = true },
-                    label = { Text("英文键盘") }
-                )
-            }
-
-            // 英文键盘跟随中文键盘符号
-            var enFollow by remember(refreshTick) {
-                mutableStateOf(SettingsPreferences.isEnFollowZhSymbols(context))
-            }
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("英文键盘跟随中文键盘符号", style = MaterialTheme.typography.bodyMedium)
-                    Text(
-                        "中文区自定义自动转半角同步到英文区（英文区单独设置过的键除外）",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Switch(
-                    checked = enFollow,
-                    onCheckedChange = {
-                        enFollow = it
-                        SettingsPreferences.setEnFollowZhSymbols(context, it)
-                        KeysConfigHelper.loadConfig(context)
-                        refreshTick++
-                    }
-                )
-            }
+            Text(
+                "自 v2.6.2 起，中英文键盘共用同一套符号配置。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
 
             Spacer(modifier = Modifier.height(12.dp))
             Text(
@@ -176,7 +140,6 @@ fun KeySymbolEditContent(onBack: () -> Unit) {
             )
             Spacer(modifier = Modifier.height(8.dp))
 
-            val section = if (isAsciiSection) "qwerty_en" else "qwerty"
             LazyVerticalGrid(
                 columns = GridCells.Fixed(8),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -187,7 +150,7 @@ fun KeySymbolEditContent(onBack: () -> Unit) {
                     KeyEditCard(
                         key = key,
                         section = section,
-                        isAscii = isAsciiSection,
+                        isAscii = false,
                         refreshTick = refreshTick,
                         onClick = { editingKey = key }
                     )
@@ -199,7 +162,7 @@ fun KeySymbolEditContent(onBack: () -> Unit) {
     editingKey?.let { key ->
         KeyEditDialog(
             key = key,
-            section = if (isAsciiSection) "qwerty_en" else "qwerty",
+            section = section,
             onDismiss = { editingKey = null },
             onSaved = {
                 editingKey = null
@@ -310,7 +273,8 @@ private fun KeyEditDialog(
     onSaved: () -> Unit,
 ) {
     val context = LocalContext.current
-    val isAscii = section == "qwerty_en"
+    // 自 v2.6.2 起 section 固定为 qwerty，不再区分中英文
+    val isAscii = false
 
     // 读取当前生效值作为编辑初值
     val current = remember(key, section) { KeysConfigHelper.getKeyGesture(key, isAscii) }
@@ -419,12 +383,12 @@ private fun KeyEditDialog(
 }
 
 /**
- * 解析长按符号框的一项：
+ * 解析符号框的一项（长按/上滑/下滑通用）：
  *  - 识别为动作名（select_all/copy/...）→ 该动作
  *  - "command:命令名" → command 动作
  *  - 其他 → 普通上屏符号（commit）
  */
-private fun parseLongPressItem(token: String): JSONObject {
+private fun parseGestureItem(token: String): JSONObject {
     val actionNames = ACTION_OPTIONS.map { it.first }.toSet() +
         setOf("repeat", "toggle_ascii", "delete", "toggle_symbols", "switch_route")
     return when {
@@ -466,7 +430,7 @@ private fun saveKeyOverride(
     if (upDirty) {
         if (up.isNotEmpty()) {
             UserKeysOverrides.setGesture(context, section, key, "swipe_up",
-                UserKeysOverrides.buildGesture(up, "commit", up))
+                parseGestureItem(up))
         } else {
             UserKeysOverrides.setGesture(context, section, key, "swipe_up", null)
         }
@@ -474,7 +438,7 @@ private fun saveKeyOverride(
     if (downDirty) {
         if (down.isNotEmpty()) {
             UserKeysOverrides.setGesture(context, section, key, "swipe_down",
-                UserKeysOverrides.buildGesture(down, "commit", down, "both"))
+                parseGestureItem(down).apply { put("display", "both") })
         } else {
             UserKeysOverrides.setGesture(context, section, key, "swipe_down", null)
         }
@@ -486,7 +450,7 @@ private fun saveKeyOverride(
         } else {
             val values = lpValuesText.trim().split(Regex("\\s+"))
                 .filter { it.isNotEmpty() }
-                .map { parseLongPressItem(it) }
+                .map { parseGestureItem(it) }
             UserKeysOverrides.setLongPress(context, section, key, lpDisplay, values)
         }
     }

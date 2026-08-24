@@ -384,7 +384,8 @@ private fun T9LandscapeCandidatePanel(
                 Text(
                     text = if (candidateState.value.isComposing) "..." else "",
                     color = keyTextColor.copy(alpha = 0.3f),
-                    fontSize = 14.sp
+                    fontSize = 14.sp,
+                    fontFamily = LocalKeyboardFontFamily.current
                 )
             }
         }
@@ -416,6 +417,7 @@ private fun LandscapeCandidateItem(
                 color = textColor.copy(alpha = 0.4f),
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Normal,
+                fontFamily = LocalKeyboardFontFamily.current,
                 modifier = Modifier.padding(end = 2.dp)
             )
             Text(
@@ -423,6 +425,7 @@ private fun LandscapeCandidateItem(
                 color = textColor,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Normal,
+                fontFamily = LocalKeyboardFontFamily.current,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -432,6 +435,7 @@ private fun LandscapeCandidateItem(
                     color = textColor.copy(alpha = 0.5f),
                     fontSize = 9.sp,
                     fontWeight = FontWeight.Normal,
+                    fontFamily = LocalKeyboardFontFamily.current ?: AppFonts.chaiPuaFontFamily,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(start = 2.dp)
@@ -916,6 +920,7 @@ private fun CandidateItem(
                     color = accentColor,
                     fontSize = fontSize,
                     fontWeight = FontWeight.Medium,
+                    fontFamily = LocalKeyboardFontFamily.current,
                     textAlign = TextAlign.Center,
                     maxLines = 1
                 )
@@ -926,6 +931,7 @@ private fun CandidateItem(
                 color = textColor,
                 fontSize = fontSize,
                 fontWeight = FontWeight.Normal,
+                fontFamily = LocalKeyboardFontFamily.current,
                 textAlign = TextAlign.Center,
                 maxLines = 1
             )
@@ -1124,6 +1130,7 @@ private fun T9SpaceKey(
                 color = textColor,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Medium,
+                fontFamily = LocalKeyboardFontFamily.current,
                 textAlign = TextAlign.Center,
                 maxLines = 1,
                 modifier = Modifier.padding(horizontal = 8.dp)
@@ -1134,6 +1141,7 @@ private fun T9SpaceKey(
                 color = textColor,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Normal,
+                fontFamily = LocalKeyboardFontFamily.current,
                 textAlign = TextAlign.Center,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -1155,6 +1163,7 @@ private fun T9SpaceKey(
                     color = textColor.copy(alpha = 0.3f),
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Normal,
+                    fontFamily = LocalKeyboardFontFamily.current,
                     textAlign = TextAlign.Start,
                     maxLines = 1,
                     modifier = Modifier

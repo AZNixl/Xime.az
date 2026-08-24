@@ -323,9 +323,11 @@ fun CandidateBar(
             return@Column
         }
 
-        val displayText = (state as? CandidateBarState.ChineseCandidates)?.preeditText
-            ?: (state as? CandidateBarState.ChineseCandidates)?.inputText ?: ""
-        val showInputText = showInputTextRow && displayText.isNotEmpty() && !showInputBoxStyle
+        val chineseState = state as? CandidateBarState.ChineseCandidates
+        val displayText = chineseState?.preeditText
+            ?: chineseState?.inputText ?: ""
+        val secondCandidate = chineseState?.candidates?.getOrNull(1)
+        val showInputText = showInputTextRow && (displayText.isNotEmpty() || secondCandidate != null) && !showInputBoxStyle
 
         if (showInputText) {
             val inputTextInteractionSource = remember { MutableInteractionSource() }
@@ -339,26 +341,44 @@ fun CandidateBar(
                 contentAlignment = Alignment.CenterStart,
 
             ) {
-                Text(
-                    text = displayText,
-                    color = visuals.textColor.copy(alpha = 0.8f),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Normal,
-                    fontFamily = LocalKeyboardFontFamily.current,
-                    lineHeight = 16.sp,
-                    maxLines = 1,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(
-                            if (isInputTextPressed && callbacks.onInputTextClick != null)
-                                (if (visuals.isDarkTheme) Color.White.copy(alpha = 0.15f) else Color.Black.copy(
-                                    alpha = 0.1f
-                                ))
-                            else
-                                Color.Transparent
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = displayText,
+                        color = visuals.textColor.copy(alpha = 0.8f),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Normal,
+                        fontFamily = LocalKeyboardFontFamily.current,
+                        lineHeight = 16.sp,
+                        maxLines = 1,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(
+                                if (isInputTextPressed && callbacks.onInputTextClick != null)
+                                    (if (visuals.isDarkTheme) Color.White.copy(alpha = 0.15f) else Color.Black.copy(
+                                        alpha = 0.1f
+                                    ))
+                                else
+                                    Color.Transparent
+                            )
+                            .padding(horizontal = 0.dp)
+                    )
+                    if (secondCandidate != null) {
+                        Text(
+                            text = "次选：$secondCandidate",
+                            color = visuals.selectedTextColor.copy(alpha = 0.9f),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            fontFamily = LocalKeyboardFontFamily.current,
+                            lineHeight = 16.sp,
+                            maxLines = 1,
+                            modifier = Modifier.padding(end = 4.dp)
                         )
-                        .padding(horizontal = 0.dp)
-                )
+                    }
+                }
             }
         }
 

@@ -321,18 +321,20 @@ fun KeyButton(
                 color = textColor.copy(alpha = 0.5f),
                 fontSize = 9.sp,
                 fontWeight = FontWeight.Normal,
+                fontFamily = LocalKeyboardFontFamily.current,
                 textAlign = TextAlign.Center,
                 maxLines = 1,
                 modifier = Modifier.offset(y = (-14).dp)
             )
         }
-        
+
         if (badgeText != null) {
             Text(
                 text = badgeText,
                 color = textColor.copy(alpha = 0.5f),
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Normal,
+                fontFamily = LocalKeyboardFontFamily.current,
                 textAlign = TextAlign.End,
                 maxLines = 1,
                 modifier = Modifier
@@ -437,7 +439,7 @@ fun SwipeableKeyButton(
     }
     val keyCornerRadius = LocalKeyCornerRadius.current
     val keyClipShape = remember(keyCornerRadius) { RoundedCornerShape(keyCornerRadius) }
-    val chaiPuaFontFamily = AppFonts.chaiPuaFontFamily
+    val fallbackFontFamily = LocalKeyboardFontFamily.current ?: AppFonts.chaiPuaFontFamily
 
     Box(
         modifier = modifier
@@ -704,6 +706,7 @@ fun SwipeableKeyButton(
                             color = textColor.copy(alpha = 0.6f),
                             fontSize = swipeFontSize,
                             fontWeight = FontWeight.Medium,
+                            fontFamily = LocalKeyboardFontFamily.current,
                             textAlign = TextAlign.End,
                             maxLines = 1,
                             lineHeight = 1.sp
@@ -726,10 +729,10 @@ fun SwipeableKeyButton(
                                 color = textColor.copy(alpha = 0.7f),
                                 fontSize = adjustedFontSize,
                                 fontWeight = FontWeight.Medium,
+                                fontFamily = fallbackFontFamily,
                                 textAlign = TextAlign.Right,
                                 maxLines = 3,
-                                lineHeight = adjustedFontSize,
-                                fontFamily = chaiPuaFontFamily
+                                lineHeight = adjustedFontSize
                             )
                         }
                     }
@@ -749,6 +752,7 @@ fun SwipeableKeyButton(
                     color = textColor,
                     fontSize = if (fontSize != androidx.compose.ui.unit.TextUnit.Unspecified) fontSize else if (text.length > 2) 14.sp else 18.sp,
                     fontWeight = if (text.length > 2) FontWeight.Medium else FontWeight.Normal,
+                    fontFamily = LocalKeyboardFontFamily.current,
                     textAlign = TextAlign.Center,
                     maxLines = 1
                 )
@@ -762,6 +766,7 @@ fun SwipeableKeyButton(
                     color = textColor.copy(alpha = 0.6f),
                     fontSize = swipeFontSize,
                     fontWeight = FontWeight.Medium,
+                    fontFamily = LocalKeyboardFontFamily.current,
                     textAlign = TextAlign.Center,
                     maxLines = 1,
                     modifier = Modifier.offset(y = (-14).dp)
@@ -775,6 +780,7 @@ fun SwipeableKeyButton(
                     color = textColor.copy(alpha = 0.5f),
                     fontSize = swipeFontSize,
                     fontWeight = FontWeight.Normal,
+                    fontFamily = LocalKeyboardFontFamily.current,
                     textAlign = TextAlign.Center,
                     maxLines = 1,
                     modifier = Modifier.offset(y = (14).dp)
@@ -787,6 +793,7 @@ fun SwipeableKeyButton(
                     color = textColor.copy(alpha = 0.5f),
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Normal,
+                    fontFamily = LocalKeyboardFontFamily.current,
                     textAlign = TextAlign.End,
                     maxLines = 1,
                     lineHeight = 1.sp,
@@ -803,6 +810,7 @@ fun SwipeableKeyButton(
                     color = textColor.copy(alpha = 0.45f),
                     fontSize = swipeFontSize,
                     fontWeight = FontWeight.Normal,
+                    fontFamily = LocalKeyboardFontFamily.current,
                     textAlign = TextAlign.Start,
                     maxLines = 1,
                     lineHeight = 1.sp,
@@ -1232,6 +1240,7 @@ fun SwipeableIconKeyButton(
                 color = iconColor.copy(alpha = 0.5f),
                 fontSize = 9.sp,
                 fontWeight = FontWeight.Normal,
+                fontFamily = LocalKeyboardFontFamily.current,
                 textAlign = TextAlign.Center,
                 maxLines = 1,
                 modifier = Modifier.offset(y = (-14).dp)

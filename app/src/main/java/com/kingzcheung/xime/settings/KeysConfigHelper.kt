@@ -422,14 +422,10 @@ object KeysConfigHelper {
     )
 
     // 手势配置缓存（mutableStateOf 让 Compose 直接观察变更）
-    // 中文键盘（qwerty）手势配置缓存
+    // 自 v2.6.2 起中英文键盘共用同一套符号/手势配置（qwerty）
     private val _keyGestureConfig = mutableStateOf<Map<String, KeyGestureConfig>>(emptyMap())
     val keyGestureConfig: Map<String, KeyGestureConfig> get() = _keyGestureConfig.value
-    
-    // 英文键盘（qwerty_en）手势配置缓存
-    private val _keyGestureConfigEn = mutableStateOf<Map<String, KeyGestureConfig>>(emptyMap())
-    val keyGestureConfigEn: Map<String, KeyGestureConfig> get() = _keyGestureConfigEn.value
-    
+
     // 键盘颜色配置缓存
     private var keyboardColorsConfig: KeyboardColorsConfig = KeyboardColorsConfig()
     
@@ -439,11 +435,9 @@ object KeysConfigHelper {
     // 键盘按键配置缓存
     private var keyboardKeyConfig: KeyboardKeyConfig = KeyboardKeyConfig()
     
-    // 按键布局模式缓存（中文 qwerty / 英文 qwerty_en）
-    private var _buttonLayoutZh: ButtonLayout = ButtonLayout.STANDARD
-    private var _buttonLayoutEn: ButtonLayout = ButtonLayout.STANDARD
-    fun getButtonLayout(isAsciiMode: Boolean): ButtonLayout =
-        if (isAsciiMode) _buttonLayoutEn else _buttonLayoutZh
+    // 按键布局模式缓存（中英文共用 qwerty）
+    private var _buttonLayout: ButtonLayout = ButtonLayout.STANDARD
+    fun getButtonLayout(isAsciiMode: Boolean): ButtonLayout = _buttonLayout
 
     // 键盘行布局默认值
     private val DEFAULT_ZH_ROWS: List<List<String>> = listOf(
@@ -457,13 +451,11 @@ object KeysConfigHelper {
         listOf("z", "x", "c", "v", "b", "n", "m"),
     )
 
-    // 键盘行布局缓存（中文 / 英文）
-    private var _zhRows: List<List<String>> = DEFAULT_ZH_ROWS
-    private var _enRows: List<List<String>> = DEFAULT_EN_ROWS
+    // 键盘行布局缓存（中英文共用）
+    private var _keyRows: List<List<String>> = DEFAULT_ZH_ROWS
 
     /** 获取键盘行布局，每个子 List 为一行的按键 ID 列表，索引 0=第一行 */
-    fun getKeyRows(isAsciiMode: Boolean): List<List<String>> =
-        if (isAsciiMode) _enRows else _zhRows
+    fun getKeyRows(isAsciiMode: Boolean): List<List<String>> = _keyRows
     
     /** 配置版本号，每次 loadConfig 时递增，用于 Compose 感知配置变更。 */
     private val _configVersion = MutableStateFlow(0)
@@ -483,24 +475,19 @@ object KeysConfigHelper {
     
     private fun loadXimeConfig(context: Context) {
         try {
-            // 键盘手势（从原始 YAML 手动解析）
+            // 键盘手势（从原始 YAML 手动解析，中英文共用 qwerty）
             val parsed = parseKeyboardFromAssets(context)
-            _keyGestureConfig.value = parsed?.first ?: emptyMap()
-            _keyGestureConfigEn.value = parsed?.second ?: emptyMap()
+            _keyGestureConfig.value = parsed ?: emptyMap()
             // 键盘颜色（从原始 YAML 手动解析）
             keyboardColorsConfig = parseKeyboardColorsFromAssets(context)
             // 键盘阴影（从原始 YAML 手动解析）
             keyboardShadowConfig = parseKeyboardShadowFromAssets(context)
             // 键盘按键（从原始 YAML 手动解析）
             keyboardKeyConfig = parseKeyboardKeyFromAssets(context)
-            // 按键布局（从原始 YAML 手动解析，中英文分开）
-            val parsedLayouts = parseButtonLayoutFromAssets(context)
-            _buttonLayoutZh = parsedLayouts.first
-            _buttonLayoutEn = parsedLayouts.second
+            // 按键布局（从原始 YAML 手动解析，中英文共用）
+            _buttonLayout = parseButtonLayoutFromAssets(context) ?: ButtonLayout.STANDARD
             // 键盘行布局
-            val parsedRows = parseKeyboardLayoutFromAssets(context)
-            _zhRows = parsedRows.first
-            _enRows = parsedRows.second
+            _keyRows = parseKeyboardLayoutFromAssets(context) ?: DEFAULT_ZH_ROWS
             // 校验配置版本兼容性
             val merged = try { loadMergedConfig(context) } catch (_: YamlException) { null }
             val meta = merged?.metadata
@@ -551,26 +538,16 @@ object KeysConfigHelper {
         }
     }
 
-    /** 从 xime.yaml + xime.custom.yaml 合并解析键盘手势配置。 */
-    private fun parseKeyboardFromAssets(context: Context): Pair<Map<String, KeyGestureConfig>, Map<String, KeyGestureConfig>>? {
+    /** 从 xime.yaml + xime.custom.yaml 合并解析键盘手势配置（中英文共用 qwerty）。 */
+    private fun parseKeyboardFromAssets(context: Context): Map<String, KeyGestureConfig>? {
         val defaultText = readXimeYamlText(context) ?: return null
-        val defaultZh = parseKeyboardYamlSection(defaultText, "qwerty") ?: return null
-        val defaultEn = parseKeyboardYamlSection(defaultText, "qwerty_en") ?: emptyMap()
+        val default = parseKeyboardYamlSection(defaultText, "qwerty") ?: return null
         // 支持两种来源：files/rime/（浏览器导入）或 assets/（内置），自动 fallback
         val userData = readCustomYamlText(context)
-        val customZh: Map<String, KeyGestureConfig>?
-        val customEn: Map<String, KeyGestureConfig>?
-        if (userData != null) {
-            customZh = parseKeyboardYamlSection(userData, "qwerty")
-            customEn = parseKeyboardYamlSection(userData, "qwerty_en")
-        } else {
-            customZh = null
-            customEn = null
-        }
-        val zh = if (customZh != null) defaultZh + customZh else defaultZh
-        val en = if (customEn != null) defaultEn + customEn else defaultEn
+        val custom = userData?.let { parseKeyboardYamlSection(it, "qwerty") }
+        val merged = if (custom != null) default + custom else default
         // 叠加「设置→键盘符号编辑」中的用户自定义手势（优先级最高）
-        return UserKeysOverrides.applyTo(context, zh, en)
+        return UserKeysOverrides.applyTo(context, merged)
     }
 
     /** 从 xime.yaml + xime.custom.yaml 合并解析键盘颜色配置。 */
@@ -693,37 +670,20 @@ object KeysConfigHelper {
         return KeyboardKeyConfig(cornerRadius = cornerRadius)
     }
 
-    /** 从 xime.yaml + xime.custom.yaml 合并解析按键布局模式（中英文分开）。 */
-    private fun parseButtonLayoutFromAssets(context: Context): Pair<ButtonLayout, ButtonLayout> {
-        val defaultText = readXimeYamlText(context) ?: return Pair(ButtonLayout.STANDARD, ButtonLayout.STANDARD)
-        val defaultZh = parseButtonLayoutYamlText(defaultText, "qwerty")
-        val defaultEn = parseButtonLayoutYamlText(defaultText, "qwerty_en")
+    /** 从 xime.yaml + xime.custom.yaml 合并解析按键布局模式（中英文共用 qwerty）。 */
+    private fun parseButtonLayoutFromAssets(context: Context): ButtonLayout? {
+        val defaultText = readXimeYamlText(context) ?: return null
+        val default = parseButtonLayoutYamlText(defaultText, "qwerty")
         val customText = readCustomYamlText(context)
-        val customZh = customText?.let { parseButtonLayoutYamlText(it, "qwerty") }
-        val customEn = customText?.let { parseButtonLayoutYamlText(it, "qwerty_en") }
-        val result = Pair(
-            customZh ?: defaultZh ?: ButtonLayout.STANDARD,
-            customEn ?: defaultEn ?: ButtonLayout.STANDARD,
-        )
-        return result
+        return customText?.let { parseButtonLayoutYamlText(it, "qwerty") } ?: default
     }
 
     /** 从 xime.yaml + xime.custom.yaml 合并解析键盘行布局。 */
-    private fun parseKeyboardLayoutFromAssets(context: Context): Pair<List<List<String>>, List<List<String>>> {
-        val defaultText = readXimeYamlText(context) ?: return Pair(DEFAULT_ZH_ROWS, DEFAULT_EN_ROWS)
-
-        val defaultZh = parseKeyboardLayoutYamlText(defaultText, "qwerty")
-        val defaultEn = parseKeyboardLayoutYamlText(defaultText, "qwerty_en")
-
+    private fun parseKeyboardLayoutFromAssets(context: Context): List<List<String>>? {
+        val defaultText = readXimeYamlText(context) ?: return null
+        val default = parseKeyboardLayoutYamlText(defaultText, "qwerty")
         val customText = readCustomYamlText(context)
-
-        val customZh = customText?.let { parseKeyboardLayoutYamlText(it, "qwerty") }
-        val customEn = customText?.let { parseKeyboardLayoutYamlText(it, "qwerty_en") }
-
-        return Pair(
-            customZh ?: defaultZh ?: DEFAULT_ZH_ROWS,
-            customEn ?: defaultEn ?: DEFAULT_EN_ROWS,
-        )
+        return customText?.let { parseKeyboardLayoutYamlText(it, "qwerty") } ?: default
     }
 
     /** 从 YAML 文本中提取 keyboard.<section>.layout.rows。 */
@@ -922,26 +882,26 @@ object KeysConfigHelper {
 
     /** 根据输入模式获取某个按键的手势配置。 */
     fun getKeyGesture(key: String, isAsciiMode: Boolean): KeyGestureConfig? {
-        val config = if (isAsciiMode) _keyGestureConfigEn.value else _keyGestureConfig.value
+        val config = _keyGestureConfig.value
         return config[key.lowercase()]
     }
 
     fun getKeyDisplayLabel(key: String, isAsciiMode: Boolean = false): String {
-        val config = if (isAsciiMode) _keyGestureConfigEn.value else _keyGestureConfig.value
+        val config = _keyGestureConfig.value
         val label = config[key.lowercase()]?.tap?.label
         if (label.isNullOrEmpty()) return key.uppercase()
         return if (label.any { it in 'a'..'z' || it in 'A'..'Z' }) label.uppercase() else label
     }
 
     fun getKeyCommitValue(key: String, isAsciiMode: Boolean = false): String {
-        val config = if (isAsciiMode) _keyGestureConfigEn.value else _keyGestureConfig.value
+        val config = _keyGestureConfig.value
         val value = config[key.lowercase()]?.tap?.value
         return value?.takeIf { it.isNotEmpty() } ?: key
     }
 
     /** 获取某个按键指定手势的显示标签。 */
     fun getGestureLabel(key: String, gesture: String, isAsciiMode: Boolean = false): String? {
-        val config = if (isAsciiMode) _keyGestureConfigEn.value else _keyGestureConfig.value
+        val config = _keyGestureConfig.value
         val kc = config[key.lowercase()] ?: return null
         return when (gesture) {
             "tap" -> kc.tap?.label
@@ -958,7 +918,7 @@ object KeysConfigHelper {
      * 否则返回 null，避免与气泡选择模式冲突。
      */
     fun getLongPressHintLabel(key: String, isAsciiMode: Boolean = false): String? {
-        val config = if (isAsciiMode) _keyGestureConfigEn.value else _keyGestureConfig.value
+        val config = _keyGestureConfig.value
         val kc = config[key.lowercase()] ?: return null
         val lp = kc.longPress ?: return null
         if (lp.display == "bubble") return null
@@ -976,7 +936,7 @@ object KeysConfigHelper {
      *   不回退到硬编码默认表。键盘渲染层应传 false，以保证「清除/隐藏」真实生效。
      */
     fun getSwipeUpText(key: String, isAsciiMode: Boolean = false, allowFallback: Boolean = true): String? {
-        val configMap = if (isAsciiMode) _keyGestureConfigEn.value else _keyGestureConfig.value
+        val configMap = _keyGestureConfig.value
         val gesture = configMap[key.lowercase()]?.swipeUp
         if (gesture != null) {
             if (gesture.value.isNotEmpty()) return gesture.value
@@ -987,13 +947,13 @@ object KeysConfigHelper {
     }
 
     fun getSwipeUpAction(key: String, isAsciiMode: Boolean = false): GestureAction? {
-        val configMap = if (isAsciiMode) _keyGestureConfigEn.value else _keyGestureConfig.value
+        val configMap = _keyGestureConfig.value
         return configMap[key.lowercase()]?.swipeUp?.action
     }
 
     /** 获取上滑显示文本（优先 label，fallback value） */
     fun getSwipeUpLabel(key: String, isAsciiMode: Boolean = false, allowFallback: Boolean = true): String? {
-        val configMap = if (isAsciiMode) _keyGestureConfigEn.value else _keyGestureConfig.value
+        val configMap = _keyGestureConfig.value
         val gesture = configMap[key.lowercase()]?.swipeUp
         if (gesture != null) {
             if (gesture.label.isNotEmpty()) return gesture.label
@@ -1005,7 +965,7 @@ object KeysConfigHelper {
 
     /** 获取上滑提交值（优先 value，fallback label） */
     fun getSwipeUpCommitValue(key: String, isAsciiMode: Boolean = false, allowFallback: Boolean = true): String? {
-        val configMap = if (isAsciiMode) _keyGestureConfigEn.value else _keyGestureConfig.value
+        val configMap = _keyGestureConfig.value
         val gesture = configMap[key.lowercase()]?.swipeUp
         if (gesture != null) {
             if (gesture.value.isNotEmpty()) return gesture.value
@@ -1016,7 +976,7 @@ object KeysConfigHelper {
     }
 
     fun getSwipeDownEnglishText(key: String, isAsciiMode: Boolean = false, allowFallback: Boolean = true): String? {
-        val configMap = if (isAsciiMode) _keyGestureConfigEn.value else _keyGestureConfig.value
+        val configMap = _keyGestureConfig.value
         val fromYaml = configMap[key.lowercase()]?.swipeDown?.label
         if (fromYaml != null && fromYaml.isNotEmpty()) return fromYaml
         return if (allowFallback) config.swipeDownEnglish[key.lowercase()] else null
@@ -1024,19 +984,19 @@ object KeysConfigHelper {
 
     /** 获取下滑动作类型 */
     fun getSwipeDownAction(key: String, isAsciiMode: Boolean = false): GestureAction? {
-        val configMap = if (isAsciiMode) _keyGestureConfigEn.value else _keyGestureConfig.value
+        val configMap = _keyGestureConfig.value
         return configMap[key.lowercase()]?.swipeDown?.action
     }
 
     /** 获取下滑显示位置：key（按键上）或 bubble（气泡） */
     fun getSwipeDownDisplay(key: String, isAsciiMode: Boolean = false): DisplayMode {
-        val configMap = if (isAsciiMode) _keyGestureConfigEn.value else _keyGestureConfig.value
+        val configMap = _keyGestureConfig.value
         return configMap[key.lowercase()]?.swipeDown?.display ?: DisplayMode.BOTH
     }
 
     /** 获取上滑显示位置：key（按键上）或 bubble（气泡） */
     fun getSwipeUpDisplay(key: String, isAsciiMode: Boolean = false): DisplayMode {
-        val configMap = if (isAsciiMode) _keyGestureConfigEn.value else _keyGestureConfig.value
+        val configMap = _keyGestureConfig.value
         return configMap[key.lowercase()]?.swipeUp?.display ?: DisplayMode.BOTH
     }
 

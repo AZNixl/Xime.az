@@ -581,6 +581,7 @@ private fun NumberSymbolKey(
             color = textColor,
             fontSize = fontSize,
             fontWeight = FontWeight.Normal,
+            fontFamily = LocalKeyboardFontFamily.current,
             modifier = Modifier.padding(vertical = 2.dp)
         )
     }

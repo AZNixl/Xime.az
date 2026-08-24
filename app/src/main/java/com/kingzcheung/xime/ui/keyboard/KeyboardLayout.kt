@@ -483,6 +483,20 @@ fun KeyboardLayout(
                                     val onClick = remember(key, commitValue, onKeyPress) { { onKeyPress(commitValue) } }
                                     val onPress: (() -> Unit)? = remember(key, onKeyPressDown) { { onKeyPressDown?.invoke(key); Unit } }
                                     val onRelease: (() -> Unit)? = remember(key, onKeyRelease) { { onKeyRelease?.invoke(key); Unit } }
+                                    val onSwipe: ((String) -> Unit)? = if (swipeUpCommitValue != null && swipeUpAction != null && swipeUpAction != GestureAction.NONE) {
+                                        remember(swipeUpAction, swipeUpCommitValue, onKeyPress, onGestureAction, onCommitText) {
+                                            val action = swipeUpAction
+                                            val label = swipeUpCommitValue
+                                            { _: String ->
+                                                if (action == GestureAction.COMMIT) {
+                                                    (onCommitText ?: onKeyPress)(label)
+                                                } else {
+                                                    onGestureAction?.invoke(action, label)
+                                                }
+                                                Unit
+                                            }
+                                        }
+                                    } else null
                                     // 下滑执行不依赖符号显示开关，有值即可触发
                                     val onSwipeDown = if (swipeDownAction != null && swipeDownLabel != null) {
                                         remember(key, onKeyPress, onGestureAction, onCommitText, swipeDownAction, swipeDownValue, swipeDownLabel) {
@@ -537,7 +551,7 @@ fun KeyboardLayout(
                                         swipeDownText = swipeDownBubbleText,
                                         swipeUpKeyLabel = swipeUpKeyLabel,
                                         swipeDownKeyLabel = if ((swipeDownDisplay == DisplayMode.KEY || swipeDownDisplay == DisplayMode.BOTH) && swipeDownHintsEnabled) swipeDownLabel else null,
-                                        onSwipe = if (swipeUpCommitValue != null && swipeUpAction != GestureAction.NONE) { { onKeyPress(swipeUpCommitValue) } } else null,
+                                        onSwipe = onSwipe,
                                         onSwipeDown = onSwipeDown,
                                         swipeUpExecuteValue = swipeUpCommitValue,
                                         swipeDownExecuteValue = swipeDownLabel,
@@ -637,6 +651,7 @@ fun KeyboardLayout(
                             val k2SwipeUpValue = k2SwipeUpRaw?.value?.takeIf { it.isNotEmpty() }
                                 ?: k2SwipeUpRaw?.label?.takeIf { it.isNotEmpty() }
                             val k2SwipeUpDisplay = k2SwipeUpRaw?.display ?: DisplayMode.BOTH
+                            val k2SwipeUpAction = k2SwipeUpRaw?.action
                             val k2SwipeUpCommitValue = k2SwipeUpValue
                             val k2SwipeDownRaw = k2KeyGesture?.swipeDown
                             val k2SwipeDownLabel = k2SwipeDownRaw?.label?.takeIf { it.isNotEmpty() }
@@ -700,6 +715,21 @@ fun KeyboardLayout(
                                     shadowShapeRadius = shadowShapeRadius,
                                 )
                             } else {
+                                val k2OnSwipe: ((String) -> Unit)? = if (k2SwipeUpCommitValue != null && k2SwipeUpAction != null && k2SwipeUpAction != GestureAction.NONE) {
+                                    remember(k2SwipeUpAction, k2SwipeUpCommitValue, onKeyPress, onGestureAction, onCommitText) {
+                                        val action = k2SwipeUpAction
+                                        val label = k2SwipeUpCommitValue
+                                        { _: String ->
+                                            if (action == GestureAction.COMMIT) {
+                                                (onCommitText ?: onKeyPress)(label)
+                                            } else {
+                                                onGestureAction?.invoke(action, label)
+                                            }
+                                            Unit
+                                        }
+                                    }
+                                } else null
+
                                 SwipeableKeyButton(
                                     layoutMode = KeysConfigHelper.getButtonLayout(isAsciiMode),
                                     text = k2TapLabel,
@@ -710,7 +740,7 @@ fun KeyboardLayout(
                                     swipeText = k2SwipeUpLabel,
                                     swipeDownText = k2SwipeDownBubbleText,
                                     swipeDownKeyLabel = if ((k2SwipeDownDisplay == DisplayMode.KEY || k2SwipeDownDisplay == DisplayMode.BOTH)) k2SwipeDownLabel else null,
-                                    onSwipe = if (k2SwipeUpCommitValue != null) { { onKeyPress(k2SwipeUpCommitValue) } } else null,
+                                    onSwipe = k2OnSwipe,
                                     onSwipeDown = k2OnSwipeDown,
                                     onSwipeStateChange = { state, bounds ->
                                         processSwipeState(state, bounds)
@@ -1054,6 +1084,20 @@ fun KeyboardRowWithConfig(
             val onClick = remember(key, commitValue, onKeyPress) { { onKeyPress(commitValue) } }
             val onPress: (() -> Unit)? = remember(key, onKeyPressDown) { { onKeyPressDown?.invoke(key); Unit } }
             val onRelease: (() -> Unit)? = remember(key, onKeyRelease) { { onKeyRelease?.invoke(key); Unit } }
+            val onSwipe: ((String) -> Unit)? = if (swipeUpCommitValue != null && swipeUpAction != null && swipeUpAction != GestureAction.NONE) {
+                remember(swipeUpAction, swipeUpCommitValue, onKeyPress, onGestureAction, onCommitText) {
+                    val action = swipeUpAction
+                    val label = swipeUpCommitValue
+                    { _: String ->
+                        if (action == GestureAction.COMMIT) {
+                            (onCommitText ?: onKeyPress)(label)
+                        } else {
+                            onGestureAction?.invoke(action, label)
+                        }
+                        Unit
+                    }
+                }
+            } else null
             val onSwipeDown: ((String) -> Unit)? = if (swipeDownAction != null && swipeDownLabel != null) {
                 remember(key, onKeyPress, onGestureAction, onCommitText, swipeDownAction, swipeDownValue, swipeDownLabel) {
                     val label = swipeDownLabel
@@ -1105,7 +1149,7 @@ fun KeyboardRowWithConfig(
                 swipeDownText = swipeDownBubbleText,
                 swipeUpKeyLabel = swipeUpKeyLabel,
                 swipeDownKeyLabel = if ((swipeDownDisplay == DisplayMode.KEY || swipeDownDisplay == DisplayMode.BOTH) && swipeDownHintsEnabled) swipeDownLabel else null,
-                onSwipe = if (swipeUpCommitValue != null && swipeUpAction != GestureAction.NONE) { { onKeyPress(swipeUpCommitValue) } } else null,
+                onSwipe = onSwipe,
                 onSwipeDown = onSwipeDown,
                 swipeUpExecuteValue = swipeUpCommitValue,
                 swipeDownExecuteValue = swipeDownLabel,
@@ -1690,6 +1734,7 @@ private fun LandscapeKeyboardContent(
                         swipeText = k4SwipeLabel,
                         swipeUpExecuteValue = k4SwipeValue ?: k4SwipeLabelRaw,
                         onSwipe = if (k4SwipeValue != null) { { onKeyPress(k4SwipeValue) } } else null,
+                        // TODO landscape earth 上滑暂未读取 action，后续补充
                         onPress = { onKeyPressDown?.invoke(k4Value) },
                         onRelease = { onKeyRelease?.invoke(k4Value) },
                         shadowEnabled = shadowEnabled,
@@ -1773,7 +1818,7 @@ fun SwipeableKeyButtonLandscape(
     val currentOnSwipeStateChange by rememberUpdatedState(onSwipeStateChange)
     val scope = rememberCoroutineScope()
     val view = LocalView.current
-    val chaiPuaFontFamily = AppFonts.chaiPuaFontFamily
+    val fallbackFontFamily = LocalKeyboardFontFamily.current ?: AppFonts.chaiPuaFontFamily
 
     val density = LocalDensity.current
     val swipeUpThreshold = with(density) { (-15).dp.toPx() }
@@ -2024,6 +2069,7 @@ fun SwipeableKeyButtonLandscape(
                 color = textColor,
                 fontSize = if (fontSize != androidx.compose.ui.unit.TextUnit.Unspecified) fontSize else 14.sp,
                 fontWeight = FontWeight.Medium,
+                fontFamily = LocalKeyboardFontFamily.current,
                 textAlign = TextAlign.Center,
                 maxLines = 1,
                 lineHeight = TextUnit.Unspecified
@@ -2037,6 +2083,7 @@ fun SwipeableKeyButtonLandscape(
                 color = textColor.copy(alpha = 0.5f),
                 fontSize = swipeFontSize,
                 fontWeight = FontWeight.Normal,
+                fontFamily = LocalKeyboardFontFamily.current,
                 textAlign = TextAlign.End,
                 maxLines = 1,
                 lineHeight = 8.sp,
@@ -2051,7 +2098,7 @@ fun SwipeableKeyButtonLandscape(
                 color = textColor.copy(alpha = 0.5f),
                 fontSize = swipeFontSize,
                 fontWeight = FontWeight.Normal,
-                fontFamily = chaiPuaFontFamily,
+                fontFamily = fallbackFontFamily,
                 textAlign = TextAlign.Start,
                 maxLines = 1,
                 lineHeight = 8.sp,
@@ -2068,6 +2115,7 @@ fun SwipeableKeyButtonLandscape(
                 color = textColor.copy(alpha = 0.4f),
                 fontSize = swipeFontSize,
                 fontWeight = FontWeight.Normal,
+                fontFamily = LocalKeyboardFontFamily.current,
                 textAlign = TextAlign.Start,
                 maxLines = 1,
                 lineHeight = 8.sp,
@@ -2170,6 +2218,21 @@ fun CompactKeyboardRowWithConfig(
                 Unit
             } }
 
+            val compactOnSwipe: ((String) -> Unit)? = if (swipeUpCommitValue != null && swipeUpAction != null && swipeUpAction != GestureAction.NONE) {
+                remember(swipeUpAction, swipeUpCommitValue, onKeyPress, onGestureAction, onCommitText) {
+                    val action = swipeUpAction
+                    val label = swipeUpCommitValue
+                    { _: String ->
+                        if (action == GestureAction.COMMIT) {
+                            (onCommitText ?: onKeyPress)(label)
+                        } else {
+                            onGestureAction?.invoke(action, label)
+                        }
+                        Unit
+                    }
+                }
+            } else null
+
             SwipeableKeyButtonLandscape(
                 text = compactDisplayText,
                 onClick = compactOnClick,
@@ -2180,7 +2243,7 @@ fun CompactKeyboardRowWithConfig(
                 swipeDownText = swipeDownBubbleText,
                 swipeUpKeyLabel = swipeUpKeyLabel,
                 swipeDownKeyLabel = swipeDownKeyLabel,
-                onSwipe = if (swipeUpCommitValue != null && swipeUpAction != GestureAction.NONE) { { onKeyPress(swipeUpCommitValue) } } else null,
+                onSwipe = compactOnSwipe,
                 onSwipeDown = compactOnSwipeDown,
                 swipeUpExecuteValue = swipeUpCommitValue,
                 swipeDownExecuteValue = swipeDownLabel,

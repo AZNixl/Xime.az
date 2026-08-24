@@ -15,11 +15,10 @@ import org.json.JSONObject
  * 加载时机：KeysConfigHelper.loadXimeConfig 在解析完 assets 的 xime.yaml 后调用
  * [applyTo]，把覆盖叠加上去，因此自定义改动随 configVersion 一并生效。
  *
- * JSON 结构：
+ * JSON 结构（自 v2.6.2 起中英文共用 qwerty，不再区分 qwerty_en）：
  * {
  *   "qwerty": { "a": { "tap": {...}, "swipe_up": {...}, "swipe_down": {...},
- *                      "long_press": { "display": "bubble", "values": [ {...}, ... ] } } },
- *   "qwerty_en": { ... }
+ *                      "long_press": { "display": "bubble", "values": [ {...}, ... ] } } }
  * }
  *
  * 手势对象（tap/swipe_up/swipe_down/long_press.values[]）：
@@ -50,7 +49,7 @@ object UserKeysOverrides {
 
     // ── 读取（供设置页回显）──
 
-    /** 取某区某键的覆盖对象（无覆盖返回 null）。section = "qwerty" | "qwerty_en"。 */
+    /** 取某区某键的覆盖对象（无覆盖返回 null）。section 固定为 "qwerty"。 */
     fun getKeyOverride(context: Context, section: String, key: String): JSONObject? {
         val sec = readTree(context).optJSONObject(section) ?: return null
         return sec.optJSONObject(key)
@@ -105,65 +104,15 @@ object UserKeysOverrides {
 
     /**
      * 把用户覆盖叠加到已解析的默认配置上。
-     * zh = qwerty（中文），en = qwerty_en（英文）。
+     * 自 v2.6.2 起中英文键盘共用 qwerty，不再区分 qwerty_en。
      */
     fun applyTo(
         context: Context,
-        zh: Map<String, KeyGestureConfig>,
-        en: Map<String, KeyGestureConfig>,
-    ): Pair<Map<String, KeyGestureConfig>, Map<String, KeyGestureConfig>> {
-        val tree = readTree(context)
-        if (tree.length() == 0) return Pair(zh, en)
-        val newZh = applySection(tree.optJSONObject("qwerty"), zh)
-        val newEn = applySection(tree.optJSONObject("qwerty_en"), en)
-        // 英文键盘跟随中文键盘符号：中文区改动转半角后叠加到英文区（英文区已有独立覆盖的键除外）
-        val finalEn = if (SettingsPreferences.isEnFollowZhSymbols(context)) {
-            followZhOverrides(context, newZh, newEn)
-        } else newEn
-        return Pair(newZh, finalEn)
-    }
-
-    /** 把中文区有效手势转半角后叠加到英文区；英文区该键已有独立覆盖则跳过。 */
-    private fun followZhOverrides(
-        context: Context,
-        zh: Map<String, KeyGestureConfig>,
-        en: Map<String, KeyGestureConfig>,
+        base: Map<String, KeyGestureConfig>,
     ): Map<String, KeyGestureConfig> {
-        val enTree = readTree(context).optJSONObject("qwerty_en")
-        val result = en.toMutableMap()
-        for ((key, zhCfg) in zh) {
-            if (enTree?.optJSONObject(key) != null) continue
-            val base = en[key] ?: continue
-            result[key] = KeyGestureConfig(
-                tap = zhCfg.tap?.let { toHalfWidth(it) } ?: base.tap,
-                swipeUp = zhCfg.swipeUp?.let { toHalfWidth(it) } ?: base.swipeUp,
-                swipeDown = zhCfg.swipeDown?.let { toHalfWidth(it) } ?: base.swipeDown,
-                longPress = zhCfg.longPress?.let { lp ->
-                    LongPressConfig(lp.display, lp.values.map { toHalfWidth(it) })
-                } ?: base.longPress,
-            )
-        }
-        return result
-    }
-
-    /** 手势 label/value 全角→半角（动作与 display 不变）。 */
-    private fun toHalfWidth(g: GestureDef): GestureDef =
-        g.copy(label = fullToHalf(g.label), value = fullToHalf(g.value))
-
-    /** 全角→半角（0xFF01-0xFF5E → ASCII，全角空格→空格）。 */
-    private fun fullToHalf(s: String): String {
-        if (s.isEmpty()) return s
-        val sb = StringBuilder(s.length)
-        for (c in s) {
-            sb.append(
-                when (c) {
-                    '\u3000' -> ' '
-                    in '\uFF01'..'\uFF5E' -> (c.code - 0xFEE0).toChar()
-                    else -> c
-                }
-            )
-        }
-        return sb.toString()
+        val tree = readTree(context)
+        if (tree.length() == 0) return base
+        return applySection(tree.optJSONObject("qwerty"), base)
     }
 
     private fun applySection(
