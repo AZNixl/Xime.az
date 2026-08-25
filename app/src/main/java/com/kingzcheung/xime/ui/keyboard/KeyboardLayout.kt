@@ -49,6 +49,7 @@ import androidx.compose.runtime.setValue
 import com.kingzcheung.xime.settings.SettingsPreferences
 import com.kingzcheung.xime.settings.DisplayMode
 import com.kingzcheung.xime.settings.ButtonLayout
+import com.kingzcheung.xime.settings.KeyGestureConfig
 import com.kingzcheung.xime.settings.KeysConfigHelper
 import com.kingzcheung.xime.keyboard.GestureAction
 
@@ -2828,7 +2829,6 @@ private fun ModeChangeKey(
     } else null
     val longPressGestureMap = if (longPressDisplay == "bubble") {
         longPressConfig?.values?.associateBy { it.label }
-            ?: defaultItems.zip(defaultItems).toMap()
     } else null
     val directLongPressLabels = if (longPressDisplay == "key") {
         longPressConfig?.values?.firstOrNull()?.let { listOf(it.label) }
