@@ -652,21 +652,16 @@ fun KeyboardLayout(
                                 modifier = Modifier.weight(0.8f)
                             )
                         } else {
-                            // ?123 — 点按切换数字/符号面板（跟随上次选择），长按弹 t9/t26 图标
-                            SwipeableKeyButton(
-                                text = "?123",
-                                onClick = { onKeyPress("mode_change") },
+                            ModeChangeKey(
+                                onKeyPress = onKeyPress,
+                                onKeyPressDown = onKeyPressDown,
+                                onKeyRelease = onKeyRelease,
+                                onGestureAction = onGestureAction,
+                                swipeUpHintsEnabled = swipeUpHintsEnabled,
+                                swipeDownHintsEnabled = effectiveSwipeDownHintsEnabled,
                                 backgroundColor = specialKeyBackgroundColor,
                                 textColor = specialKeyTextColor,
                                 modifier = Modifier.weight(1.2f),
-                                onPress = { onKeyPressDown?.invoke("mode_change") },
-                                onRelease = { onKeyRelease?.invoke("mode_change") },
-                                onLongPressSelect = { label -> onKeyPress(if (label == "number") "mode_change_number" else "mode_change_common_symbol") },
-                                longPressItems = listOf("number", "common_symbol"),
-                                longPressDrawableIds = listOf(
-                                    com.kingzcheung.xime.R.drawable.t9,
-                                    com.kingzcheung.xime.R.drawable.t26
-                                ),
                                 onSwipeStateChange = { state, bounds -> processSwipeState(state, bounds) },
                                 shadowEnabled = shadowEnabled,
                                 shadowElevation = shadowElevation,
@@ -1806,20 +1801,16 @@ private fun LandscapeKeyboardContent(
                     onGestureAction = onGestureAction,
                     onCommitText = onCommitText,
                 )
-                SwipeableKeyButton(
-                    text = "?123",
-                    onClick = { onKeyPress("mode_change") },
+                ModeChangeKey(
+                    onKeyPress = onKeyPress,
+                    onKeyPressDown = onKeyPressDown,
+                    onKeyRelease = onKeyRelease,
+                    onGestureAction = onGestureAction,
+                    swipeUpHintsEnabled = swipeUpHintsEnabled,
+                    swipeDownHintsEnabled = swipeDownHintsEnabled,
                     backgroundColor = specialKeyBackgroundColor,
                     textColor = specialKeyTextColor,
                     modifier = Modifier.weight(1.2f),
-                    onPress = { onKeyPressDown?.invoke("mode_change") },
-                    onRelease = { onKeyRelease?.invoke("mode_change") },
-                    onLongPressSelect = { label -> onKeyPress(if (label == "number") "mode_change_number" else "mode_change_common_symbol") },
-                    longPressItems = listOf("number", "common_symbol"),
-                    longPressDrawableIds = listOf(
-                        com.kingzcheung.xime.R.drawable.t9,
-                        com.kingzcheung.xime.R.drawable.t26
-                    ),
                     onSwipeStateChange = onSwipeStateChange,
                     shadowEnabled = shadowEnabled,
                     shadowElevation = shadowElevation,
@@ -2497,10 +2488,21 @@ private fun SplitSpaceKey(
     val currentOnGestureAction by rememberUpdatedState(onGestureAction)
     val currentOnPress by rememberUpdatedState(onPress)
     val currentOnRelease by rememberUpdatedState(onRelease)
+    var isLongPress by remember { mutableStateOf(false) }
 
-    // 长按覆盖：首项非空则执行，否则默认切换中/英文
+    // 长按覆盖：首项非空则执行，否则默认连续输入空格
     val lpDirect = spaceGesture?.longPress?.values?.firstOrNull()
     val currentLpDirect by rememberUpdatedState(lpDirect)
+
+    // 默认长按行为：连续输入空格（类似退格键），直到松手
+    LaunchedEffect(isLongPress) {
+        if (isLongPress && currentLpDirect == null) {
+            while (isLongPress) {
+                currentOnKeyPress("space")
+                delay(30)
+            }
+        }
+    }
 
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
@@ -2544,13 +2546,14 @@ private fun SplitSpaceKey(
                                 currentOnKeyPress(override.value.ifEmpty { override.label })
                             }
                         } else {
-                            // 默认：长按空格 = 切换中/英文
-                            currentOnClick()
+                            // 默认：长按空格 = 连续输入空格
+                            isLongPress = true
                         }
                     }
 
                     waitForUpOrCancellation()
                     longPressJob.cancel()
+                    isLongPress = false
                     currentOnRelease?.invoke()
 
                     if (!longPressTriggered) {
@@ -2622,6 +2625,7 @@ private fun SpaceKey(
     val currentOnCommitText by rememberUpdatedState(onCommitText)
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    var isLongPress by remember { mutableStateOf(false) }
 
     // 空格键用户手势覆盖（设置→键盘符号编辑），tap 与长按均支持自定义
     val spaceGesture = KeysConfigHelper.getKeyGesture("space", isAsciiMode)
@@ -2631,6 +2635,16 @@ private fun SpaceKey(
     val currentOverrideTapValue by rememberUpdatedState(overrideTapValue)
     val lpDirect = spaceGesture?.longPress?.values?.firstOrNull()
     val currentLpDirect by rememberUpdatedState(lpDirect)
+
+    // 默认长按行为：连续输入空格（类似退格键），直到松手
+    LaunchedEffect(isLongPress) {
+        if (isLongPress && currentLpDirect == null) {
+            while (isLongPress) {
+                currentOnKeyPress("space")
+                delay(30)
+            }
+        }
+    }
 
     val density = LocalDensity.current
     val shadowModifier = remember(shadowEnabled, shadowElevation, shadowShapeRadius, density, keyBackgroundColor) {
@@ -2671,7 +2685,7 @@ private fun SpaceKey(
                         longPressTriggered = true
                         val override = currentLpDirect
                         if (override != null) {
-                            // 用户自定义空格长按
+                            // 用户自定义空格长按：单次执行自定义动作
                             if (override.action != null && override.action != GestureAction.COMMIT) {
                                 currentOnGestureAction?.invoke(override.action, override.value.ifEmpty { override.label })
                             } else {
@@ -2679,13 +2693,14 @@ private fun SpaceKey(
                                 currentOnKeyPress(override.value.ifEmpty { override.label })
                             }
                         } else {
-                            // 默认：长按空格 = 切换中/英文
-                            currentOnKeyPress("ime_switch")
+                            // 默认：长按空格 = 连续输入空格
+                            isLongPress = true
                         }
                     }
 
                     waitForUpOrCancellation()
                     longPressJob.cancel()
+                    isLongPress = false
                     currentOnKeyRelease?.invoke("space")
 
                     if (!longPressTriggered) {
@@ -2754,4 +2769,162 @@ private fun SpaceKey(
             }
         }
     }
+}
+
+/**
+ * ?123 数字/符号面板切换键。
+ * 支持设置→键盘符号编辑自定义 tap/上滑/下滑/长按（配置键 mode_change）。
+ * 未自定义时保持默认行为：点按切换面板，长按弹气泡选择 number / common_symbol。
+ */
+@Composable
+private fun ModeChangeKey(
+    onKeyPress: (String) -> Unit,
+    onKeyPressDown: ((String) -> Unit)?,
+    onKeyRelease: ((String) -> Unit)?,
+    onGestureAction: ((GestureAction, String) -> Unit)?,
+    swipeUpHintsEnabled: Boolean,
+    swipeDownHintsEnabled: Boolean,
+    backgroundColor: Color,
+    textColor: Color,
+    modifier: Modifier = Modifier,
+    isAsciiMode: Boolean = false,
+    onSwipeStateChange: ((SwipeState, Rect) -> Unit)? = null,
+    shadowEnabled: Boolean = true,
+    shadowElevation: Dp = 1.dp,
+    shadowShapeRadius: Dp = 8.dp,
+) {
+    val cfg = KeysConfigHelper.getKeyGesture("mode_change", isAsciiMode) ?: KeyGestureConfig()
+    val tap = cfg.tap
+    val tapAction = tap?.action
+    val tapValue = tap?.value?.takeIf { it.isNotEmpty() }
+        ?: tap?.label?.takeIf { it.isNotEmpty() }
+        ?: "mode_change"
+    val tapLabel = tap?.label?.takeIf { it.isNotEmpty() } ?: "?123"
+
+    val swipeUpRaw = cfg.swipeUp
+    val swipeUpLabel = swipeUpRaw?.label?.takeIf { it.isNotEmpty() }
+        ?: swipeUpRaw?.value?.takeIf { it.isNotEmpty() }
+    val swipeUpValue = swipeUpRaw?.value?.takeIf { it.isNotEmpty() } ?: swipeUpLabel
+    val swipeUpAction = swipeUpRaw?.action
+    val swipeUpDisplay = swipeUpRaw?.display ?: DisplayMode.BOTH
+
+    val swipeDownRaw = cfg.swipeDown
+    val swipeDownLabel = swipeDownRaw?.label?.takeIf { it.isNotEmpty() }
+    val swipeDownValue = swipeDownRaw?.value
+    val swipeDownAction = swipeDownRaw?.action
+    val swipeDownDisplay = swipeDownRaw?.display ?: DisplayMode.BOTH
+
+    val longPressConfig = cfg.longPress
+    val longPressDisplay = longPressConfig?.display ?: "bubble"
+    val defaultItems = listOf("number", "common_symbol")
+    val defaultDrawableIds = listOf(
+        com.kingzcheung.xime.R.drawable.t9,
+        com.kingzcheung.xime.R.drawable.t26
+    )
+    val longPressLabels = if (longPressDisplay == "bubble") {
+        longPressConfig?.values?.map { it.label }
+            ?.filter { it.isNotEmpty() }?.ifEmpty { defaultItems }
+            ?: defaultItems
+    } else null
+    val longPressGestureMap = if (longPressDisplay == "bubble") {
+        longPressConfig?.values?.associateBy { it.label }
+            ?: defaultItems.zip(defaultItems).toMap()
+    } else null
+    val directLongPressLabels = if (longPressDisplay == "key") {
+        longPressConfig?.values?.firstOrNull()?.let { listOf(it.label) }
+    } else null
+    val directLongPressGesture = if (longPressDisplay == "key") {
+        longPressConfig?.values?.firstOrNull()
+    } else null
+
+    val onClick: () -> Unit = remember(tapAction, tapValue, onKeyPress, onGestureAction) {
+        {
+            if (tapAction != null && tapAction != GestureAction.COMMIT) {
+                onGestureAction?.invoke(tapAction, tapValue)
+            } else {
+                onKeyPress(tapValue)
+            }
+        }
+    }
+    val onSwipe: ((String) -> Unit)? = if (swipeUpValue != null && swipeUpAction != null && swipeUpAction != GestureAction.NONE) {
+        remember(swipeUpAction, swipeUpValue, onKeyPress, onGestureAction) {
+            val action = swipeUpAction
+            val label = swipeUpValue
+            { _: String ->
+                if (action == GestureAction.COMMIT) {
+                    onKeyPress(label)
+                } else {
+                    onGestureAction?.invoke(action, label)
+                }
+                Unit
+            }
+        }
+    } else null
+    val onSwipeDown: ((String) -> Unit)? = if (swipeDownAction != null && swipeDownLabel != null) {
+        remember(swipeDownAction, swipeDownValue, swipeDownLabel, onKeyPress, onGestureAction) {
+            val label = swipeDownLabel
+            { _: String ->
+                if (swipeDownAction == GestureAction.COMMIT) {
+                    onKeyPress(swipeDownValue?.ifEmpty { label } ?: label)
+                } else {
+                    onGestureAction?.invoke(swipeDownAction, swipeDownValue?.ifEmpty { label } ?: label)
+                }
+                Unit
+            }
+        }
+    } else null
+    val onDirectLongPress: (() -> Unit)? = if (directLongPressGesture != null) {
+        remember(directLongPressGesture, onGestureAction, onKeyPress) {
+            val g = directLongPressGesture
+            {
+                if (g.action != null && g.action != GestureAction.COMMIT) {
+                    onGestureAction?.invoke(g.action, g.value.ifEmpty { g.label })
+                } else {
+                    onKeyPress(g.value.ifEmpty { g.label })
+                }
+                Unit
+            }
+        }
+    } else null
+    val onLongPressSelect: ((String) -> Unit)? = remember(longPressGestureMap, onGestureAction, onKeyPress) { { selectedLabel: String ->
+        val gesture = longPressGestureMap?.get(selectedLabel)
+        if (gesture != null && gesture.action != null && gesture.action != GestureAction.COMMIT) {
+            onGestureAction?.invoke(gesture.action, gesture.value.ifEmpty { selectedLabel })
+        } else {
+            // 默认 number / common_symbol 维持原行为
+            onKeyPress(
+                when (selectedLabel) {
+                    "number" -> "mode_change_number"
+                    "common_symbol" -> "mode_change_common_symbol"
+                    else -> selectedLabel
+                }
+            )
+        }
+        Unit
+    } }
+
+    SwipeableKeyButton(
+        layoutMode = KeysConfigHelper.getButtonLayout(isAsciiMode),
+        text = tapLabel,
+        onClick = onClick,
+        backgroundColor = backgroundColor,
+        textColor = textColor,
+        modifier = modifier,
+        swipeText = if (swipeUpDisplay != DisplayMode.KEY) swipeUpLabel else null,
+        swipeDownText = if (swipeDownDisplay != DisplayMode.KEY) swipeDownLabel else null,
+        swipeUpKeyLabel = if (swipeUpDisplay != DisplayMode.BUBBLE && swipeUpHintsEnabled) swipeUpLabel else null,
+        swipeDownKeyLabel = if ((swipeDownDisplay == DisplayMode.KEY || swipeDownDisplay == DisplayMode.BOTH) && swipeDownHintsEnabled) swipeDownLabel else null,
+        onSwipe = onSwipe,
+        onSwipeDown = onSwipeDown,
+        onPress = { onKeyPressDown?.invoke(tapValue) },
+        onRelease = { onKeyRelease?.invoke(tapValue) },
+        onLongPressSelect = onLongPressSelect,
+        longPressItems = longPressLabels ?: directLongPressLabels,
+        longPressDrawableIds = if (longPressLabels == defaultItems) defaultDrawableIds else null,
+        onDirectLongPress = onDirectLongPress,
+        onSwipeStateChange = onSwipeStateChange,
+        shadowEnabled = shadowEnabled,
+        shadowElevation = shadowElevation,
+        shadowShapeRadius = shadowShapeRadius,
+    )
 }

@@ -929,14 +929,13 @@ object KeysConfigHelper {
 
     /**
      * 获取长按首项提示文字。
-     * 当长按显示模式不是 bubble（即需要在键帽上提示）且首项存在时返回其 label，
-     * 否则返回 null，避免与气泡选择模式冲突。
+     * 只要首项存在且 label/value 非空即返回，用于在键帽左上角显示长按首项符号。
+     * 与 bubble 选择模式不冲突：bubble 模式下滑松手后仍弹出选择，hint 仅作视觉提示。
      */
     fun getLongPressHintLabel(key: String, isAsciiMode: Boolean = false): String? {
         val config = _keyGestureConfig.value
         val kc = config[key.lowercase()] ?: return null
         val lp = kc.longPress ?: return null
-        if (lp.display == "bubble") return null
         val first = lp.values.firstOrNull() ?: return null
         return first.label.takeIf { it.isNotEmpty() }
             ?: first.value.takeIf { it.isNotEmpty() }

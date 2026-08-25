@@ -152,31 +152,45 @@ fun NumberKeyboardLayout(
                     CompositionLocalProvider(
                         LocalKeyVisualPadding provides PaddingValues(horizontal = 1.dp, vertical = 2.dp)
                     ) {
-                    NumberRows(
-                        onKeyPress = onKeyPress,
-                        keyBackgroundColor = keyBackgroundColor,
-                        keyTextColor = keyTextColor,
-                        specialKeyBackgroundColor = specialKeyBackgroundColor,
-                        shadowEnabled = shadowEnabled,
-                        shadowElevation = shadowElevation,
-                        shadowShapeRadius = shadowShapeRadius,
-                        onKeyPressDown = onKeyPressDown,
-                        compactMode = true,
-                        specialKeyTextColor = specialKeyTextColor,
-                        onGestureAction = onGestureAction,
-                        onSwipeStateChange = { state, bounds ->
-                            val newState = if (state.isSwipeDown && state.swipeText != null) {
-                                state.copy(charInfos = SubcharHelper.parseSwipeDownText(state.swipeText))
-                            } else state
-                            swipeState = newState
-                            lastKeyBounds = Rect(
-                                left = bounds.left - keyboardBounds.left,
-                                top = bounds.top - keyboardBounds.top,
-                                right = bounds.right - keyboardBounds.left,
-                                bottom = bounds.bottom - keyboardBounds.top
+                    Column(
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        NumberRows(
+                            onKeyPress = onKeyPress,
+                            keyBackgroundColor = keyBackgroundColor,
+                            keyTextColor = keyTextColor,
+                            specialKeyBackgroundColor = specialKeyBackgroundColor,
+                            shadowEnabled = shadowEnabled,
+                            shadowElevation = shadowElevation,
+                            shadowShapeRadius = shadowShapeRadius,
+                            onKeyPressDown = onKeyPressDown,
+                            compactMode = true,
+                            specialKeyTextColor = specialKeyTextColor,
+                            onGestureAction = onGestureAction,
+                            onSwipeStateChange = { state, bounds ->
+                                val newState = if (state.isSwipeDown && state.swipeText != null) {
+                                    state.copy(charInfos = SubcharHelper.parseSwipeDownText(state.swipeText))
+                                } else state
+                                swipeState = newState
+                                lastKeyBounds = Rect(
+                                    left = bounds.left - keyboardBounds.left,
+                                    top = bounds.top - keyboardBounds.top,
+                                    right = bounds.right - keyboardBounds.left,
+                                    bottom = bounds.bottom - keyboardBounds.top
+                                )
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        // ── 增高行：与主键盘同步的底部空白 ──
+                        if (fifthRowEnabled) {
+                            Spacer(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(fifthRowHeightWeight)
                             )
                         }
-                    )
+                    }
                     }
                 }
             }
@@ -245,6 +259,7 @@ private fun NumberRows(
     compactMode: Boolean = false,
     specialKeyTextColor: Color = Color.White,
     onGestureAction: ((GestureAction, String) -> Unit)? = null,
+    modifier: Modifier = Modifier,
 ) {
     val symFontSize = if (compactMode) 14.sp else 18.sp
     val keyFontSize = if (compactMode) 16.sp else androidx.compose.ui.unit.TextUnit.Unspecified
@@ -252,7 +267,7 @@ private fun NumberRows(
     val suppressCursorMove = LocalSuppressCursorMove.current
     val symbols = listOf("+", "-", "*", "/")
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize(),
         horizontalArrangement = Arrangement.spacedBy(2.dp)
     ) {

@@ -49,13 +49,13 @@ import com.kingzcheung.xime.settings.SettingsPreferences
 import com.kingzcheung.xime.settings.UserKeysOverrides
 import org.json.JSONObject
 
-/** 可编辑的按键：字母 + 数字/符号 + 逗号 + 句号（earth） + 空格 */
+/** 可编辑的按键：字母 + 数字/符号 + 逗号 + 句号（earth） + 空格 + ?123 */
 private val EDITABLE_KEYS = listOf(
     listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p"),
     listOf("a", "s", "d", "f", "g", "h", "j", "k", "l"),
     listOf("z", "x", "c", "v", "b", "n", "m"),
     listOf("1", "2", "3", "4", "5", "6", "7", "8"),
-    listOf("9", "0", ".", "'", "earth", "space"),
+    listOf("9", "0", ".", "'", "earth", "space", "mode_change"),
 )
 
 /** 键的显示名（编辑卡片/对话框标题用） */
@@ -63,6 +63,7 @@ private fun keyDisplayName(key: String): String = when (key) {
     "'" -> "，"
     "earth" -> "。"
     "space" -> "空格"
+    "mode_change" -> "?123"
     else -> key.uppercase()
 }
 
