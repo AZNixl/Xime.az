@@ -49,12 +49,13 @@ import com.kingzcheung.xime.settings.SettingsPreferences
 import com.kingzcheung.xime.settings.UserKeysOverrides
 import org.json.JSONObject
 
-/** 可编辑的按键：字母 + 逗号 + 句号（earth） */
+/** 可编辑的按键：字母 + 数字/符号 + 逗号 + 句号（earth） + 空格 */
 private val EDITABLE_KEYS = listOf(
     listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p"),
     listOf("a", "s", "d", "f", "g", "h", "j", "k", "l"),
     listOf("z", "x", "c", "v", "b", "n", "m"),
-    listOf("'", "earth", "space"),
+    listOf("1", "2", "3", "4", "5", "6", "7", "8"),
+    listOf("9", "0", ".", "'", "earth", "space"),
 )
 
 /** 键的显示名（编辑卡片/对话框标题用） */
@@ -75,6 +76,7 @@ private val ACTION_OPTIONS = listOf(
     "paste" to "粘贴",
     "line_start" to "行首",
     "line_end" to "行尾",
+    "left" to "光标左移",
     "undo" to "撤销",
     "none" to "仅显示",
 )
@@ -83,6 +85,14 @@ private val ACTION_OPTIONS = listOf(
 private val LONG_PRESS_DISPLAYS = listOf(
     "key" to "直发（不弹气泡）",
     "bubble" to "气泡多选",
+)
+
+/** 临时候选键（composing）选项 */
+private val COMPOSING_OPTIONS = listOf(
+    "" to "无",
+    "select_2" to "第二候选",
+    "select_3" to "第三候选",
+    "Escape" to "取消编码",
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -231,6 +241,12 @@ private fun KeyEditCard(
     val upLabel = gesture?.swipeUp?.label ?: ""
     val downLabel = gesture?.swipeDown?.label ?: ""
     val lpCount = gesture?.longPress?.values?.size ?: 0
+    val composingLabel = when (gesture?.composing) {
+        "select_2" -> "2选"
+        "select_3" -> "3选"
+        "Escape" -> "取消"
+        else -> ""
+    }
 
     Card(
         modifier = Modifier
@@ -261,6 +277,10 @@ private fun KeyEditCard(
                 Text("⋯$lpCount", style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary)
             }
+            if (composingLabel.isNotEmpty()) {
+                Text(composingLabel, style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.tertiary)
+            }
         }
     }
 }
@@ -288,6 +308,7 @@ private fun KeyEditDialog(
     var upDirty by remember { mutableStateOf(false) }
     var downDirty by remember { mutableStateOf(false) }
     var lpDirty by remember { mutableStateOf(false) }
+    var composingDirty by remember { mutableStateOf(false) }
 
     val lpDisplay0 = current?.longPress?.display ?: ""
     var lpDisplay by remember {
@@ -295,6 +316,11 @@ private fun KeyEditDialog(
     }
     var lpValuesText by remember {
         mutableStateOf(current?.longPress?.values?.joinToString(" ") { it.label } ?: "")
+    }
+
+    val composing0 = current?.composing ?: ""
+    var composingValue by remember {
+        mutableStateOf(COMPOSING_OPTIONS.firstOrNull { it.first == composing0 }?.first ?: "")
     }
 
     AlertDialog(
@@ -357,6 +383,18 @@ private fun KeyEditDialog(
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
+                item {
+                    Text("临时候选键（打字时切换显示）", fontWeight = FontWeight.Medium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        COMPOSING_OPTIONS.forEach { (value, label) ->
+                            FilterChip(
+                                selected = composingValue == value,
+                                onClick = { composingValue = value; composingDirty = true },
+                                label = { Text(label, style = MaterialTheme.typography.bodySmall) }
+                            )
+                        }
+                    }
+                }
             }
         },
         confirmButton = {
@@ -364,8 +402,8 @@ private fun KeyEditDialog(
                 saveKeyOverride(
                     context, section, key,
                     tapText, upText, downText,
-                    tapDirty, upDirty, downDirty, lpDirty,
-                    lpDisplay, lpValuesText
+                    tapDirty, upDirty, downDirty, lpDirty, composingDirty,
+                    lpDisplay, lpValuesText, composingValue
                 )
                 onSaved()
             }) { Text("保存") }
@@ -390,7 +428,7 @@ private fun KeyEditDialog(
  */
 private fun parseGestureItem(token: String): JSONObject {
     val actionNames = ACTION_OPTIONS.map { it.first }.toSet() +
-        setOf("repeat", "toggle_ascii", "delete", "toggle_symbols", "switch_route")
+        setOf("repeat", "toggle_ascii", "delete", "toggle_symbols", "switch_route", "left")
     return when {
         token.startsWith("command:") -> {
             val cmd = token.removePrefix("command:")
@@ -415,8 +453,10 @@ private fun saveKeyOverride(
     upDirty: Boolean,
     downDirty: Boolean,
     lpDirty: Boolean,
+    composingDirty: Boolean,
     lpDisplay: String,
     lpValuesText: String,
+    composingValue: String,
 ) {
     // 仅保存用户实际改过的字段；留空 = 清除（覆盖默认符号）
     if (tapDirty) {
@@ -453,5 +493,8 @@ private fun saveKeyOverride(
                 .map { parseGestureItem(it) }
             UserKeysOverrides.setLongPress(context, section, key, lpDisplay, values)
         }
+    }
+    if (composingDirty) {
+        UserKeysOverrides.setComposing(context, section, key, composingValue)
     }
 }

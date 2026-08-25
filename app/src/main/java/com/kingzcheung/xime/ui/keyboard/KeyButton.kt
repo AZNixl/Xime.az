@@ -27,7 +27,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import com.kingzcheung.xime.keyboard.GestureAction
 import com.kingzcheung.xime.settings.ButtonLayout
+import com.kingzcheung.xime.settings.DisplayMode
+import com.kingzcheung.xime.settings.KeyGestureConfig
+import com.kingzcheung.xime.settings.KeysConfigHelper
 import com.kingzcheung.xime.util.CharInfo
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -1247,6 +1251,199 @@ fun SwipeableIconKeyButton(
             )
         }
     }
+}
+
+/**
+ * 配置驱动按键：从 KeysConfigHelper 读取 tap/上滑/下滑/长按/临时候选键配置，
+ * 并渲染为 SwipeableKeyButton。用于数字键盘、常用符号键盘等硬编码布局中的按键。
+ *
+ * @param key 配置键 ID，如 "1"、"."、"@"
+ * @param defaultLabel 无配置时的默认显示文字
+ * @param defaultValue 无配置时的默认上屏值
+ */
+@Composable
+fun ConfigurableKeyButton(
+    key: String,
+    defaultLabel: String,
+    defaultValue: String = defaultLabel,
+    modifier: Modifier = Modifier,
+    backgroundColor: Color,
+    textColor: Color,
+    onKeyPress: (String) -> Unit,
+    onKeyPressDown: ((String) -> Unit)? = null,
+    onKeyPressRelease: ((String) -> Unit)? = null,
+    onGestureAction: ((GestureAction, String) -> Unit)? = null,
+    onCandidateSelect: ((Int) -> Unit)? = null,
+    onSwipeStateChange: ((SwipeState, Rect) -> Unit)? = null,
+    isComposing: Boolean = false,
+    swipeHintsEnabled: Boolean = true,
+    fontSize: androidx.compose.ui.unit.TextUnit = androidx.compose.ui.unit.TextUnit.Unspecified,
+    shadowEnabled: Boolean = true,
+    shadowElevation: Dp = 1.dp,
+    shadowShapeRadius: Dp = 8.dp,
+) {
+    val cfg = KeysConfigHelper.getKeyGesture(key) ?: KeyGestureConfig()
+    val tap = cfg.tap
+    val tapAction = tap?.action
+    val tapValue = tap?.value?.takeIf { it.isNotEmpty() }
+        ?: tap?.label?.takeIf { it.isNotEmpty() }
+        ?: defaultValue
+    val tapLabel = tap?.label?.takeIf { it.isNotEmpty() } ?: tapValue
+
+    // 临时候选键：有候选/编码时覆盖点击行为
+    val composingAction = cfg.composing
+    val composingDisplay = if (isComposing && composingAction.isNotEmpty()) {
+        when (composingAction) {
+            "select_2" -> "2选"
+            "select_3" -> "3选"
+            "Escape" -> "取消"
+            else -> ""
+        }
+    } else ""
+    val displayText = composingDisplay.takeIf { it.isNotEmpty() } ?: tapLabel
+
+    // 上滑
+    val swipeUpRaw = cfg.swipeUp
+    val swipeUpLabel = swipeUpRaw?.label?.takeIf { it.isNotEmpty() }
+        ?: swipeUpRaw?.value?.takeIf { it.isNotEmpty() }
+        ?: ""
+    val swipeUpValue = swipeUpRaw?.value?.takeIf { it.isNotEmpty() } ?: swipeUpLabel
+    val swipeUpAction = swipeUpRaw?.action
+    val swipeUpDisplay = swipeUpRaw?.display ?: DisplayMode.BOTH
+
+    // 下滑
+    val swipeDownRaw = cfg.swipeDown
+    val swipeDownLabel = swipeDownRaw?.label?.takeIf { it.isNotEmpty() } ?: ""
+    val swipeDownValue = swipeDownRaw?.value
+    val swipeDownAction = swipeDownRaw?.action
+    val swipeDownDisplay = swipeDownRaw?.display ?: DisplayMode.BOTH
+
+    // 长按
+    val longPressConfig = cfg.longPress
+    val longPressDisplay = longPressConfig?.display ?: "key"
+    val longPressLabels = if (longPressDisplay == "bubble") {
+        longPressConfig?.values?.map { it.label }
+            ?.filter { it.isNotEmpty() }
+            ?.ifEmpty { null }
+    } else null
+    val longPressGestureMap = if (longPressDisplay == "bubble") {
+        longPressConfig?.values?.associateBy { it.label }
+    } else null
+    val directLongPressLabels = if (longPressDisplay == "key") {
+        longPressConfig?.values?.firstOrNull()?.let { listOf(it.label) }
+    } else null
+    val directLongPressGesture = if (longPressDisplay == "key") {
+        longPressConfig?.values?.firstOrNull()
+    } else null
+    val longPressHintLabel = KeysConfigHelper.getLongPressHintLabel(key)
+
+    val onClick: () -> Unit = remember(
+        key, tapAction, tapValue, isComposing, composingAction,
+        onKeyPress, onGestureAction, onCandidateSelect
+    ) {
+        {
+            if (isComposing && composingAction.isNotEmpty()) {
+                when (composingAction) {
+                    "select_2" -> onCandidateSelect?.invoke(1)
+                    "select_3" -> onCandidateSelect?.invoke(2)
+                    "Escape" -> onKeyPress("clear_composition")
+                }
+            } else if (tapAction != null && tapAction != GestureAction.COMMIT) {
+                onGestureAction?.invoke(tapAction, tapValue)
+            } else {
+                onKeyPress(tapValue)
+            }
+        }
+    }
+
+    val onSwipe: ((String) -> Unit)? = if (swipeUpValue.isNotEmpty() && swipeUpAction != null && swipeUpAction != GestureAction.NONE) {
+        remember(swipeUpAction, swipeUpValue, onKeyPress, onGestureAction) {
+            { _: String ->
+                if (swipeUpAction == GestureAction.COMMIT) {
+                    onKeyPress(swipeUpValue)
+                } else {
+                    onGestureAction?.invoke(swipeUpAction, swipeUpValue)
+                }
+            }
+        }
+    } else null
+
+    val onSwipeDown: ((String) -> Unit)? = if (swipeDownAction != null && swipeDownLabel.isNotEmpty()) {
+        remember(swipeDownAction, swipeDownValue, swipeDownLabel, onKeyPress, onGestureAction) {
+            val label = swipeDownLabel
+            { _: String ->
+                if (swipeDownAction == GestureAction.COMMIT) {
+                    onKeyPress(swipeDownValue?.ifEmpty { label } ?: label)
+                } else {
+                    onGestureAction?.invoke(
+                        swipeDownAction,
+                        swipeDownValue?.ifEmpty { label } ?: label)
+                }
+            }
+        }
+    } else null
+
+    val onDirectLongPress: (() -> Unit)? = if (directLongPressGesture != null) {
+        remember(key, directLongPressGesture, onGestureAction, onKeyPress) {
+            val g = directLongPressGesture
+            {
+                val action = g.action
+                if (action != null && action != GestureAction.COMMIT) {
+                    onGestureAction?.invoke(action, g.value.ifEmpty { g.label })
+                } else {
+                    onKeyPress(g.value.ifEmpty { g.label })
+                }
+            }
+        }
+    } else null
+
+    val onLongPressSelect: ((String) -> Unit)? = remember(
+        key, longPressGestureMap, onGestureAction, onKeyPress
+    ) { { selectedLabel: String ->
+        val gesture = longPressGestureMap?.get(selectedLabel)
+        val action = gesture?.action
+        if (action != null && action != GestureAction.COMMIT) {
+            onGestureAction?.invoke(
+                action,
+                gesture.value.ifEmpty { selectedLabel })
+        } else {
+            onKeyPress(selectedLabel)
+        }
+    } }
+
+    SwipeableKeyButton(
+        layoutMode = KeysConfigHelper.getButtonLayout(false),
+        text = displayText,
+        onClick = onClick,
+        backgroundColor = backgroundColor,
+        textColor = textColor,
+        modifier = modifier,
+        swipeText = swipeUpLabel.takeIf {
+            it.isNotEmpty() && swipeHintsEnabled && swipeUpDisplay != DisplayMode.KEY
+        },
+        swipeDownText = swipeDownLabel.takeIf {
+            it.isNotEmpty() && swipeHintsEnabled && swipeDownDisplay != DisplayMode.KEY
+        },
+        swipeUpKeyLabel = if (swipeUpDisplay != DisplayMode.BUBBLE && swipeHintsEnabled) swipeUpLabel else null,
+        swipeDownKeyLabel = if (
+            (swipeDownDisplay == DisplayMode.KEY || swipeDownDisplay == DisplayMode.BOTH) && swipeHintsEnabled
+        ) swipeDownLabel else null,
+        onSwipe = onSwipe,
+        onSwipeDown = onSwipeDown,
+        swipeUpExecuteValue = swipeUpValue.takeIf { it.isNotEmpty() },
+        swipeDownExecuteValue = swipeDownLabel.takeIf { it.isNotEmpty() },
+        onSwipeStateChange = onSwipeStateChange,
+        onPress = { onKeyPressDown?.invoke(key) },
+        onRelease = { onKeyPressRelease?.invoke(key) },
+        onLongPressSelect = onLongPressSelect,
+        longPressItems = longPressLabels ?: directLongPressLabels,
+        onDirectLongPress = onDirectLongPress,
+        longPressHint = if (swipeHintsEnabled) longPressHintLabel else null,
+        fontSize = fontSize,
+        shadowEnabled = shadowEnabled,
+        shadowElevation = shadowElevation,
+        shadowShapeRadius = shadowShapeRadius,
+    )
 }
 
 /** 键盘全局自定义字体（null = 系统默认）。由 KeyboardLayout 根部通过 CompositionLocalProvider 提供。 */

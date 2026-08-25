@@ -80,6 +80,20 @@ object UserKeysOverrides {
         writeTree(context, tree)
     }
 
+    /** 设置临时候选键动作。composing 为空字符串表示清除。 */
+    fun setComposing(
+        context: Context,
+        section: String,
+        key: String,
+        composing: String,
+    ) {
+        val tree = readTree(context)
+        val sec = tree.optJSONObject(section) ?: JSONObject().also { tree.put(section, it) }
+        val keyObj = sec.optJSONObject(key) ?: JSONObject().also { sec.put(key, it) }
+        if (composing.isEmpty()) keyObj.put("composing", JSONObject.NULL) else keyObj.put("composing", composing)
+        writeTree(context, tree)
+    }
+
     /** 设置长按。display = none|key|bubble；values 仅在 key/bubble 时有意义。 */
     fun setLongPress(
         context: Context,
@@ -134,7 +148,8 @@ object UserKeysOverrides {
         val up = if (o.has("swipe_up")) parseGestureField(o.opt("swipe_up"), base.swipeUp) else base.swipeUp
         val down = if (o.has("swipe_down")) parseGestureField(o.opt("swipe_down"), base.swipeDown) else base.swipeDown
         val lp = if (o.has("long_press")) parseLongPress(o.optJSONObject("long_press")) else base.longPress
-        return KeyGestureConfig(tap, up, down, lp)
+        val composing = if (o.has("composing")) o.optString("composing", "") else base.composing
+        return KeyGestureConfig(tap, up, down, lp, composing)
     }
 
     /**
@@ -157,7 +172,8 @@ object UserKeysOverrides {
         val action = if (actionStr == "null") null else GestureAction.fromValue(actionStr)
         val value = o.optString("value", "")
         val display = DisplayMode.fromValue(o.optString("display", "key"))
-        return GestureDef(label = label, action = action, value = value, display = display)
+        val composing = o.optString("composing", "")
+        return GestureDef(label = label, action = action, value = value, display = display, composing = composing)
     }
 
     private fun parseLongPress(o: JSONObject?): LongPressConfig? {

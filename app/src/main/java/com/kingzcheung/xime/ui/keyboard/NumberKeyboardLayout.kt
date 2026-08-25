@@ -1,7 +1,6 @@
 package com.kingzcheung.xime.ui.keyboard
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,39 +10,29 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Backspace
 import androidx.compose.material.icons.filled.EmojiEmotions
-import androidx.compose.material3.Text
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.kingzcheung.xime.keyboard.GestureAction
 import com.kingzcheung.xime.util.SubcharHelper
 
 /**
@@ -71,6 +60,7 @@ fun NumberKeyboardLayout(
     specialKeyTextColor: Color = Color.White,
     fifthRowEnabled: Boolean = false,
     fifthRowHeightWeight: Float = 1f,
+    onGestureAction: ((GestureAction, String) -> Unit)? = null,
 ) {
 
     val configuration = LocalConfiguration.current
@@ -173,6 +163,7 @@ fun NumberKeyboardLayout(
                         onKeyPressDown = onKeyPressDown,
                         compactMode = true,
                         specialKeyTextColor = specialKeyTextColor,
+                        onGestureAction = onGestureAction,
                         onSwipeStateChange = { state, bounds ->
                             val newState = if (state.isSwipeDown && state.swipeText != null) {
                                 state.copy(charInfos = SubcharHelper.parseSwipeDownText(state.swipeText))
@@ -210,6 +201,7 @@ fun NumberKeyboardLayout(
                     shadowShapeRadius = shadowShapeRadius,
                     onKeyPressDown = onKeyPressDown,
                     specialKeyTextColor = specialKeyTextColor,
+                    onGestureAction = onGestureAction,
                     onSwipeStateChange = { state, bounds ->
                         val newState = if (state.isSwipeDown && state.swipeText != null) {
                             state.copy(charInfos = SubcharHelper.parseSwipeDownText(state.swipeText))
@@ -252,6 +244,7 @@ private fun NumberRows(
     onSwipeStateChange: ((SwipeState, Rect) -> Unit)? = null,
     compactMode: Boolean = false,
     specialKeyTextColor: Color = Color.White,
+    onGestureAction: ((GestureAction, String) -> Unit)? = null,
 ) {
     val symFontSize = if (compactMode) 14.sp else 18.sp
     val keyFontSize = if (compactMode) 16.sp else androidx.compose.ui.unit.TextUnit.Unspecified
@@ -291,15 +284,17 @@ private fun NumberRows(
                             .padding(LocalKeyVisualPadding.current),
                     ) {
                         symbols.forEach { symbol ->
-                            NumberSymbolKey(
-                                text = symbol,
-                                onClick = { onKeyPress(symbol) },
+                            ConfigurableKeyButton(
+                                key = symbol,
+                                defaultLabel = symbol,
+                                defaultValue = symbol,
+                                onKeyPress = onKeyPress,
+                                onKeyPressDown = onKeyPressDown,
                                 backgroundColor = keyBackgroundColor,
                                 textColor = keyTextColor,
                                 modifier = Modifier.weight(1f),
-                                onPress = { onKeyPressDown?.invoke(symbol) },
-                                isFirst = symbol == "+",
-                                isLast = symbol == "/",
+                                onGestureAction = onGestureAction,
+                                onSwipeStateChange = onSwipeStateChange,
                                 fontSize = symFontSize,
                                 shadowEnabled = shadowEnabled,
                                 shadowElevation = shadowElevation,
@@ -339,18 +334,21 @@ private fun NumberRows(
                             .weight(1f),
                     ) {
                         listOf("1", "2", "3").forEach { key ->
-                            KeyButton(
-                                text = key,
-                                onClick = { onKeyPress(key) },
+                            ConfigurableKeyButton(
+                                key = key,
+                                defaultLabel = key,
+                                defaultValue = key,
+                                onKeyPress = onKeyPress,
+                                onKeyPressDown = onKeyPressDown,
                                 backgroundColor = keyBackgroundColor,
                                 textColor = keyTextColor,
-                                onPress = { onKeyPressDown?.invoke(key) },
+                                modifier = Modifier.weight(1f),
+                                onGestureAction = onGestureAction,
+                                onSwipeStateChange = onSwipeStateChange,
+                                fontSize = keyFontSize,
                                 shadowEnabled = shadowEnabled,
                                 shadowElevation = shadowElevation,
                                 shadowShapeRadius = shadowShapeRadius,
-                                modifier = Modifier
-                                    .weight(1f),
-                                fontSize = keyFontSize,
                             )
                         }
 
@@ -362,18 +360,21 @@ private fun NumberRows(
                     ) {
 
                         listOf("4", "5", "6").forEach { key ->
-                            KeyButton(
-                                text = key,
-                                onClick = { onKeyPress(key) },
+                            ConfigurableKeyButton(
+                                key = key,
+                                defaultLabel = key,
+                                defaultValue = key,
+                                onKeyPress = onKeyPress,
+                                onKeyPressDown = onKeyPressDown,
                                 backgroundColor = keyBackgroundColor,
                                 textColor = keyTextColor,
-                                onPress = { onKeyPressDown?.invoke(key) },
+                                modifier = Modifier.weight(1f),
+                                onGestureAction = onGestureAction,
+                                onSwipeStateChange = onSwipeStateChange,
+                                fontSize = keyFontSize,
                                 shadowEnabled = shadowEnabled,
                                 shadowElevation = shadowElevation,
                                 shadowShapeRadius = shadowShapeRadius,
-                                modifier = Modifier
-                                    .weight(1f),
-                                fontSize = keyFontSize,
                             )
                         }
 
@@ -386,18 +387,21 @@ private fun NumberRows(
                     ) {
 
                         listOf("7", "8", "9").forEach { key ->
-                            KeyButton(
-                                text = key,
-                                onClick = { onKeyPress(key) },
+                            ConfigurableKeyButton(
+                                key = key,
+                                defaultLabel = key,
+                                defaultValue = key,
+                                onKeyPress = onKeyPress,
+                                onKeyPressDown = onKeyPressDown,
                                 backgroundColor = keyBackgroundColor,
                                 textColor = keyTextColor,
-                                modifier = Modifier
-                                    .weight(1f),
-                                onPress = { onKeyPressDown?.invoke(key) },
+                                modifier = Modifier.weight(1f),
+                                onGestureAction = onGestureAction,
+                                onSwipeStateChange = onSwipeStateChange,
+                                fontSize = keyFontSize,
                                 shadowEnabled = shadowEnabled,
                                 shadowElevation = shadowElevation,
                                 shadowShapeRadius = shadowShapeRadius,
-                                fontSize = keyFontSize,
                             )
                         }
 
@@ -421,29 +425,37 @@ private fun NumberRows(
                             shadowElevation = shadowElevation,
                             shadowShapeRadius = shadowShapeRadius,
                         )
-                        KeyButton(
-                            text = "0",
-                            onClick = { onKeyPress("0") },
+                        ConfigurableKeyButton(
+                            key = "0",
+                            defaultLabel = "0",
+                            defaultValue = "0",
+                            onKeyPress = onKeyPress,
+                            onKeyPressDown = onKeyPressDown,
                             backgroundColor = keyBackgroundColor,
                             textColor = keyTextColor,
                             modifier = Modifier.weight(1f),
-                            onPress = { onKeyPressDown?.invoke("0") },
+                            onGestureAction = onGestureAction,
+                            onSwipeStateChange = onSwipeStateChange,
+                            fontSize = keyFontSize,
                             shadowEnabled = shadowEnabled,
                             shadowElevation = shadowElevation,
                             shadowShapeRadius = shadowShapeRadius,
-                            fontSize = keyFontSize,
                         )
-                        KeyButton(
-                            text = ".",
-                            onClick = { onKeyPress(".") },
+                        ConfigurableKeyButton(
+                            key = ".",
+                            defaultLabel = ".",
+                            defaultValue = ".",
+                            onKeyPress = onKeyPress,
+                            onKeyPressDown = onKeyPressDown,
                             backgroundColor = keyBackgroundColor,
                             textColor = keyTextColor,
                             modifier = Modifier.weight(1f),
-                            onPress = { onKeyPressDown?.invoke(".") },
+                            onGestureAction = onGestureAction,
+                            onSwipeStateChange = onSwipeStateChange,
+                            fontSize = keyFontSize,
                             shadowEnabled = shadowEnabled,
                             shadowElevation = shadowElevation,
                             shadowShapeRadius = shadowShapeRadius,
-                            fontSize = keyFontSize,
                         )
 
                     }
@@ -517,72 +529,5 @@ private fun NumberRows(
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun NumberSymbolKey(
-    text: String,
-    onClick: () -> Unit,
-    backgroundColor: Color,
-    textColor: Color,
-    modifier: Modifier = Modifier,
-    onPress: (() -> Unit)? = null,
-    isFirst: Boolean = false,
-    isLast: Boolean = false,
-    fontSize: androidx.compose.ui.unit.TextUnit = 18.sp,
-    shadowEnabled: Boolean = true,
-    shadowElevation: Dp = 1.dp,
-    shadowShapeRadius: Dp = 8.dp,
-) {
-    var isPressed by remember { mutableStateOf(false) }
-    val currentOnClick by rememberUpdatedState(onClick)
-    val currentOnPress by rememberUpdatedState(onPress)
-    val cornerRadius = LocalKeyCornerRadius.current
-    val shape = RoundedCornerShape(
-        topStart = if (isFirst) cornerRadius else 0.dp,
-        topEnd = if (isFirst) cornerRadius else 0.dp,
-        bottomStart = if (isLast) cornerRadius else 0.dp,
-        bottomEnd = if (isLast) cornerRadius else 0.dp
-    )
-    val density = LocalDensity.current
-    val shadowModifier = remember(shadowEnabled, shadowElevation, shadowShapeRadius, density, backgroundColor) {
-        if (shadowEnabled) {
-            val offsetPx = with(density) { shadowElevation.toPx() }
-            val cornerPx = with(density) { shadowShapeRadius.toPx() }
-            val color = crispShadowColor(backgroundColor)
-            Modifier.drawBehind {
-                drawRoundRect(
-                    color = color,
-                    topLeft = Offset(0f, offsetPx),
-                    size = size,
-                    cornerRadius = CornerRadius(cornerPx)
-                )
-            }
-        } else Modifier
-    }
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .then(shadowModifier)
-            .clip(shape)
-            .background(if (isPressed) backgroundColor.copy(alpha = 0.7f) else backgroundColor)
-            .pointerInput(Unit) {
-                detectTapGestures(onPress = {
-                    isPressed = true
-                    currentOnPress?.invoke()
-                    tryAwaitRelease()
-                    isPressed = false
-                }, onTap = { currentOnClick() })
-            }, contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = text,
-            color = textColor,
-            fontSize = fontSize,
-            fontWeight = FontWeight.Normal,
-            fontFamily = LocalKeyboardFontFamily.current,
-            modifier = Modifier.padding(vertical = 2.dp)
-        )
     }
 }

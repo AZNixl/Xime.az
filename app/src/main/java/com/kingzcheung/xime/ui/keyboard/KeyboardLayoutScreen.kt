@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.kingzcheung.xime.keyboard.GestureAction
 import com.kingzcheung.xime.keyboard.OverlayRoute
@@ -14,6 +15,7 @@ import com.kingzcheung.xime.handwriting.HandwritingCandidate
 import com.kingzcheung.xime.rime.T9InputController
 import com.kingzcheung.xime.service.CandidateState
 import com.kingzcheung.xime.settings.KeysConfigHelper
+import com.kingzcheung.xime.settings.SettingsPreferences
 import com.kingzcheung.xime.ui.theme.KeyboardThemes
 import com.kingzcheung.xime.ui.theme.resolveSolidColor
 import com.kingzcheung.xime.viewmodel.KeyboardUiState
@@ -111,6 +113,7 @@ fun KeyboardLayoutScreen(
                         callbacks = callbacks,
                         uiState = uiState,
                         isAsciiMode = false,
+                        candidateState = candidateState,
                         modifier = modifier,
                     )
                 }
@@ -140,6 +143,7 @@ fun KeyboardLayoutScreen(
                         callbacks = callbacks,
                         uiState = uiState,
                         isAsciiMode = true,
+                        candidateState = candidateState,
                         modifier = modifier,
                     )
                 }
@@ -161,6 +165,9 @@ fun KeyboardLayoutScreen(
                     onKeyPressDown = callbacks.onKeyPressDown,
                     isFloatingMode = uiState.isFloatingMode,
                     specialKeyTextColor = specialKeyTextColor,
+                    fifthRowEnabled = SettingsPreferences.isFifthRowEnabled(LocalContext.current),
+                    fifthRowHeightWeight = SettingsPreferences.getFifthRowHeightWeight(LocalContext.current) / 10f,
+                    onGestureAction = onGestureAction,
                 )
             }
 
@@ -181,6 +188,9 @@ fun KeyboardLayoutScreen(
                     onKeyPressDown = callbacks.onKeyPressDown,
                     isFloatingMode = uiState.isFloatingMode,
                     specialKeyTextColor = specialKeyTextColor,
+                    fifthRowEnabled = SettingsPreferences.isFifthRowEnabled(LocalContext.current),
+                    fifthRowHeightWeight = SettingsPreferences.getFifthRowHeightWeight(LocalContext.current) / 10f,
+                    onGestureAction = onGestureAction,
                 )
             }
 

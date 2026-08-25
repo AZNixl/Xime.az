@@ -27,6 +27,7 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.Dp
+import com.kingzcheung.xime.keyboard.GestureAction
 import com.kingzcheung.xime.keyboard.KeyboardDimensions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -50,17 +51,21 @@ fun CommonSymbolKeyboardLayout(
     specialKeyTextColor: Color = Color.White,
     fifthRowEnabled: Boolean = false,
     fifthRowHeightWeight: Float = 1f,
+    onGestureAction: ((GestureAction, String) -> Unit)? = null,
 ) {
     var localAsciiMode by remember { mutableStateOf(isAsciiMode) }
 
+    // 符号键的「配置 ID」固定用半角，显示/默认值随中英文模式变化
+    val row2SymbolKeys = listOf("@", "#", "$", "&", "_", "-", "+", "(", ")", "/")
     val row2Symbols = if (localAsciiMode) {
-        listOf("@", "#", "$", "&", "_", "-", "+", "(", ")", "/")
+        row2SymbolKeys
     } else {
         listOf("＠", "＃", "＄", "＆", "＿", "－", "＋", "（", "）", "／")
     }
 
+    val row3SymbolKeys = listOf("*", ",", "\"", "'", ".", "!", "?")
     val row3Symbols = if (localAsciiMode) {
-        listOf("*", ",", "\"", "'", ".", "!", "?")
+        row3SymbolKeys
     } else {
         listOf("＊", "，", "：", "；", "。", "！", "？")
     }
@@ -113,6 +118,8 @@ fun CommonSymbolKeyboardLayout(
                 onKeyPress = onKeyPress,
                 row2Symbols = row2Symbols,
                 row3Symbols = row3Symbols,
+                row2SymbolKeys = row2SymbolKeys,
+                row3SymbolKeys = row3SymbolKeys,
                 keyBackgroundColor = keyBackgroundColor,
                 keyTextColor = keyTextColor,
                 specialKeyBackgroundColor = specialKeyBackgroundColor,
@@ -123,6 +130,7 @@ fun CommonSymbolKeyboardLayout(
                 suppressCursorMove = suppressCursorMove,
                 onSwipeStateChange = { state, bounds -> processSwipeState(state, bounds) },
                 specialKeyTextColor = specialKeyTextColor,
+                onGestureAction = onGestureAction,
             )
         } else {
             CompositionLocalProvider(
@@ -151,17 +159,23 @@ fun CommonSymbolKeyboardLayout(
                         ) {
                             (0..9).forEach { n ->
                                 val digit = ((n + 1) % 10).toString()
-                                KeyButton(
-                                    text = digit,
-                                    onClick = { onKeyPress(digit) },
+                                ConfigurableKeyButton(
+                                    key = digit,
+                                    defaultLabel = digit,
+                                    defaultValue = digit,
+                                    onKeyPress = onKeyPress,
+                                    onKeyPressDown = onKeyPressDown,
                                     backgroundColor = keyBackgroundColor,
                                     textColor = keyTextColor,
                                     modifier = Modifier.weight(1f),
-                                    onPress = { onKeyPressDown?.invoke(digit) },
+                                    onGestureAction = onGestureAction,
+                                    onSwipeStateChange = { state, bounds ->
+                                        processSwipeState(state, bounds)
+                                    },
+                                    fontSize = 20.sp,
                                     shadowEnabled = shadowEnabled,
                                     shadowElevation = shadowElevation,
                                     shadowShapeRadius = shadowShapeRadius,
-                                    fontSize = 20.sp,
                                 )
                             }
                         }
@@ -171,18 +185,24 @@ fun CommonSymbolKeyboardLayout(
                                 .fillMaxWidth()
                                 .weight(1f),
                         ) {
-                            row2Symbols.forEach { sym ->
-                                KeyButton(
-                                    text = sym,
-                                    onClick = { onKeyPress(sym) },
+                            row2SymbolKeys.zip(row2Symbols).forEach { (key, sym) ->
+                                ConfigurableKeyButton(
+                                    key = key,
+                                    defaultLabel = sym,
+                                    defaultValue = sym,
+                                    onKeyPress = onKeyPress,
+                                    onKeyPressDown = onKeyPressDown,
                                     backgroundColor = keyBackgroundColor,
                                     textColor = keyTextColor,
                                     modifier = Modifier.weight(1f),
-                                    onPress = { onKeyPressDown?.invoke(sym) },
+                                    onGestureAction = onGestureAction,
+                                    onSwipeStateChange = { state, bounds ->
+                                        processSwipeState(state, bounds)
+                                    },
+                                    fontSize = 20.sp,
                                     shadowEnabled = shadowEnabled,
                                     shadowElevation = shadowElevation,
                                     shadowShapeRadius = shadowShapeRadius,
-                                    fontSize = 20.sp,
                                 )
                             }
                         }
@@ -204,18 +224,24 @@ fun CommonSymbolKeyboardLayout(
                                 shadowShapeRadius = shadowShapeRadius,
                                 fontSize = 14.sp,
                             )
-                            row3Symbols.forEach { sym ->
-                                KeyButton(
-                                    text = sym,
-                                    onClick = { onKeyPress(sym) },
+                            row3SymbolKeys.zip(row3Symbols).forEach { (key, sym) ->
+                                ConfigurableKeyButton(
+                                    key = key,
+                                    defaultLabel = sym,
+                                    defaultValue = sym,
+                                    onKeyPress = onKeyPress,
+                                    onKeyPressDown = onKeyPressDown,
                                     backgroundColor = keyBackgroundColor,
                                     textColor = keyTextColor,
                                     modifier = Modifier.weight(1f),
-                                    onPress = { onKeyPressDown?.invoke(sym) },
+                                    onGestureAction = onGestureAction,
+                                    onSwipeStateChange = { state, bounds ->
+                                        processSwipeState(state, bounds)
+                                    },
+                                    fontSize = 20.sp,
                                     shadowEnabled = shadowEnabled,
                                     shadowElevation = shadowElevation,
                                     shadowShapeRadius = shadowShapeRadius,
-                                    fontSize = 20.sp,
                                 )
                             }
                             SwipeableIconKeyButton(
@@ -332,6 +358,8 @@ fun CommonSymbolLandscapeContent(
     onKeyPress: (String) -> Unit,
     row2Symbols: List<String>,
     row3Symbols: List<String>,
+    row2SymbolKeys: List<String>,
+    row3SymbolKeys: List<String>,
     keyBackgroundColor: Color,
     keyTextColor: Color,
     specialKeyBackgroundColor: Color,
@@ -344,6 +372,7 @@ fun CommonSymbolLandscapeContent(
     specialKeyTextColor: Color = Color.White,
     isAsciiMode: Boolean = false,
     onToggleAsciiMode: (() -> Unit)? = null,
+    onGestureAction: ((GestureAction, String) -> Unit)? = null,
 ) {
     val keyVisualPadding = PaddingValues(horizontal = 1.dp, vertical = 2.dp)
 
@@ -363,35 +392,43 @@ fun CommonSymbolLandscapeContent(
                     .weight(1f)) {
                     (1..5).forEach { n ->
                         val digit = n.toString()
-                        KeyButton(
-                            text = digit,
-                            onClick = { onKeyPress(digit) },
+                        ConfigurableKeyButton(
+                            key = digit,
+                            defaultLabel = digit,
+                            defaultValue = digit,
+                            onKeyPress = onKeyPress,
+                            onKeyPressDown = onKeyPressDown,
                             backgroundColor = keyBackgroundColor,
                             textColor = keyTextColor,
                             modifier = Modifier.weight(1f),
-                            onPress = { onKeyPressDown?.invoke(digit) },
+                            onGestureAction = onGestureAction,
+                            onSwipeStateChange = onSwipeStateChange,
+                            fontSize = 16.sp,
                             shadowEnabled = shadowEnabled,
                             shadowElevation = shadowElevation,
                             shadowShapeRadius = shadowShapeRadius,
-                            fontSize = 16.sp,
                         )
                     }
                 }
                 Row(modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)) {
-                    row2Symbols.take(5).forEach { sym ->
-                        KeyButton(
-                            text = sym,
-                            onClick = { onKeyPress(sym) },
+                    row2SymbolKeys.take(5).zip(row2Symbols.take(5)).forEach { (key, sym) ->
+                        ConfigurableKeyButton(
+                            key = key,
+                            defaultLabel = sym,
+                            defaultValue = sym,
+                            onKeyPress = onKeyPress,
+                            onKeyPressDown = onKeyPressDown,
                             backgroundColor = keyBackgroundColor,
                             textColor = keyTextColor,
                             modifier = Modifier.weight(1f),
-                            onPress = { onKeyPressDown?.invoke(sym) },
+                            onGestureAction = onGestureAction,
+                            onSwipeStateChange = onSwipeStateChange,
+                            fontSize = 16.sp,
                             shadowEnabled = shadowEnabled,
                             shadowElevation = shadowElevation,
                             shadowShapeRadius = shadowShapeRadius,
-                            fontSize = 16.sp,
                         )
                     }
                 }
@@ -410,18 +447,22 @@ fun CommonSymbolLandscapeContent(
                         shadowShapeRadius = shadowShapeRadius,
                         fontSize = 12.sp,
                     )
-                    row3Symbols.take(4).forEach { sym ->
-                        KeyButton(
-                            text = sym,
-                            onClick = { onKeyPress(sym) },
+                    row3SymbolKeys.take(4).zip(row3Symbols.take(4)).forEach { (key, sym) ->
+                        ConfigurableKeyButton(
+                            key = key,
+                            defaultLabel = sym,
+                            defaultValue = sym,
+                            onKeyPress = onKeyPress,
+                            onKeyPressDown = onKeyPressDown,
                             backgroundColor = keyBackgroundColor,
                             textColor = keyTextColor,
                             modifier = Modifier.weight(1f),
-                            onPress = { onKeyPressDown?.invoke(sym) },
+                            onGestureAction = onGestureAction,
+                            onSwipeStateChange = onSwipeStateChange,
+                            fontSize = 16.sp,
                             shadowEnabled = shadowEnabled,
                             shadowElevation = shadowElevation,
                             shadowShapeRadius = shadowShapeRadius,
-                            fontSize = 16.sp,
                         )
                     }
                 }
@@ -481,65 +522,81 @@ fun CommonSymbolLandscapeContent(
                     .weight(1f)) {
                     (6..9).forEach { n ->
                         val digit = n.toString()
-                        KeyButton(
-                            text = digit,
-                            onClick = { onKeyPress(digit) },
+                        ConfigurableKeyButton(
+                            key = digit,
+                            defaultLabel = digit,
+                            defaultValue = digit,
+                            onKeyPress = onKeyPress,
+                            onKeyPressDown = onKeyPressDown,
                             backgroundColor = keyBackgroundColor,
                             textColor = keyTextColor,
                             modifier = Modifier.weight(1f),
-                            onPress = { onKeyPressDown?.invoke(digit) },
+                            onGestureAction = onGestureAction,
+                            onSwipeStateChange = onSwipeStateChange,
+                            fontSize = 16.sp,
                             shadowEnabled = shadowEnabled,
                             shadowElevation = shadowElevation,
                             shadowShapeRadius = shadowShapeRadius,
-                            fontSize = 16.sp,
                         )
                     }
-                    KeyButton(
-                        text = "0",
-                        onClick = { onKeyPress("0") },
+                    ConfigurableKeyButton(
+                        key = "0",
+                        defaultLabel = "0",
+                        defaultValue = "0",
+                        onKeyPress = onKeyPress,
+                        onKeyPressDown = onKeyPressDown,
                         backgroundColor = keyBackgroundColor,
                         textColor = keyTextColor,
                         modifier = Modifier.weight(1f),
-                        onPress = { onKeyPressDown?.invoke("0") },
+                        onGestureAction = onGestureAction,
+                        onSwipeStateChange = onSwipeStateChange,
+                        fontSize = 16.sp,
                         shadowEnabled = shadowEnabled,
                         shadowElevation = shadowElevation,
                         shadowShapeRadius = shadowShapeRadius,
-                        fontSize = 16.sp,
                     )
                 }
                 Row(modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)) {
-                    row2Symbols.drop(5).forEach { sym ->
-                        KeyButton(
-                            text = sym,
-                            onClick = { onKeyPress(sym) },
+                    row2SymbolKeys.drop(5).zip(row2Symbols.drop(5)).forEach { (key, sym) ->
+                        ConfigurableKeyButton(
+                            key = key,
+                            defaultLabel = sym,
+                            defaultValue = sym,
+                            onKeyPress = onKeyPress,
+                            onKeyPressDown = onKeyPressDown,
                             backgroundColor = keyBackgroundColor,
                             textColor = keyTextColor,
                             modifier = Modifier.weight(1f),
-                            onPress = { onKeyPressDown?.invoke(sym) },
+                            onGestureAction = onGestureAction,
+                            onSwipeStateChange = onSwipeStateChange,
+                            fontSize = 16.sp,
                             shadowEnabled = shadowEnabled,
                             shadowElevation = shadowElevation,
                             shadowShapeRadius = shadowShapeRadius,
-                            fontSize = 16.sp,
                         )
                     }
                 }
                 Row(modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)) {
-                    row3Symbols.drop(4).forEach { sym ->
-                        KeyButton(
-                            text = sym,
-                            onClick = { onKeyPress(sym) },
+                    row3SymbolKeys.drop(4).zip(row3Symbols.drop(4)).forEach { (key, sym) ->
+                        ConfigurableKeyButton(
+                            key = key,
+                            defaultLabel = sym,
+                            defaultValue = sym,
+                            onKeyPress = onKeyPress,
+                            onKeyPressDown = onKeyPressDown,
                             backgroundColor = keyBackgroundColor,
                             textColor = keyTextColor,
                             modifier = Modifier.weight(1f),
-                            onPress = { onKeyPressDown?.invoke(sym) },
+                            onGestureAction = onGestureAction,
+                            onSwipeStateChange = onSwipeStateChange,
+                            fontSize = 16.sp,
                             shadowEnabled = shadowEnabled,
                             shadowElevation = shadowElevation,
                             shadowShapeRadius = shadowShapeRadius,
-                            fontSize = 16.sp,
                         )
                     }
                     SwipeableIconKeyButton(

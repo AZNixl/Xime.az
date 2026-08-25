@@ -61,6 +61,8 @@ data class GestureDef(
     val value: String = "",
     val icon: String = "",
     val display: DisplayMode = DisplayMode.BOTH,
+    /** 临时候选键动作：有候选/编码时覆盖该键的行为。如 "select_2"/"select_3"/"Escape"。 */
+    val composing: String = "",
 )
 
 data class LongPressConfig(
@@ -73,6 +75,8 @@ data class KeyGestureConfig(
     val swipeUp: GestureDef? = null,
     val swipeDown: GestureDef? = null,
     val longPress: LongPressConfig? = null,
+    /** 临时候选键动作：有候选/编码时覆盖该键的点击行为。如 "select_2"/"select_3"/"Escape"。 */
+    val composing: String = "",
 )
 
 data class KeyboardConfig(
@@ -100,7 +104,7 @@ data class KeyboardShadowConfig(
  * 键盘按键配置，从 xime.yaml keyboard.key 加载。
  */
 data class KeyboardKeyConfig(
-    val cornerRadius: Int = 8,
+    val cornerRadius: Int = 1,
 )
 
 /**
@@ -149,6 +153,7 @@ private fun parseKeyGestureConfig(map: com.charleskorn.kaml.YamlMap): KeyGesture
     var swipeUp: GestureDef? = null
     var swipeDown: GestureDef? = null
     var longPress: LongPressConfig? = null
+    var composing: String = ""
     for ((kNode, vNode) in map.entries) {
         val name = (kNode as? com.charleskorn.kaml.YamlScalar)?.content ?: continue
         when (name) {
@@ -156,9 +161,10 @@ private fun parseKeyGestureConfig(map: com.charleskorn.kaml.YamlMap): KeyGesture
             "swipe_up" -> swipeUp = parseGestureNode(vNode)
             "swipe_down" -> swipeDown = parseGestureNode(vNode)
             "long_press" -> longPress = parseLongPress(vNode)
+            "composing" -> composing = (vNode as? com.charleskorn.kaml.YamlScalar)?.content ?: ""
         }
     }
-    return KeyGestureConfig(tap, swipeUp, swipeDown, longPress)
+    return KeyGestureConfig(tap, swipeUp, swipeDown, longPress, composing)
 }
 
 /**
@@ -203,6 +209,7 @@ private fun parseGestureNode(node: com.charleskorn.kaml.YamlNode): GestureDef {
         var action: GestureAction? = GestureAction.COMMIT
         var value = ""
         var display = "key"
+        var composing = ""
         for ((k, v) in node.entries) {
             val key = (k as? com.charleskorn.kaml.YamlScalar)?.content ?: continue
             when (key) {
@@ -227,11 +234,14 @@ private fun parseGestureNode(node: com.charleskorn.kaml.YamlNode): GestureDef {
                     val vStr = (v as? YamlScalar)?.content ?: continue
                     display = vStr
                 }
+                "composing" -> {
+                    composing = (v as? com.charleskorn.kaml.YamlScalar)?.content ?: ""
+                }
             }
         }
         val icon = if (label.startsWith("@")) label.removePrefix("@") else ""
         val cleanLabel = if (icon.isNotEmpty()) "" else label
-        return GestureDef(label = cleanLabel, labels = labels, action = action, value = value, icon = icon, display = DisplayMode.fromValue(display))
+        return GestureDef(label = cleanLabel, labels = labels, action = action, value = value, icon = icon, display = DisplayMode.fromValue(display), composing = composing)
     }
     return GestureDef()
 }
@@ -642,7 +652,7 @@ object KeysConfigHelper {
     private fun parseKeyboardKeyYamlText(yamlText: String): KeyboardKeyConfig? {
         val root = yaml.parseToYamlNode(yamlText) as? YamlMap ?: return null
         val keyboardNode = root["keyboard"] as? YamlMap ?: return null
-        var cornerRadius = 8
+        var cornerRadius = 1
         // 优先读取 key.corner_radius
         val keyNode = keyboardNode["key"] as? YamlMap
         if (keyNode != null) {
@@ -650,19 +660,19 @@ object KeysConfigHelper {
                 val key = (kNode as? YamlScalar)?.content ?: continue
                 val value = (vNode as? YamlScalar)?.content ?: continue
                 if (key == "corner_radius") {
-                    cornerRadius = value.toIntOrNull() ?: 8
+                    cornerRadius = value.toIntOrNull() ?: 1
                 }
             }
         }
         // 未设置 key.corner_radius 时，回退读取 shadow.shape_radius
-        if (cornerRadius == 8) {
+        if (cornerRadius == 1) {
             val shadowNode = keyboardNode["shadow"] as? YamlMap
             if (shadowNode != null) {
                 for ((kNode, vNode) in shadowNode.entries) {
                     val key = (kNode as? YamlScalar)?.content ?: continue
                     val value = (vNode as? YamlScalar)?.content ?: continue
                     if (key == "shape_radius") {
-                        cornerRadius = value.toIntOrNull() ?: 8
+                        cornerRadius = value.toIntOrNull() ?: 1
                     }
                 }
             }
@@ -884,6 +894,11 @@ object KeysConfigHelper {
     fun getKeyGesture(key: String, isAsciiMode: Boolean): KeyGestureConfig? {
         val config = _keyGestureConfig.value
         return config[key.lowercase()]
+    }
+
+    /** 获取某个按键的临时候选键动作（如 "select_2"/"select_3"/"Escape"）。 */
+    fun getComposingAction(key: String, isAsciiMode: Boolean = false): String {
+        return keyGestureConfig[key.lowercase()]?.composing ?: ""
     }
 
     fun getKeyDisplayLabel(key: String, isAsciiMode: Boolean = false): String {

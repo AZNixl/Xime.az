@@ -111,6 +111,13 @@ enum class GestureAction(val value: String) {
         }
     },
 
+    /** 光标向左移动一位。 */
+    LEFT("left") {
+        override fun execute(context: ActionExecutor, value: String) {
+            context.sendKeyEvent(KeyEvent.KEYCODE_DPAD_LEFT)
+        }
+    },
+
     /** 撤销。 */
     UNDO("undo") {
         override fun execute(context: ActionExecutor, value: String) {

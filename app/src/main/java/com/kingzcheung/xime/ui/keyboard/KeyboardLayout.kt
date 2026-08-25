@@ -41,6 +41,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.State
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -84,6 +85,7 @@ import com.kingzcheung.xime.viewmodel.KeyboardUiState
 import com.kingzcheung.xime.viewmodel.KeyboardViewModel
 import com.kingzcheung.xime.viewmodel.ShiftMode
 import com.kingzcheung.xime.keyboard.OverlayRoute
+import com.kingzcheung.xime.service.CandidateState
 import com.kingzcheung.xime.ui.theme.KeyboardThemes
 import com.kingzcheung.xime.ui.theme.keyboardBackground
 
@@ -105,6 +107,7 @@ fun KeyboardLayout(
     callbacks: KeyboardCallbacks,
     uiState: KeyboardUiState,
     isAsciiMode: Boolean,
+    candidateState: State<CandidateState> = remember { mutableStateOf(CandidateState()) },
     modifier: Modifier = Modifier,
 ) {
     val isShifted by viewModel.isShifted.collectAsStateWithLifecycle()
@@ -150,6 +153,7 @@ fun KeyboardLayout(
     val isSttEnabled = uiState.isSttEnabled
     val isVoiceMode = uiState.isVoiceMode
     val isVoiceSticky = uiState.voiceSticky
+    val isComposing = candidateState.value.isComposing
     val keyRows = KeysConfigHelper.getKeyRows(isAsciiMode)
     val onKeyPressDown = callbacks.onKeyPressDown
     val onKeyRelease = callbacks.onKeyRelease
@@ -286,6 +290,7 @@ fun KeyboardLayout(
                 swipeUpHintsEnabled = swipeUpHintsEnabled,
                 swipeDownHintsEnabled = effectiveSwipeDownHintsEnabled,
                 isAsciiMode = isAsciiMode,
+                candidateState = candidateState,
                 onSwipeStateChange = { state, bounds -> processSwipeState(state, bounds) },
             )
         } else {
@@ -339,6 +344,8 @@ fun KeyboardLayout(
                                 swipeUpHintsEnabled = swipeUpHintsEnabled,
                                 onCommitText = onCommitText,
                                 onGestureAction = onGestureAction,
+                                onCandidateSelect = callbacks.onCandidateSelect,
+                                candidateState = candidateState,
                                 configVersion = cfgVer,
                             )
                         }
@@ -387,6 +394,8 @@ fun KeyboardLayout(
                                 swipeUpHintsEnabled = swipeUpHintsEnabled,
                                 onCommitText = onCommitText,
                                 onGestureAction = onGestureAction,
+                                onCandidateSelect = callbacks.onCandidateSelect,
+                                candidateState = candidateState,
                                 configVersion = cfgVer,
                             )
                         }
@@ -474,22 +483,46 @@ fun KeyboardLayout(
                                     } else {
                                         rawCommitValue
                                     }
-                                    val displayText = if (isAsciiMode) {
+                                    val keyComposingAction = KeysConfigHelper.getComposingAction(key, isAsciiMode)
+                                    val keyComposingDisplay = if (isComposing && keyComposingAction.isNotEmpty()) {
+                                        when (keyComposingAction) {
+                                            "select_2" -> "2选"
+                                            "select_3" -> "3选"
+                                            "Escape" -> "取消"
+                                            else -> ""
+                                        }
+                                    } else ""
+                                    val displayText = if (keyComposingDisplay.isNotEmpty()) {
+                                        keyComposingDisplay
+                                    } else if (isAsciiMode) {
                                         commitValue
                                     } else {
                                         KeysConfigHelper.getKeyDisplayLabel(key, isAsciiMode)
                                     }
 
-                                    val onClick = remember(key, commitValue, onKeyPress) { { onKeyPress(commitValue) } }
+                                    val onClick = remember(key, commitValue, onKeyPress, isComposing, keyComposingAction, callbacks) {
+                                        {
+                                            if (isComposing && keyComposingAction.isNotEmpty()) {
+                                                when (keyComposingAction) {
+                                                    "select_2" -> callbacks.onCandidateSelect(1)
+                                                    "select_3" -> callbacks.onCandidateSelect(2)
+                                                    "Escape" -> onKeyPress("clear_composition")
+                                                }
+                                            } else {
+                                                onKeyPress(commitValue)
+                                            }
+                                        }
+                                    }
                                     val onPress: (() -> Unit)? = remember(key, onKeyPressDown) { { onKeyPressDown?.invoke(key); Unit } }
                                     val onRelease: (() -> Unit)? = remember(key, onKeyRelease) { { onKeyRelease?.invoke(key); Unit } }
                                     val onSwipe: ((String) -> Unit)? = if (swipeUpCommitValue != null && swipeUpAction != null && swipeUpAction != GestureAction.NONE) {
-                                        remember(swipeUpAction, swipeUpCommitValue, onKeyPress, onGestureAction, onCommitText) {
+                                        remember(swipeUpAction, swipeUpCommitValue, onKeyPress, onGestureAction) {
                                             val action = swipeUpAction
                                             val label = swipeUpCommitValue
                                             { _: String ->
                                                 if (action == GestureAction.COMMIT) {
-                                                    (onCommitText ?: onKeyPress)(label)
+                                                    // 所有按键产生的 COMMIT 统一走 onKeyPress，让 Rime 有机会处理反查引导符
+                                                    onKeyPress(label)
                                                 } else {
                                                     onGestureAction?.invoke(action, label)
                                                 }
@@ -499,11 +532,12 @@ fun KeyboardLayout(
                                     } else null
                                     // 下滑执行不依赖符号显示开关，有值即可触发
                                     val onSwipeDown = if (swipeDownAction != null && swipeDownLabel != null) {
-                                        remember(key, onKeyPress, onGestureAction, onCommitText, swipeDownAction, swipeDownValue, swipeDownLabel) {
+                                        remember(key, onKeyPress, onGestureAction, swipeDownAction, swipeDownValue, swipeDownLabel) {
                                             val label = swipeDownLabel
                                             { _: String ->
                                                 if (swipeDownAction == GestureAction.COMMIT) {
-                                                    (onCommitText ?: onKeyPress)(swipeDownValue?.ifEmpty { label } ?: label)
+                                                    // 所有按键产生的 COMMIT 统一走 onKeyPress，让 Rime 有机会处理反查引导符
+                                                    onKeyPress(swipeDownValue?.ifEmpty { label } ?: label)
                                                 } else {
                                                     onGestureAction?.invoke(
                                                         swipeDownAction,
@@ -516,26 +550,28 @@ fun KeyboardLayout(
                                     val onSwipeStateChange = remember(key) { { state: SwipeState, bounds: Rect -> processSwipeState(state, bounds) } }
                                     // key 直发模式下的长按执行（不弹气泡，直接执行首项）
                                     val onDirectLongPress: (() -> Unit)? = if (directLongPressGesture != null) {
-                                        remember(key, directLongPressGesture, onGestureAction, onCommitText, onKeyPress) {
+                                        remember(key, directLongPressGesture, onGestureAction, onKeyPress) {
                                             val g = directLongPressGesture
                                             {
                                                 if (g != null && g.action != null && g.action != GestureAction.COMMIT) {
                                                     onGestureAction?.invoke(g.action!!, g.value.ifEmpty { g.label })
                                                 } else if (g != null) {
-                                                    (onCommitText ?: onKeyPress)(g.value.ifEmpty { g.label })
+                                                    // 所有按键产生的 COMMIT 统一走 onKeyPress，让 Rime 有机会处理反查引导符
+                                                    onKeyPress(g.value.ifEmpty { g.label })
                                                 }
                                                 Unit
                                             }
                                         }
                                     } else null
-                                    val onLongPressSelect: ((String) -> Unit)? = remember(key, longPressGestureMap, onGestureAction, onCommitText, onKeyPress) { { selectedLabel: String ->
+                                    val onLongPressSelect: ((String) -> Unit)? = remember(key, longPressGestureMap, onGestureAction, onKeyPress) { { selectedLabel: String ->
                                         val gesture = longPressGestureMap?.get(selectedLabel)
                                         if (gesture != null && gesture.action != GestureAction.COMMIT) {
                                             onGestureAction?.invoke(
                                                 gesture.action!!,
                                                 gesture.value.ifEmpty { selectedLabel })
                                         } else {
-                                            (onCommitText ?: onKeyPress)(selectedLabel)
+                                            // 所有按键产生的 COMMIT 统一走 onKeyPress，让 Rime 有机会处理反查引导符
+                                            onKeyPress(selectedLabel)
                                         }
                                         Unit
                                     } }
@@ -561,7 +597,7 @@ fun KeyboardLayout(
                                         onLongPressSelect = onLongPressSelect,
                                         longPressItems = longPressLabels ?: directLongPressLabels,
                                         onDirectLongPress = onDirectLongPress,
-                                        longPressHint = longPressHintLabel,
+                                        longPressHint = if (swipeUpHintsEnabled) longPressHintLabel else null,
                                         shadowEnabled = shadowEnabled,
                                         shadowElevation = shadowElevation,
                                         shadowShapeRadius = shadowShapeRadius,
@@ -668,9 +704,24 @@ fun KeyboardLayout(
                             val k2LongPressGestureMap = if (k2LongPressDisplay == "bubble") {
                                 k2LongPressConfig?.values?.associateBy { it.label }
                             } else null
-                            val k2OnClick: () -> Unit = remember(k2TapAction, k2TapValue, onKeyPress, onGestureAction) {
+                            val k2ComposingAction = KeysConfigHelper.getComposingAction("'", isAsciiMode)
+                            val k2ComposingDisplay = if (isComposing && k2ComposingAction.isNotEmpty()) {
+                                when (k2ComposingAction) {
+                                    "select_2" -> "2选"
+                                    "select_3" -> "3选"
+                                    "Escape" -> "取消"
+                                    else -> ""
+                                }
+                            } else ""
+                            val k2OnClick: () -> Unit = remember(k2TapAction, k2TapValue, onKeyPress, onGestureAction, isComposing, k2ComposingAction, callbacks) {
                                 {
-                                    if (k2TapAction != null && k2TapAction != GestureAction.COMMIT) {
+                                    if (isComposing && k2ComposingAction.isNotEmpty()) {
+                                        when (k2ComposingAction) {
+                                            "select_2" -> callbacks.onCandidateSelect(1)
+                                            "select_3" -> callbacks.onCandidateSelect(2)
+                                            "Escape" -> onKeyPress("clear_composition")
+                                        }
+                                    } else if (k2TapAction != null && k2TapAction != GestureAction.COMMIT) {
                                         onGestureAction?.invoke(k2TapAction, k2TapValue)
                                     } else {
                                         onKeyPress(k2TapValue)
@@ -678,11 +729,12 @@ fun KeyboardLayout(
                                 }
                             }
                             val k2OnSwipeDown: ((String) -> Unit)? = if (k2SwipeDownAction != null && k2SwipeDownLabel != null) {
-                                remember(k2SwipeDownAction, k2SwipeDownValue, k2SwipeDownLabel, onKeyPress, onGestureAction, onCommitText) {
+                                remember(k2SwipeDownAction, k2SwipeDownValue, k2SwipeDownLabel, onKeyPress, onGestureAction) {
                                     val label = k2SwipeDownLabel
                                     { _: String ->
                                         if (k2SwipeDownAction == GestureAction.COMMIT) {
-                                            (onCommitText ?: onKeyPress)(k2SwipeDownValue?.ifEmpty { label } ?: label)
+                                            // 所有按键产生的 COMMIT 统一走 onKeyPress，让 Rime 有机会处理反查引导符
+                                            onKeyPress(k2SwipeDownValue?.ifEmpty { label } ?: label)
                                         } else {
                                             onGestureAction?.invoke(k2SwipeDownAction, k2SwipeDownValue?.ifEmpty { label } ?: label)
                                         }
@@ -690,13 +742,14 @@ fun KeyboardLayout(
                                     }
                                 }
                             } else null
-                            val k2OnLongPressSelect: ((String) -> Unit)? = remember(k2LongPressGestureMap, onGestureAction, onCommitText, onKeyPress) {
+                            val k2OnLongPressSelect: ((String) -> Unit)? = remember(k2LongPressGestureMap, onGestureAction, onKeyPress) {
                                 { selectedLabel: String ->
                                     val gesture = k2LongPressGestureMap?.get(selectedLabel)
                                     if (gesture != null && gesture.action != GestureAction.COMMIT) {
                                         onGestureAction?.invoke(gesture.action!!, gesture.value.ifEmpty { selectedLabel })
                                     } else {
-                                        (onCommitText ?: onKeyPress)(selectedLabel)
+                                        // 所有按键产生的 COMMIT 统一走 onKeyPress，让 Rime 有机会处理反查引导符
+                                        onKeyPress(selectedLabel)
                                     }
                                     Unit
                                 }
@@ -716,12 +769,13 @@ fun KeyboardLayout(
                                 )
                             } else {
                                 val k2OnSwipe: ((String) -> Unit)? = if (k2SwipeUpCommitValue != null && k2SwipeUpAction != null && k2SwipeUpAction != GestureAction.NONE) {
-                                    remember(k2SwipeUpAction, k2SwipeUpCommitValue, onKeyPress, onGestureAction, onCommitText) {
+                                    remember(k2SwipeUpAction, k2SwipeUpCommitValue, onKeyPress, onGestureAction) {
                                         val action = k2SwipeUpAction
                                         val label = k2SwipeUpCommitValue
                                         { _: String ->
                                             if (action == GestureAction.COMMIT) {
-                                                (onCommitText ?: onKeyPress)(label)
+                                                // 所有按键产生的 COMMIT 统一走 onKeyPress，让 Rime 有机会处理反查引导符
+                                                onKeyPress(label)
                                             } else {
                                                 onGestureAction?.invoke(action, label)
                                             }
@@ -732,7 +786,7 @@ fun KeyboardLayout(
 
                                 SwipeableKeyButton(
                                     layoutMode = KeysConfigHelper.getButtonLayout(isAsciiMode),
-                                    text = k2TapLabel,
+                                    text = k2ComposingDisplay.takeIf { it.isNotEmpty() } ?: k2TapLabel,
                                     onClick = k2OnClick,
                                     backgroundColor = keyBackgroundColor,
                                     textColor = keyTextColor,
@@ -821,9 +875,24 @@ fun KeyboardLayout(
                             val k4LongPressGestureMap = if (k4LongPressDisplay == "bubble") {
                                 k4LongPressConfig?.values?.associateBy { it.label }
                             } else null
-                            val k4OnClick: () -> Unit = remember(k4TapAction, k4TapValue, onKeyPress, onGestureAction) {
+                            val k4ComposingAction = KeysConfigHelper.getComposingAction("earth", isAsciiMode)
+                            val k4ComposingDisplay = if (isComposing && k4ComposingAction.isNotEmpty()) {
+                                when (k4ComposingAction) {
+                                    "select_2" -> "2选"
+                                    "select_3" -> "3选"
+                                    "Escape" -> "取消"
+                                    else -> ""
+                                }
+                            } else ""
+                            val k4OnClick: () -> Unit = remember(k4TapAction, k4TapValue, onKeyPress, onGestureAction, isComposing, k4ComposingAction, callbacks) {
                                 {
-                                    if (k4TapAction != null && k4TapAction != GestureAction.COMMIT) {
+                                    if (isComposing && k4ComposingAction.isNotEmpty()) {
+                                        when (k4ComposingAction) {
+                                            "select_2" -> callbacks.onCandidateSelect(1)
+                                            "select_3" -> callbacks.onCandidateSelect(2)
+                                            "Escape" -> onKeyPress("clear_composition")
+                                        }
+                                    } else if (k4TapAction != null && k4TapAction != GestureAction.COMMIT) {
                                         onGestureAction?.invoke(k4TapAction, k4TapValue)
                                     } else {
                                         onKeyPress(k4TapValue)
@@ -834,11 +903,12 @@ fun KeyboardLayout(
                                 remember(k4SwipeUpValue, onKeyPress) { { onKeyPress(k4SwipeUpValue) } }
                             } else null
                             val k4OnSwipeDown: ((String) -> Unit)? = if (k4SwipeDownAction != null && k4SwipeDownLabel != null) {
-                                remember(k4SwipeDownAction, k4SwipeDownValue, k4SwipeDownLabel, onKeyPress, onGestureAction, onCommitText) {
+                                remember(k4SwipeDownAction, k4SwipeDownValue, k4SwipeDownLabel, onKeyPress, onGestureAction) {
                                     val label = k4SwipeDownLabel
                                     { _: String ->
                                         if (k4SwipeDownAction == GestureAction.COMMIT) {
-                                            (onCommitText ?: onKeyPress)(k4SwipeDownValue?.ifEmpty { label } ?: label)
+                                            // 所有按键产生的 COMMIT 统一走 onKeyPress，让 Rime 有机会处理反查引导符
+                                            onKeyPress(k4SwipeDownValue?.ifEmpty { label } ?: label)
                                         } else {
                                             onGestureAction.invoke(k4SwipeDownAction, k4SwipeDownValue?.ifEmpty { label } ?: label)
                                         }
@@ -846,13 +916,14 @@ fun KeyboardLayout(
                                     }
                                 }
                             } else null
-                            val k4OnLongPressSelect: ((String) -> Unit)? = remember(k4LongPressGestureMap, onGestureAction, onCommitText, onKeyPress) {
+                            val k4OnLongPressSelect: ((String) -> Unit)? = remember(k4LongPressGestureMap, onGestureAction, onKeyPress) {
                                 { selectedLabel: String ->
                                     val gesture = k4LongPressGestureMap?.get(selectedLabel)
                                     if (gesture != null && gesture.action != GestureAction.COMMIT) {
                                         onGestureAction.invoke(gesture.action!!, gesture.value.ifEmpty { selectedLabel })
                                     } else {
-                                        (onCommitText ?: onKeyPress)(selectedLabel)
+                                        // 所有按键产生的 COMMIT 统一走 onKeyPress，让 Rime 有机会处理反查引导符
+                                        onKeyPress(selectedLabel)
                                     }
                                     Unit
                                 }
@@ -873,7 +944,7 @@ fun KeyboardLayout(
                             } else {
                                 SwipeableKeyButton(
                                     layoutMode = KeysConfigHelper.getButtonLayout(isAsciiMode),
-                                    text = k4TapLabel,
+                                    text = k4ComposingDisplay.takeIf { it.isNotEmpty() } ?: k4TapLabel,
                                     onClick = k4OnClick,
                                     backgroundColor = keyBackgroundColor,
                                     textColor = keyTextColor,
@@ -1026,8 +1097,11 @@ fun KeyboardRowWithConfig(
     swipeUpHintsEnabled: Boolean = true,
     onCommitText: ((String) -> Unit)? = null,
     onGestureAction: ((GestureAction, String) -> Unit)? = null,
+    onCandidateSelect: ((Int) -> Unit)? = null,
+    candidateState: State<CandidateState> = remember { mutableStateOf(CandidateState()) },
     configVersion: Int = 0,
 ) {
+    val isComposing = candidateState.value.isComposing
     Row(
         modifier = modifier
             .fillMaxWidth(),
@@ -1075,22 +1149,46 @@ fun KeyboardRowWithConfig(
             } else {
                 rawCommitValue
             }
-            val displayText = if (isAsciiMode) {
+            val composingAction = KeysConfigHelper.getComposingAction(key, isAsciiMode)
+            val composingDisplay = if (isComposing && composingAction.isNotEmpty()) {
+                when (composingAction) {
+                    "select_2" -> "2选"
+                    "select_3" -> "3选"
+                    "Escape" -> "取消"
+                    else -> ""
+                }
+            } else ""
+            val displayText = if (composingDisplay.isNotEmpty()) {
+                composingDisplay
+            } else if (isAsciiMode) {
                 commitValue
             } else {
                 KeysConfigHelper.getKeyDisplayLabel(key, isAsciiMode)
             }
 
-            val onClick = remember(key, commitValue, onKeyPress) { { onKeyPress(commitValue) } }
+            val onClick = remember(key, commitValue, onKeyPress, isComposing, composingAction, onCandidateSelect) {
+                {
+                    if (isComposing && composingAction.isNotEmpty()) {
+                        when (composingAction) {
+                            "select_2" -> onCandidateSelect?.invoke(1)
+                            "select_3" -> onCandidateSelect?.invoke(2)
+                            "Escape" -> onKeyPress("clear_composition")
+                        }
+                    } else {
+                        onKeyPress(commitValue)
+                    }
+                }
+            }
             val onPress: (() -> Unit)? = remember(key, onKeyPressDown) { { onKeyPressDown?.invoke(key); Unit } }
             val onRelease: (() -> Unit)? = remember(key, onKeyRelease) { { onKeyRelease?.invoke(key); Unit } }
             val onSwipe: ((String) -> Unit)? = if (swipeUpCommitValue != null && swipeUpAction != null && swipeUpAction != GestureAction.NONE) {
-                remember(swipeUpAction, swipeUpCommitValue, onKeyPress, onGestureAction, onCommitText) {
+                remember(swipeUpAction, swipeUpCommitValue, onKeyPress, onGestureAction) {
                     val action = swipeUpAction
                     val label = swipeUpCommitValue
                     { _: String ->
                         if (action == GestureAction.COMMIT) {
-                            (onCommitText ?: onKeyPress)(label)
+                            // 所有按键产生的 COMMIT 统一走 onKeyPress，让 Rime 有机会处理反查引导符
+                            onKeyPress(label)
                         } else {
                             onGestureAction?.invoke(action, label)
                         }
@@ -1099,11 +1197,12 @@ fun KeyboardRowWithConfig(
                 }
             } else null
             val onSwipeDown: ((String) -> Unit)? = if (swipeDownAction != null && swipeDownLabel != null) {
-                remember(key, onKeyPress, onGestureAction, onCommitText, swipeDownAction, swipeDownValue, swipeDownLabel) {
+                remember(key, onKeyPress, onGestureAction, swipeDownAction, swipeDownValue, swipeDownLabel) {
                     val label = swipeDownLabel
                     { _: String ->
                         if (swipeDownAction == GestureAction.COMMIT) {
-                            (onCommitText ?: onKeyPress)(swipeDownValue?.ifEmpty { label } ?: label)
+                            // 所有按键产生的 COMMIT 统一走 onKeyPress，让 Rime 有机会处理反查引导符
+                            onKeyPress(swipeDownValue?.ifEmpty { label } ?: label)
                         } else {
                             onGestureAction?.invoke(
                                 swipeDownAction,
@@ -1114,26 +1213,28 @@ fun KeyboardRowWithConfig(
                 }
             } else null
             val onDirectLongPress: (() -> Unit)? = if (directLongPressGesture != null) {
-                remember(key, directLongPressGesture, onGestureAction, onCommitText, onKeyPress) {
+                remember(key, directLongPressGesture, onGestureAction, onKeyPress) {
                     val g = directLongPressGesture
                     {
                         if (g != null && g.action != null && g.action != GestureAction.COMMIT) {
                             onGestureAction?.invoke(g.action!!, g.value.ifEmpty { g.label })
                         } else if (g != null) {
-                            (onCommitText ?: onKeyPress)(g.value.ifEmpty { g.label })
+                            // 所有按键产生的 COMMIT 统一走 onKeyPress，让 Rime 有机会处理反查引导符
+                            onKeyPress(g.value.ifEmpty { g.label })
                         }
                         Unit
                     }
                 }
             } else null
-            val onLongPressSelect: ((String) -> Unit)? = remember(key, longPressGestureMap, onGestureAction, onCommitText, onKeyPress) { { selectedLabel: String ->
+            val onLongPressSelect: ((String) -> Unit)? = remember(key, longPressGestureMap, onGestureAction, onKeyPress) { { selectedLabel: String ->
                 val gesture = longPressGestureMap?.get(selectedLabel)
                 if (gesture != null && gesture.action != GestureAction.COMMIT) {
                     onGestureAction?.invoke(
                         gesture.action!!,
                         gesture.value.ifEmpty { selectedLabel })
                 } else {
-                    (onCommitText ?: onKeyPress)(selectedLabel)
+                    // 所有按键产生的 COMMIT 统一走 onKeyPress，让 Rime 有机会处理反查引导符
+                    onKeyPress(selectedLabel)
                 }
                 Unit
             } }
@@ -1159,7 +1260,7 @@ fun KeyboardRowWithConfig(
                 onLongPressSelect = onLongPressSelect,
                 longPressItems = longPressLabels ?: directLongPressLabels,
                 onDirectLongPress = onDirectLongPress,
-                longPressHint = longPressHintLabel,
+                longPressHint = if (swipeUpHintsEnabled) longPressHintLabel else null,
                 fontSize = config.fontSize,
                 swipeFontSize = config.swipeFontSize,
                 shadowEnabled = config.shadowEnabled,
@@ -1283,6 +1384,7 @@ private fun LandscapeKeyboardContent(
     swipeUpHintsEnabled: Boolean,
     swipeDownHintsEnabled: Boolean,
     isAsciiMode: Boolean,
+    candidateState: State<CandidateState> = remember { mutableStateOf(CandidateState()) },
     onSwipeStateChange: ((SwipeState, Rect) -> Unit)? = null,
 ) {
     val isShifted by viewModel.isShifted.collectAsStateWithLifecycle()
@@ -1332,11 +1434,12 @@ private fun LandscapeKeyboardContent(
     val shadowEnabled = kbShadow.enabled
     val shadowElevation = kbShadow.elevation.dp
     val shadowShapeRadius = kbShadow.shapeRadius.dp
-    val schemaName = uiState.schemaName
-    val enterKeyText = uiState.enterKeyText
-    val onKeyPressDown = callbacks.onKeyPressDown
-    val onKeyRelease = callbacks.onKeyRelease
-    val onCommitText = callbacks.onCommitText
+                    val schemaName = uiState.schemaName
+                    val enterKeyText = uiState.enterKeyText
+                    val onKeyPressDown = callbacks.onKeyPressDown
+                    val onKeyRelease = callbacks.onKeyRelease
+                    val onCommitText = callbacks.onCommitText
+                    val isComposing = candidateState.value.isComposing
     val onGestureAction: (GestureAction, String) -> Unit = { action, value ->
         when (action) {
             GestureAction.SWITCH_ROUTE -> {
@@ -1401,6 +1504,8 @@ private fun LandscapeKeyboardContent(
                     swipeUpHintsEnabled = swipeUpHintsEnabled,
                     onCommitText = onCommitText,
                     onGestureAction = onGestureAction,
+                    onCandidateSelect = callbacks.onCandidateSelect,
+                    candidateState = candidateState,
                     onSwipeStateChange = onSwipeStateChange,
                 )
             }
@@ -1429,6 +1534,8 @@ private fun LandscapeKeyboardContent(
                     swipeUpHintsEnabled = swipeUpHintsEnabled,
                     onCommitText = onCommitText,
                     onGestureAction = onGestureAction,
+                    onCandidateSelect = callbacks.onCandidateSelect,
+                    candidateState = candidateState,
                     onSwipeStateChange = onSwipeStateChange,
                 )
             }
@@ -1457,6 +1564,8 @@ private fun LandscapeKeyboardContent(
                     swipeUpHintsEnabled = swipeUpHintsEnabled,
                     onCommitText = onCommitText,
                     onGestureAction = onGestureAction,
+                    onCandidateSelect = callbacks.onCandidateSelect,
+                    candidateState = candidateState,
                     onSwipeStateChange = onSwipeStateChange,
                 )
             }
@@ -1482,17 +1591,40 @@ private fun LandscapeKeyboardContent(
                     val k2Tap = k2Gesture?.tap?.value?.takeIf { it.isNotEmpty() }
                         ?: k2Gesture?.tap?.label?.takeIf { it.isNotEmpty() }
                         ?: "，"
+                    val k2ComposingActionL = KeysConfigHelper.getComposingAction("'", isAsciiMode)
+                    val k2ComposingDisplayL = if (isComposing && k2ComposingActionL.isNotEmpty()) {
+                        when (k2ComposingActionL) {
+                            "select_2" -> "2选"
+                            "select_3" -> "3选"
+                            "Escape" -> "取消"
+                            else -> ""
+                        }
+                    } else ""
                     val k2SwipeValue = k2Gesture?.swipeUp?.value?.takeIf { it.isNotEmpty() }
                     val k2SwipeLabelRaw = if (isAsciiMode) k2SwipeValue
                         else (k2Gesture?.swipeUp?.label?.takeIf { it.isNotEmpty() } ?: k2SwipeValue)
                     val k2SwipeLabel = if (swipeUpHintsEnabled) k2SwipeLabelRaw else null
                     val k2Swipe = k2SwipeValue ?: "。"
+                    val k2OnClickL: () -> Unit = remember(k2Action, k2Tap, isComposing, k2ComposingActionL, callbacks, onKeyPress, onGestureAction) {
+                        {
+                            if (isComposing && k2ComposingActionL.isNotEmpty()) {
+                                when (k2ComposingActionL) {
+                                    "select_2" -> callbacks.onCandidateSelect(1)
+                                    "select_3" -> callbacks.onCandidateSelect(2)
+                                    "Escape" -> onKeyPress("clear_composition")
+                                    else -> Unit
+                                }
+                            } else if (k2Action != null && k2Action != GestureAction.COMMIT) {
+                                onGestureAction?.invoke(k2Action, k2Tap)
+                            } else {
+                                onKeyPress(k2Tap)
+                            }
+                        }
+                    }
                     if (k2Action == GestureAction.TOGGLE_ASCII) {
                         IconKeyButton(
                             icon = rememberVectorPainter(Icons.Default.Language),
-                            onClick = {
-                                onGestureAction.invoke(k2Action, k2Tap)
-                            },
+                            onClick = k2OnClickL,
                             backgroundColor = keyBackgroundColor,
                             iconColor = keyTextColor,
                             modifier = Modifier.weight(0.8f),
@@ -1503,14 +1635,8 @@ private fun LandscapeKeyboardContent(
                         )
                     } else {
                         SwipeableKeyButtonLandscape(
-                            text = k2Tap,
-                            onClick = {
-                                if (k2Action != null && k2Action != GestureAction.COMMIT) {
-                                    onGestureAction?.invoke(k2Action, k2Tap)
-                                } else {
-                                    onKeyPress(k2Tap)
-                                }
-                            },
+                            text = k2ComposingDisplayL.takeIf { it.isNotEmpty() } ?: k2Tap,
+                            onClick = k2OnClickL,
                             backgroundColor = keyBackgroundColor,
                             textColor = keyTextColor,
                             modifier = Modifier.weight(0.8f),
@@ -1526,6 +1652,7 @@ private fun LandscapeKeyboardContent(
                     }
                 SplitSpaceKey(
                     onClick = { onKeyPress("space") },
+                    onKeyPress = onKeyPress,
                     backgroundColor = keyBackgroundColor,
                     textColor = keyTextColor,
                     schemaName = if (isAsciiMode) "English" else schemaName,
@@ -1573,6 +1700,8 @@ private fun LandscapeKeyboardContent(
                     swipeUpHintsEnabled = swipeUpHintsEnabled,
                     onCommitText = onCommitText,
                     onGestureAction = onGestureAction,
+                    onCandidateSelect = callbacks.onCandidateSelect,
+                    candidateState = candidateState,
                     onSwipeStateChange = onSwipeStateChange,
                 )
             }
@@ -1598,6 +1727,8 @@ private fun LandscapeKeyboardContent(
                     swipeUpHintsEnabled = swipeUpHintsEnabled,
                     onCommitText = onCommitText,
                     onGestureAction = onGestureAction,
+                    onCandidateSelect = callbacks.onCandidateSelect,
+                    candidateState = candidateState,
                     onSwipeStateChange = onSwipeStateChange,
                 )
             }
@@ -1625,6 +1756,8 @@ private fun LandscapeKeyboardContent(
                         swipeUpHintsEnabled = swipeUpHintsEnabled,
                         onCommitText = onCommitText,
                         onGestureAction = onGestureAction,
+                        onCandidateSelect = callbacks.onCandidateSelect,
+                        candidateState = candidateState,
                         onSwipeStateChange = onSwipeStateChange,
                     )
                 }
@@ -1659,6 +1792,7 @@ private fun LandscapeKeyboardContent(
             ) {
                 SplitSpaceKey(
                     onClick = { onKeyPress("space") },
+                    onKeyPress = onKeyPress,
                     backgroundColor = keyBackgroundColor,
                     textColor = keyTextColor,
                     schemaName = if (isAsciiMode) "English" else "",
@@ -1695,16 +1829,35 @@ private fun LandscapeKeyboardContent(
                 val k4Action = k4Gesture?.tap?.action
                 val k4Value = k4Gesture?.tap?.value?.takeIf { it.isNotEmpty() } ?: k4Gesture?.tap?.label?.takeIf { it.isNotEmpty() } ?: "ime_switch"
                 val k4Label = k4Gesture?.tap?.label?.takeIf { it.isNotEmpty() } ?: "中"
+                val k4ComposingActionL = KeysConfigHelper.getComposingAction("earth", isAsciiMode)
+                val k4ComposingDisplayL = if (isComposing && k4ComposingActionL.isNotEmpty()) {
+                    when (k4ComposingActionL) {
+                        "select_2" -> "2选"
+                        "select_3" -> "3选"
+                        "Escape" -> "取消"
+                        else -> ""
+                    }
+                } else ""
+                val k4OnClickL: () -> Unit = remember(k4Action, k4Value, isComposing, k4ComposingActionL, callbacks, onKeyPress, onGestureAction) {
+                    {
+                        if (isComposing && k4ComposingActionL.isNotEmpty()) {
+                            when (k4ComposingActionL) {
+                                "select_2" -> callbacks.onCandidateSelect(1)
+                                "select_3" -> callbacks.onCandidateSelect(2)
+                                "Escape" -> onKeyPress("clear_composition")
+                                else -> Unit
+                            }
+                        } else if (k4Action != null && k4Action != GestureAction.COMMIT) {
+                            onGestureAction?.invoke(k4Action, k4Value)
+                        } else {
+                            onKeyPress(k4Value)
+                        }
+                    }
+                }
                 if (k4Action == GestureAction.TOGGLE_ASCII) {
                     IconKeyButton(
                         icon = rememberVectorPainter(Icons.Default.Language),
-                        onClick = {
-                            if (k4Action != null && k4Action != GestureAction.COMMIT) {
-                                onGestureAction?.invoke(k4Action, k4Value)
-                            } else {
-                                onKeyPress(k4Value)
-                            }
-                        },
+                        onClick = k4OnClickL,
                         backgroundColor = keyBackgroundColor,
                         iconColor = keyTextColor,
                         modifier = Modifier.weight(0.8f),
@@ -1721,12 +1874,13 @@ private fun LandscapeKeyboardContent(
                     val k4SwipeLabel = if (swipeUpHintsEnabled) k4SwipeLabelRaw else null
                     val k4SwipeUpAction = k4Gesture?.swipeUp?.action
                     val k4OnSwipe: ((String) -> Unit)? = if (k4SwipeValue != null && k4SwipeUpAction != null && k4SwipeUpAction != GestureAction.NONE) {
-                        remember(k4SwipeUpAction, k4SwipeValue, k4SwipeLabelRaw, onKeyPress, onGestureAction, onCommitText) {
+                        remember(k4SwipeUpAction, k4SwipeValue, k4SwipeLabelRaw, onKeyPress, onGestureAction) {
                             val action = k4SwipeUpAction
                             val label = k4SwipeLabelRaw ?: k4SwipeValue
                             { _: String ->
                                 if (action == GestureAction.COMMIT) {
-                                    (onCommitText ?: onKeyPress)(k4SwipeValue.ifEmpty { label })
+                                    // 所有按键产生的 COMMIT 统一走 onKeyPress，让 Rime 有机会处理反查引导符
+                                    onKeyPress(k4SwipeValue.ifEmpty { label })
                                 } else {
                                     onGestureAction?.invoke(action, k4SwipeValue.ifEmpty { label } ?: label)
                                 }
@@ -1735,14 +1889,8 @@ private fun LandscapeKeyboardContent(
                         }
                     } else null
                     SwipeableKeyButtonLandscape(
-                        text = k4Label,
-                        onClick = {
-                            if (k4Action != null && k4Action != GestureAction.COMMIT) {
-                                onGestureAction?.invoke(k4Action, k4Value)
-                            } else {
-                                onKeyPress(k4Value)
-                            }
-                        },
+                        text = k4ComposingDisplayL.takeIf { it.isNotEmpty() } ?: k4Label,
+                        onClick = k4OnClickL,
                         backgroundColor = keyBackgroundColor,
                         textColor = keyTextColor,
                         modifier = Modifier.weight(0.8f),
@@ -2158,9 +2306,12 @@ fun CompactKeyboardRowWithConfig(
     swipeUpHintsEnabled: Boolean = true,
     onCommitText: ((String) -> Unit)? = null,
     onGestureAction: ((GestureAction, String) -> Unit)? = null,
+    onCandidateSelect: ((Int) -> Unit)? = null,
+    candidateState: State<CandidateState> = remember { mutableStateOf(CandidateState()) },
     onSwipeStateChange: ((SwipeState, Rect) -> Unit)? = null,
     configVersion: Int = 0,
 ) {
+    val isComposing = candidateState.value.isComposing
     Row(
         modifier = modifier
             .fillMaxSize(),
@@ -2201,16 +2352,44 @@ fun CompactKeyboardRowWithConfig(
             } else {
                 rawCommitValue
             }
-            val compactDisplayText = if (isAsciiMode) commitValue else KeysConfigHelper.getKeyDisplayLabel(key, isAsciiMode)
-            val compactOnClick = remember(key, commitValue, onKeyPress) { { onKeyPress(commitValue) } }
+            val compactComposingAction = KeysConfigHelper.getComposingAction(key, isAsciiMode)
+            val compactComposingDisplay = if (isComposing && compactComposingAction.isNotEmpty()) {
+                when (compactComposingAction) {
+                    "select_2" -> "2选"
+                    "select_3" -> "3选"
+                    "Escape" -> "取消"
+                    else -> ""
+                }
+            } else ""
+            val compactDisplayText = if (compactComposingDisplay.isNotEmpty()) {
+                compactComposingDisplay
+            } else if (isAsciiMode) {
+                commitValue
+            } else {
+                KeysConfigHelper.getKeyDisplayLabel(key, isAsciiMode)
+            }
+            val compactOnClick = remember(key, commitValue, onKeyPress, isComposing, compactComposingAction, onCandidateSelect) {
+                {
+                    if (isComposing && compactComposingAction.isNotEmpty()) {
+                        when (compactComposingAction) {
+                            "select_2" -> onCandidateSelect?.invoke(1)
+                            "select_3" -> onCandidateSelect?.invoke(2)
+                            "Escape" -> onKeyPress("clear_composition")
+                        }
+                    } else {
+                        onKeyPress(commitValue)
+                    }
+                }
+            }
             val compactOnPress: (() -> Unit)? = remember(key, onKeyPressDown) { { onKeyPressDown?.invoke(key); Unit } }
             val compactOnRelease: (() -> Unit)? = remember(key, onKeyRelease) { { onKeyRelease?.invoke(key); Unit } }
             val compactOnSwipeDown: ((String) -> Unit)? = if (swipeDownAction != null && swipeDownLabel != null) {
-                remember(key, onKeyPress, onGestureAction, onCommitText, swipeDownAction, swipeDownValue, swipeDownLabel) {
+                remember(key, onKeyPress, onGestureAction, swipeDownAction, swipeDownValue, swipeDownLabel) {
                     val label = swipeDownLabel
                     { _: String ->
                         if (swipeDownAction == GestureAction.COMMIT) {
-                            (onCommitText ?: onKeyPress)(swipeDownValue?.ifEmpty { label } ?: label)
+                            // 所有按键产生的 COMMIT 统一走 onKeyPress，让 Rime 有机会处理反查引导符
+                            onKeyPress(swipeDownValue?.ifEmpty { label } ?: label)
                         } else {
                             onGestureAction?.invoke(
                                 swipeDownAction,
@@ -2220,25 +2399,27 @@ fun CompactKeyboardRowWithConfig(
                     }
                 }
             } else null
-            val compactOnLongPressSelect: ((String) -> Unit)? = remember(key, longPressGestureMap, onGestureAction, onCommitText, onKeyPress) { { selectedLabel: String ->
+            val compactOnLongPressSelect: ((String) -> Unit)? = remember(key, longPressGestureMap, onGestureAction, onKeyPress) { { selectedLabel: String ->
                 val gesture = longPressGestureMap?.get(selectedLabel)
                 if (gesture != null && gesture.action != GestureAction.COMMIT) {
                     onGestureAction?.invoke(
                         gesture.action!!,
                         gesture.value.ifEmpty { selectedLabel })
                 } else {
-                    (onCommitText ?: onKeyPress)(selectedLabel)
+                    // 所有按键产生的 COMMIT 统一走 onKeyPress，让 Rime 有机会处理反查引导符
+                    onKeyPress(selectedLabel)
                 }
                 Unit
             } }
 
             val compactOnSwipe: ((String) -> Unit)? = if (swipeUpCommitValue != null && swipeUpAction != null && swipeUpAction != GestureAction.NONE) {
-                remember(swipeUpAction, swipeUpCommitValue, onKeyPress, onGestureAction, onCommitText) {
+                remember(swipeUpAction, swipeUpCommitValue, onKeyPress, onGestureAction) {
                     val action = swipeUpAction
                     val label = swipeUpCommitValue
                     { _: String ->
                         if (action == GestureAction.COMMIT) {
-                            (onCommitText ?: onKeyPress)(label)
+                            // 所有按键产生的 COMMIT 统一走 onKeyPress，让 Rime 有机会处理反查引导符
+                            onKeyPress(label)
                         } else {
                             onGestureAction?.invoke(action, label)
                         }
@@ -2266,7 +2447,7 @@ fun CompactKeyboardRowWithConfig(
                 onRelease = compactOnRelease,
                 onLongPressSelect = compactOnLongPressSelect,
                 longPressItems = longPressLabels,
-                longPressHint = longPressHintLabel,
+                longPressHint = if (swipeUpHintsEnabled) longPressHintLabel else null,
                 fontSize = config.fontSize,
                 swipeFontSize = config.swipeFontSize,
                 shadowEnabled = config.shadowEnabled,
@@ -2283,6 +2464,7 @@ fun CompactKeyboardRowWithConfig(
 @Composable
 private fun SplitSpaceKey(
     onClick: () -> Unit,
+    onKeyPress: (String) -> Unit,
     backgroundColor: Color,
     textColor: Color,
     schemaName: String = "",
@@ -2297,6 +2479,7 @@ private fun SplitSpaceKey(
     onCommitText: ((String) -> Unit)? = null,
 ) {
     val context = LocalContext.current
+    val currentOnKeyPress by rememberUpdatedState(onKeyPress)
     // 自定义空格文本优先；其次用户覆盖的 tap 标签
     val spaceCustomLabel = com.kingzcheung.xime.settings.SettingsPreferences.getSpaceCustomLabel(context)
     val spaceGesture = KeysConfigHelper.getKeyGesture("space", isAsciiMode)
@@ -2357,7 +2540,8 @@ private fun SplitSpaceKey(
                             if (override.action != null && override.action != GestureAction.COMMIT) {
                                 currentOnGestureAction?.invoke(override.action, override.value.ifEmpty { override.label })
                             } else {
-                                (currentOnCommitText ?: { currentOnClick() })(override.value.ifEmpty { override.label })
+                                // 空格键自定义长按统一走 onKeyPress，让 Rime 有机会处理反查引导符
+                                currentOnKeyPress(override.value.ifEmpty { override.label })
                             }
                         } else {
                             // 默认：长按空格 = 切换中/英文
@@ -2371,7 +2555,8 @@ private fun SplitSpaceKey(
 
                     if (!longPressTriggered) {
                         if (overrideTapValue != null) {
-                            (currentOnCommitText ?: { currentOnClick() })(overrideTapValue)
+                            // 空格键自定义 tap 统一走 onKeyPress，让 Rime 有机会处理反查引导符
+                            currentOnKeyPress(overrideTapValue)
                         } else {
                             currentOnClick()
                         }
@@ -2438,8 +2623,12 @@ private fun SpaceKey(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
-    // 空格键用户手势覆盖（设置→键盘符号编辑），长按直发首项
+    // 空格键用户手势覆盖（设置→键盘符号编辑），tap 与长按均支持自定义
     val spaceGesture = KeysConfigHelper.getKeyGesture("space", isAsciiMode)
+    val spaceTap = spaceGesture?.tap
+    val overrideTapValue = spaceTap?.value?.takeIf { it.isNotEmpty() }
+        ?: spaceTap?.label?.takeIf { it.isNotEmpty() }
+    val currentOverrideTapValue by rememberUpdatedState(overrideTapValue)
     val lpDirect = spaceGesture?.longPress?.values?.firstOrNull()
     val currentLpDirect by rememberUpdatedState(lpDirect)
 
@@ -2486,7 +2675,8 @@ private fun SpaceKey(
                             if (override.action != null && override.action != GestureAction.COMMIT) {
                                 currentOnGestureAction?.invoke(override.action, override.value.ifEmpty { override.label })
                             } else {
-                                (currentOnCommitText ?: { currentOnKeyPress(it) })(override.value.ifEmpty { override.label })
+                                // 空格键自定义长按统一走 onKeyPress，让 Rime 有机会处理反查引导符
+                                currentOnKeyPress(override.value.ifEmpty { override.label })
                             }
                         } else {
                             // 默认：长按空格 = 切换中/英文
@@ -2499,7 +2689,18 @@ private fun SpaceKey(
                     currentOnKeyRelease?.invoke("space")
 
                     if (!longPressTriggered) {
-                        currentOnKeyPress("space")
+                        val tapOverride = currentOverrideTapValue
+                        if (tapOverride != null) {
+                            val action = spaceTap?.action
+                            if (action != null && action != GestureAction.COMMIT) {
+                                currentOnGestureAction?.invoke(action, tapOverride)
+                            } else {
+                                // 空格键自定义 tap 统一走 onKeyPress，让 Rime 有机会处理反查引导符
+                                currentOnKeyPress(tapOverride)
+                            }
+                        } else {
+                            currentOnKeyPress("space")
+                        }
                     }
                 }
             }
@@ -2532,10 +2733,12 @@ private fun SpaceKey(
                 )
             }
             else -> {
-                // 空格键显示：优先使用自定义内容，否则显示方案名称；已去除"中/英"角标
+                // 空格键显示：优先使用自定义内容，其次用户覆盖的 tap 标签，否则显示方案名称；已去除"中/英"角标
                 val spaceCustomLabel = com.kingzcheung.xime.settings.SettingsPreferences.getSpaceCustomLabel(context)
+                val overrideTapLabel = spaceGesture?.tap?.label?.takeIf { it.isNotEmpty() }
                 val displayText = when {
                     spaceCustomLabel.isNotEmpty() -> spaceCustomLabel
+                    overrideTapLabel != null -> overrideTapLabel
                     isAsciiMode -> "English"
                     else -> schemaName
                 }

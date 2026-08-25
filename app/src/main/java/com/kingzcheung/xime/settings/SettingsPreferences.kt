@@ -716,18 +716,18 @@ object SettingsPreferences {
         getPrefs(context).edit().putInt(KEY_FIFTH_ROW_HEIGHT_WEIGHT, weight.coerceIn(2, 20)).apply()
     }
 
-    // ── 按键圆角（dp，0 = 跟随 xime.yaml keyboard.key.corner_radius）──
+    // ── 按键圆角（dp，1 = 跟随 xime.yaml keyboard.key.corner_radius）──
 
     const val KEY_KEY_CORNER_RADIUS = "key_corner_radius"
 
-    /** 按键圆角（dp），0 表示未自定义（用 xime.yaml 默认） */
+    /** 按键圆角（dp），1 表示未自定义（用 xime.yaml 默认） */
     fun getKeyCornerRadius(context: Context): Int {
-        return getPrefs(context).getInt(KEY_KEY_CORNER_RADIUS, 0)
+        return getPrefs(context).getInt(KEY_KEY_CORNER_RADIUS, 1)
     }
 
-    /** 设置按键圆角（dp，范围 0~24；0 = 恢复默认） */
+    /** 设置按键圆角（dp，范围 1~36） */
     fun setKeyCornerRadius(context: Context, radius: Int) {
-        getPrefs(context).edit().putInt(KEY_KEY_CORNER_RADIUS, radius.coerceIn(0, 24)).apply()
+        getPrefs(context).edit().putInt(KEY_KEY_CORNER_RADIUS, radius.coerceIn(1, 36)).apply()
     }
 
     // ── 英文键盘跟随中文键盘符号（中文区自定义符号自动同步到英文区）──

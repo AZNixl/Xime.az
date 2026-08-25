@@ -621,11 +621,11 @@ fun LayoutDisplaySettingsContent(
                             onValueChangeFinished = {
                                 SettingsPreferences.setKeyCornerRadius(context, radius.toInt())
                             },
-                            valueRange = 0f..24f,
-                            steps = 23
+                            valueRange = 1f..36f,
+                            steps = 34
                         )
                         Text(
-                            text = "0 为跟随默认（xime.yaml corner_radius）",
+                            text = "1 为最小圆角，36 为最大圆角",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

@@ -1074,6 +1074,16 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                     KeyEvent(now, now, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_Z, 0, KeyEvent.META_CTRL_ON)
                 )
             }
+            android.R.id.selectAll -> {
+                // 部分应用对 performContextMenuAction(selectAll) 无响应，改用 Ctrl+A 全选
+                val now = SystemClock.uptimeMillis()
+                currentInputConnection?.sendKeyEvent(
+                    KeyEvent(now, now, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_A, 0, KeyEvent.META_CTRL_ON)
+                )
+                currentInputConnection?.sendKeyEvent(
+                    KeyEvent(now, now, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_A, 0, KeyEvent.META_CTRL_ON)
+                )
+            }
             else -> currentInputConnection?.performContextMenuAction(actionId)
         }
     }

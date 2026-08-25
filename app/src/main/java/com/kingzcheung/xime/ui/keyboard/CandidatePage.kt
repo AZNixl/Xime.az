@@ -38,6 +38,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.kingzcheung.xime.ui.keyboard.LocalKeyboardFontFamily
 
 data class CandidatePageState(
     val candidates: List<String>,
@@ -258,6 +259,7 @@ fun CandidatePageItem(
             color = textColor,
             fontSize = 18.sp,
             fontWeight = FontWeight.Normal,
+            fontFamily = LocalKeyboardFontFamily.current,
             maxLines = 1,
             modifier = Modifier
                 .padding(horizontal = 2.dp)
@@ -268,6 +270,7 @@ fun CandidatePageItem(
                 color = textColor.copy(alpha = 0.5f),
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Normal,
+                fontFamily = LocalKeyboardFontFamily.current,
                 maxLines = 1,
                 modifier = Modifier
                     .padding(horizontal = 1.dp)
