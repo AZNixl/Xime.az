@@ -505,10 +505,10 @@ fun KeyboardLayout(
                                         {
                                             if (isComposing && keyComposingAction.isNotEmpty()) {
                                                 when (keyComposingAction) {
-                                                    // 选重键发送编码后缀字符（;/'），由 Rime 决定行为：
+                                                    // 选重键走 compose_select 伪键：Router 按方案类型发送编码后缀(;/'，整句)或数字(2/3，普通)：
                                                     // 整句方案进编码留候选栏继续输入；普通方案经 key_binder 选重上屏。
-                                                    "select_2" -> onKeyPress(";")
-                                                    "select_3" -> onKeyPress("'")
+                                                    "select_2" -> onKeyPress("compose_select_2")
+                                                    "select_3" -> onKeyPress("compose_select_3")
                                                     "Escape" -> onKeyPress("clear_composition")
                                                 }
                                             } else {
@@ -717,10 +717,10 @@ fun KeyboardLayout(
                                 {
                                     if (isComposing && k2ComposingAction.isNotEmpty()) {
                                         when (k2ComposingAction) {
-                                            // 选重键发送编码后缀字符（;/'），由 Rime 决定行为：
+                                            // 选重键走 compose_select 伪键：Router 按方案类型发送编码后缀(;/'，整句)或数字(2/3，普通)：
                                             // 整句方案进编码留候选栏继续输入；普通方案经 key_binder 选重上屏。
-                                            "select_2" -> onKeyPress(";")
-                                            "select_3" -> onKeyPress("'")
+                                            "select_2" -> onKeyPress("compose_select_2")
+                                            "select_3" -> onKeyPress("compose_select_3")
                                             "Escape" -> onKeyPress("clear_composition")
                                         }
                                     } else if (k2TapAction != null && k2TapAction != GestureAction.COMMIT) {
@@ -890,10 +890,10 @@ fun KeyboardLayout(
                                 {
                                     if (isComposing && k4ComposingAction.isNotEmpty()) {
                                         when (k4ComposingAction) {
-                                            // 选重键发送编码后缀字符（;/'），由 Rime 决定行为：
+                                            // 选重键走 compose_select 伪键：Router 按方案类型发送编码后缀(;/'，整句)或数字(2/3，普通)：
                                             // 整句方案进编码留候选栏继续输入；普通方案经 key_binder 选重上屏。
-                                            "select_2" -> onKeyPress(";")
-                                            "select_3" -> onKeyPress("'")
+                                            "select_2" -> onKeyPress("compose_select_2")
+                                            "select_3" -> onKeyPress("compose_select_3")
                                             "Escape" -> onKeyPress("clear_composition")
                                         }
                                     } else if (k4TapAction != null && k4TapAction != GestureAction.COMMIT) {
@@ -1174,10 +1174,10 @@ fun KeyboardRowWithConfig(
                 {
                     if (isComposing && composingAction.isNotEmpty()) {
                         when (composingAction) {
-                            // 选重键发送编码后缀字符（;/'），由 Rime 决定行为：
+                            // 选重键走 compose_select 伪键：Router 按方案类型发送编码后缀(;/'，整句)或数字(2/3，普通)：
                             // 整句方案进编码留候选栏继续输入；普通方案经 key_binder 选重上屏。
-                            "select_2" -> onKeyPress(";")
-                            "select_3" -> onKeyPress("'")
+                            "select_2" -> onKeyPress("compose_select_2")
+                            "select_3" -> onKeyPress("compose_select_3")
                             "Escape" -> onKeyPress("clear_composition")
                         }
                     } else {
@@ -1615,10 +1615,10 @@ private fun LandscapeKeyboardContent(
                         {
                             if (isComposing && k2ComposingActionL.isNotEmpty()) {
                                 when (k2ComposingActionL) {
-                                    // 选重键发送编码后缀字符（;/'），由 Rime 决定行为：
+                                    // 选重键走 compose_select 伪键：Router 按方案类型发送编码后缀(;/'，整句)或数字(2/3，普通)：
                                     // 整句方案进编码留候选栏继续输入；普通方案经 key_binder 选重上屏。
-                                    "select_2" -> onKeyPress(";")
-                                    "select_3" -> onKeyPress("'")
+                                    "select_2" -> onKeyPress("compose_select_2")
+                                    "select_3" -> onKeyPress("compose_select_3")
                                     "Escape" -> onKeyPress("clear_composition")
                                     else -> Unit
                                 }
@@ -1848,10 +1848,10 @@ private fun LandscapeKeyboardContent(
                     {
                         if (isComposing && k4ComposingActionL.isNotEmpty()) {
                             when (k4ComposingActionL) {
-                                // 选重键发送编码后缀字符（;/'），由 Rime 决定行为：
+                                // 选重键走 compose_select 伪键：Router 按方案类型发送编码后缀(;/'，整句)或数字(2/3，普通)：
                                 // 整句方案进编码留候选栏继续输入；普通方案经 key_binder 选重上屏。
-                                "select_2" -> onKeyPress(";")
-                                "select_3" -> onKeyPress("'")
+                                "select_2" -> onKeyPress("compose_select_2")
+                                "select_3" -> onKeyPress("compose_select_3")
                                 "Escape" -> onKeyPress("clear_composition")
                                 else -> Unit
                             }
@@ -2380,10 +2380,10 @@ fun CompactKeyboardRowWithConfig(
                 {
                     if (isComposing && compactComposingAction.isNotEmpty()) {
                         when (compactComposingAction) {
-                            // 选重键发送编码后缀字符（;/'），由 Rime 决定行为：
+                            // 选重键走 compose_select 伪键：Router 按方案类型发送编码后缀(;/'，整句)或数字(2/3，普通)：
                             // 整句方案进编码留候选栏继续输入；普通方案经 key_binder 选重上屏。
-                            "select_2" -> onKeyPress(";")
-                            "select_3" -> onKeyPress("'")
+                            "select_2" -> onKeyPress("compose_select_2")
+                            "select_3" -> onKeyPress("compose_select_3")
                             "Escape" -> onKeyPress("clear_composition")
                         }
                     } else {
@@ -2873,10 +2873,10 @@ private fun ModeChangeKey(
         {
             if (isComposing && composingAction.isNotEmpty()) {
                 when (composingAction) {
-                    // 选重键发送编码后缀字符（;/'），由 Rime 决定行为：
+                    // 选重键走 compose_select 伪键：Router 按方案类型发送编码后缀(;/'，整句)或数字(2/3，普通)：
                     // 整句方案进编码留候选栏继续输入；普通方案经 key_binder 选重上屏。
-                    "select_2" -> onKeyPress(";")
-                    "select_3" -> onKeyPress("'")
+                    "select_2" -> onKeyPress("compose_select_2")
+                    "select_3" -> onKeyPress("compose_select_3")
                     "Escape" -> onKeyPress("clear_composition")
                 }
             } else if (tapAction != null && tapAction != GestureAction.COMMIT) {

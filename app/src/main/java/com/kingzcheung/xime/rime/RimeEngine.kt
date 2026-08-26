@@ -152,6 +152,9 @@ class RimeEngine {
     @Volatile
     private var userDataDir: String = ""
 
+    /** Rime 用户数据目录（未初始化时返回 null）。供读取部署产物（如 speller.alphabet 判定）使用。 */
+    fun userDataDirIfAvailable(): String? = userDataDir.takeIf { it.isNotEmpty() }
+
     /**
      * 管理路径（初始化/部署/会话创建/方案切换等）：阻塞等待锁。
      * 这类调用在后台线程执行，等待部署/编译完成是预期行为。

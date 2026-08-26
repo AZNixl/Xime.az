@@ -170,6 +170,28 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
                     }
                     needsUIUpdate = true
                 }
+                "compose_select_2" -> {
+                    // 选重键（次选）：按方案类型发送不同字符。
+                    // 编码后缀式整句方案（分号在 speller alphabet 中）→ 发送 ';' 进编码，
+                    //   候选留在候选栏可继续输入（对齐 trime2）；
+                    // 普通方案 → 发送数字 '2'，由 Rime selector 直接选第 2 候选上屏
+                    //   （不依赖 key_binder，任何方案都有效）。
+                    val schemaId = state.currentSchemaId
+                    if (isSuffixSelectSchema(schemaId)) {
+                        processKeyWithUiUpdate(';'.code)
+                    } else {
+                        processKeyWithUiUpdate('2'.code)
+                    }
+                }
+                "compose_select_3" -> {
+                    // 选重键（第三候选），逻辑同上，发送 '\'' 或 '3'。
+                    val schemaId = state.currentSchemaId
+                    if (isSuffixSelectSchema(schemaId)) {
+                        processKeyWithUiUpdate('\''.code)
+                    } else {
+                        processKeyWithUiUpdate('3'.code)
+                    }
+                }
                 "enter" -> {
                     service.calculatorEngine.clear()
                     updateCalculatorCandidates()
@@ -555,6 +577,63 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
             }
         }
         service.keyJobs.trySend(job)
+    }
+
+    /**
+     * 判断方案是否为"编码后缀式选重"的整句方案。
+     *
+     * 这类方案把分号/引号写进 speller alphabet（如虎整句 `hh;` = 次选），
+     * 选重字符应进入编码而非触发标点/selector。判定方式：读取部署后的
+     * schema 编译产物中 speller.alphabet 是否包含 ';'（缓存结果避免重复 IO）。
+     */
+    internal fun isSuffixSelectSchema(schemaId: String): Boolean {
+        if (schemaId.isEmpty()) return false
+        suffixSelectCache[schemaId]?.let { return it }
+        val result = try {
+            val rimeDir = service.rimeEngine.userDataDirIfAvailable()
+            if (rimeDir == null) {
+                false
+            } else {
+                // 优先读 build 后的 schema（含补丁合并），回退源文件
+                val candidates = listOf(
+                    java.io.File(rimeDir, "build/$schemaId.schema.yaml"),
+                    java.io.File(rimeDir, "$schemaId.schema.yaml")
+                )
+                var found = false
+                for (f in candidates) {
+                    if (!f.exists()) continue
+                    val text = f.readText()
+                    val m = Regex("alphabet:\\s*\"([^\"]*)\"").find(text)
+                    if (m != null && m.groupValues[1].contains(';')) {
+                        found = true
+                        break
+                    }
+                }
+                found
+            }
+        } catch (_: Exception) {
+            false
+        }
+        suffixSelectCache[schemaId] = result
+        return result
+    }
+
+    private val suffixSelectCache = mutableMapOf<String, Boolean>()
+
+    /**
+     * 发送单个字符键给 Rime 并刷新 UI。
+     * 用于选重键注入编码后缀/数字选重，与普通按键路径一致地处理 committed 文本与 UI 更新。
+     */
+    private fun processKeyWithUiUpdate(charCode: Int) {
+        val result = service.rimeEngine.processKeyAndGetResult(charCode, 0)
+        if (result.processed) {
+            service.uiEventChannel.trySend {
+                if (result.committedText.isNotEmpty()) service.commitText(result.committedText)
+                service.sessionController.updateUIWithResult(result)
+            }
+        } else {
+            // 未被 Rime 消费：中文空闲态下不应发生（仅 composing 时显示选重键），兜底忽略
+        }
     }
 
     /**
