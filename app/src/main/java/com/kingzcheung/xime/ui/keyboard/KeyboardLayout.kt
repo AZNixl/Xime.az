@@ -663,6 +663,8 @@ fun KeyboardLayout(
                                 backgroundColor = specialKeyBackgroundColor,
                                 textColor = specialKeyTextColor,
                                 modifier = Modifier.weight(1.2f),
+                                isComposing = isComposing,
+                                onCandidateSelect = { callbacks.onCandidateSelect(it) },
                                 onSwipeStateChange = { state, bounds -> processSwipeState(state, bounds) },
                                 shadowEnabled = shadowEnabled,
                                 shadowElevation = shadowElevation,
@@ -1809,6 +1811,8 @@ private fun LandscapeKeyboardContent(
                     onGestureAction = onGestureAction,
                     swipeUpHintsEnabled = swipeUpHintsEnabled,
                     swipeDownHintsEnabled = swipeDownHintsEnabled,
+                    isComposing = isComposing,
+                    onCandidateSelect = { callbacks.onCandidateSelect(it) },
                     backgroundColor = specialKeyBackgroundColor,
                     textColor = specialKeyTextColor,
                     modifier = Modifier.weight(1.2f),
@@ -2789,6 +2793,8 @@ private fun ModeChangeKey(
     textColor: Color,
     modifier: Modifier = Modifier,
     isAsciiMode: Boolean = false,
+    isComposing: Boolean = false,
+    onCandidateSelect: ((Int) -> Unit)? = null,
     onSwipeStateChange: ((SwipeState, Rect) -> Unit)? = null,
     shadowEnabled: Boolean = true,
     shadowElevation: Dp = 1.dp,
@@ -2837,9 +2843,28 @@ private fun ModeChangeKey(
         longPressConfig?.values?.firstOrNull()
     } else null
 
-    val onClick: () -> Unit = remember(tapAction, tapValue, onKeyPress, onGestureAction) {
+    // 临时候选键：打字时动态显示 2选/3选/取消，行为与句号键对齐
+    val composingAction = KeysConfigHelper.getComposingAction("mode_change", isAsciiMode)
+    val composingDisplay = if (isComposing && composingAction.isNotEmpty()) {
+        when (composingAction) {
+            "select_2" -> "2选"
+            "select_3" -> "3选"
+            "Escape" -> "取消"
+            else -> ""
+        }
+    } else ""
+    val displayTapLabel = composingDisplay.takeIf { it.isNotEmpty() } ?: tapLabel
+
+    val currentOnCandidateSelect by rememberUpdatedState(onCandidateSelect)
+    val onClick: () -> Unit = remember(tapAction, tapValue, onKeyPress, onGestureAction, isComposing, composingAction, onCandidateSelect) {
         {
-            if (tapAction != null && tapAction != GestureAction.COMMIT) {
+            if (isComposing && composingAction.isNotEmpty()) {
+                when (composingAction) {
+                    "select_2" -> currentOnCandidateSelect?.invoke(1)
+                    "select_3" -> currentOnCandidateSelect?.invoke(2)
+                    "Escape" -> onKeyPress("clear_composition")
+                }
+            } else if (tapAction != null && tapAction != GestureAction.COMMIT) {
                 onGestureAction?.invoke(tapAction, tapValue)
             } else {
                 onKeyPress(tapValue)
@@ -2905,7 +2930,7 @@ private fun ModeChangeKey(
 
     SwipeableKeyButton(
         layoutMode = KeysConfigHelper.getButtonLayout(isAsciiMode),
-        text = tapLabel,
+        text = displayTapLabel,
         onClick = onClick,
         backgroundColor = backgroundColor,
         textColor = textColor,
