@@ -505,8 +505,10 @@ fun KeyboardLayout(
                                         {
                                             if (isComposing && keyComposingAction.isNotEmpty()) {
                                                 when (keyComposingAction) {
-                                                    "select_2" -> callbacks.onCandidateSelect(1)
-                                                    "select_3" -> callbacks.onCandidateSelect(2)
+                                                    // 选重键发送编码后缀字符（;/'），由 Rime 决定行为：
+                                                    // 整句方案进编码留候选栏继续输入；普通方案经 key_binder 选重上屏。
+                                                    "select_2" -> onKeyPress(";")
+                                                    "select_3" -> onKeyPress("'")
                                                     "Escape" -> onKeyPress("clear_composition")
                                                 }
                                             } else {
@@ -715,8 +717,10 @@ fun KeyboardLayout(
                                 {
                                     if (isComposing && k2ComposingAction.isNotEmpty()) {
                                         when (k2ComposingAction) {
-                                            "select_2" -> callbacks.onCandidateSelect(1)
-                                            "select_3" -> callbacks.onCandidateSelect(2)
+                                            // 选重键发送编码后缀字符（;/'），由 Rime 决定行为：
+                                            // 整句方案进编码留候选栏继续输入；普通方案经 key_binder 选重上屏。
+                                            "select_2" -> onKeyPress(";")
+                                            "select_3" -> onKeyPress("'")
                                             "Escape" -> onKeyPress("clear_composition")
                                         }
                                     } else if (k2TapAction != null && k2TapAction != GestureAction.COMMIT) {
@@ -886,8 +890,10 @@ fun KeyboardLayout(
                                 {
                                     if (isComposing && k4ComposingAction.isNotEmpty()) {
                                         when (k4ComposingAction) {
-                                            "select_2" -> callbacks.onCandidateSelect(1)
-                                            "select_3" -> callbacks.onCandidateSelect(2)
+                                            // 选重键发送编码后缀字符（;/'），由 Rime 决定行为：
+                                            // 整句方案进编码留候选栏继续输入；普通方案经 key_binder 选重上屏。
+                                            "select_2" -> onKeyPress(";")
+                                            "select_3" -> onKeyPress("'")
                                             "Escape" -> onKeyPress("clear_composition")
                                         }
                                     } else if (k4TapAction != null && k4TapAction != GestureAction.COMMIT) {
@@ -1168,8 +1174,10 @@ fun KeyboardRowWithConfig(
                 {
                     if (isComposing && composingAction.isNotEmpty()) {
                         when (composingAction) {
-                            "select_2" -> onCandidateSelect?.invoke(1)
-                            "select_3" -> onCandidateSelect?.invoke(2)
+                            // 选重键发送编码后缀字符（;/'），由 Rime 决定行为：
+                            // 整句方案进编码留候选栏继续输入；普通方案经 key_binder 选重上屏。
+                            "select_2" -> onKeyPress(";")
+                            "select_3" -> onKeyPress("'")
                             "Escape" -> onKeyPress("clear_composition")
                         }
                     } else {
@@ -1607,8 +1615,10 @@ private fun LandscapeKeyboardContent(
                         {
                             if (isComposing && k2ComposingActionL.isNotEmpty()) {
                                 when (k2ComposingActionL) {
-                                    "select_2" -> callbacks.onCandidateSelect(1)
-                                    "select_3" -> callbacks.onCandidateSelect(2)
+                                    // 选重键发送编码后缀字符（;/'），由 Rime 决定行为：
+                                    // 整句方案进编码留候选栏继续输入；普通方案经 key_binder 选重上屏。
+                                    "select_2" -> onKeyPress(";")
+                                    "select_3" -> onKeyPress("'")
                                     "Escape" -> onKeyPress("clear_composition")
                                     else -> Unit
                                 }
@@ -1838,8 +1848,10 @@ private fun LandscapeKeyboardContent(
                     {
                         if (isComposing && k4ComposingActionL.isNotEmpty()) {
                             when (k4ComposingActionL) {
-                                "select_2" -> callbacks.onCandidateSelect(1)
-                                "select_3" -> callbacks.onCandidateSelect(2)
+                                // 选重键发送编码后缀字符（;/'），由 Rime 决定行为：
+                                // 整句方案进编码留候选栏继续输入；普通方案经 key_binder 选重上屏。
+                                "select_2" -> onKeyPress(";")
+                                "select_3" -> onKeyPress("'")
                                 "Escape" -> onKeyPress("clear_composition")
                                 else -> Unit
                             }
@@ -2368,8 +2380,10 @@ fun CompactKeyboardRowWithConfig(
                 {
                     if (isComposing && compactComposingAction.isNotEmpty()) {
                         when (compactComposingAction) {
-                            "select_2" -> onCandidateSelect?.invoke(1)
-                            "select_3" -> onCandidateSelect?.invoke(2)
+                            // 选重键发送编码后缀字符（;/'），由 Rime 决定行为：
+                            // 整句方案进编码留候选栏继续输入；普通方案经 key_binder 选重上屏。
+                            "select_2" -> onKeyPress(";")
+                            "select_3" -> onKeyPress("'")
                             "Escape" -> onKeyPress("clear_composition")
                         }
                     } else {
@@ -2855,13 +2869,14 @@ private fun ModeChangeKey(
     } else ""
     val displayTapLabel = composingDisplay.takeIf { it.isNotEmpty() } ?: tapLabel
 
-    val currentOnCandidateSelect by rememberUpdatedState(onCandidateSelect)
     val onClick: () -> Unit = remember(tapAction, tapValue, onKeyPress, onGestureAction, isComposing, composingAction, onCandidateSelect) {
         {
             if (isComposing && composingAction.isNotEmpty()) {
                 when (composingAction) {
-                    "select_2" -> currentOnCandidateSelect?.invoke(1)
-                    "select_3" -> currentOnCandidateSelect?.invoke(2)
+                    // 选重键发送编码后缀字符（;/'），由 Rime 决定行为：
+                    // 整句方案进编码留候选栏继续输入；普通方案经 key_binder 选重上屏。
+                    "select_2" -> onKeyPress(";")
+                    "select_3" -> onKeyPress("'")
                     "Escape" -> onKeyPress("clear_composition")
                 }
             } else if (tapAction != null && tapAction != GestureAction.COMMIT) {

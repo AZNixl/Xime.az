@@ -1344,8 +1344,10 @@ fun ConfigurableKeyButton(
         {
             if (isComposing && composingAction.isNotEmpty()) {
                 when (composingAction) {
-                    "select_2" -> onCandidateSelect?.invoke(1)
-                    "select_3" -> onCandidateSelect?.invoke(2)
+                    // 选重键发送编码后缀字符（;/'），由 Rime 决定行为：
+                    // 整句方案进编码留候选栏继续输入；普通方案经 key_binder 选重上屏。
+                    "select_2" -> onKeyPress(";")
+                    "select_3" -> onKeyPress("'")
                     "Escape" -> onKeyPress("clear_composition")
                 }
             } else if (tapAction != null && tapAction != GestureAction.COMMIT) {
