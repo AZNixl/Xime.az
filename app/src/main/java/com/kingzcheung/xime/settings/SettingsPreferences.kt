@@ -148,7 +148,7 @@ object SettingsPreferences {
         }
         val legacy = prefs.getString(KEY_CURRENT_SCHEMA, null)
         if (!legacy.isNullOrBlank()) return legacy
-        return "tiger_sentence"
+        return "wubi86"
     }
 
     fun setCurrentSchema(context: Context, schemaId: String) {
