@@ -753,7 +753,7 @@ object SchemaManager {
     fun getEnabledSchemas(context: Context): List<String> {
         val customFile = getCustomYamlFile(context)
         if (!customFile.exists()) {
-            val defaultBuiltIn = listOf("wubi86", "wubi86_pinyin", "pinyin_simp", "t9_pinyin")
+            val defaultBuiltIn = listOf("tiger_sentence")
             setEnabledSchemas(context, defaultBuiltIn)
             return defaultBuiltIn
         }
@@ -782,7 +782,7 @@ object SchemaManager {
             Log.e(TAG, "Failed to read custom.yaml", e)
         }
 
-        return listOf("wubi86", "wubi86_pinyin", "pinyin_simp", "t9_pinyin")
+        return listOf("tiger_sentence")
     }
 
     fun setEnabledSchemas(context: Context, schemaIds: List<String>) {

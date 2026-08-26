@@ -251,7 +251,8 @@ object RimeConfigHelper {
                     if (copyAssetsRecursively(context, fullAssetPath, targetFile)) {
                         copiedAny = true
                     }
-                } else if (fileName.endsWith(".yaml") || fileName.endsWith(".lua")) {
+                } else if (fileName.endsWith(".yaml") || fileName.endsWith(".lua") ||
+                    fileName.endsWith(".txt") || fileName.endsWith(".bin")) {
                     val needsCopy = try {
                         if (targetFile.exists()) {
                             val fd = context.assets.openFd(fullAssetPath)
