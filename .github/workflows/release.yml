@@ -80,10 +80,20 @@ jobs:
       - name: Build Plugin XIPKs (Unsigned)
         run: bash scripts/build-plugins.sh
 
+      # secrets 上下文不能在 steps.if 中直接使用，先通过 run 步骤计算布尔输出
+      - name: Check signing secret availability
+        id: signing_check
+        run: |
+          if [ -n "${{ secrets.SIGNING_KEY }}" ]; then
+            echo "available=true" >> $GITHUB_OUTPUT
+          else
+            echo "available=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Sign Main App APKs (optional)
         uses: r0adkll/sign-android-release@v1
         id: sign_main_app
-        if: ${{ secrets.SIGNING_KEY != '' }}
+        if: ${{ steps.signing_check.outputs.available == 'true' }}
         with:
           releaseDirectory: app/build/outputs/apk/release
           signingKeyBase64: ${{ secrets.SIGNING_KEY }}
