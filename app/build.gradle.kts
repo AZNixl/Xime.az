@@ -52,10 +52,10 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // NDK 配置（自用版：仅 arm64-v8a；splits.abi 已做架构过滤）
-        // ndk {
-        //     abiFilters += listOf("arm64-v8a")
-        // }
+        // NDK 配置（支持 arm64-v8a + armeabi-v7a）
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
 
         // 构建信息
         buildConfigField("String", "GIT_HASH", "\"${getGitHash()}\"")
@@ -134,12 +134,12 @@ android {
         checkDependencies = true
     }
 
-    // 分架构打包（自用版：仅 arm64-v8a）
+    // 分架构打包（支持 arm64-v8a + armeabi-v7a）
     splits {
         abi {
             isEnable = true
             reset()
-            include("arm64-v8a")
+            include("arm64-v8a", "armeabi-v7a")
             isUniversalApk = false
         }
     }

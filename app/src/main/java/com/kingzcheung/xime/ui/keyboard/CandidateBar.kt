@@ -229,56 +229,11 @@ fun CandidateBar(
         candidateListState.scrollToItem(0)
     }
 
-    // ── 候选栏横向滑动移动光标（原空格键滑动迁移至此）──
-    val currentOnCursorMove = androidx.compose.runtime.rememberUpdatedState(callbacks.onCursorMove)
-    val swipeSensitivityDp = SettingsPreferences.getSwipeSensitivityDp(context)
-    val cursorMoveMod = if (callbacks.onCursorMove != null && !isVoiceSticky) {
-        Modifier.pointerInput(swipeSensitivityDp) {
-            // 步进与激活阈值随灵敏度缩放（基准 12dp 对应 步进25dp/激活60dp）
-            val stepThresholdPx = (swipeSensitivityDp * 25f / 12f).dp.toPx()
-            val activationThresholdPx = (swipeSensitivityDp * 60f / 12f).dp.toPx()
-            awaitEachGesture {
-                val down = awaitFirstDown(requireUnconsumed = false)
-                var isCursorGesture = false
-                var lastSteps = 0
-                var activationAnchorX = down.position.x
-                do {
-                    val event = awaitPointerEvent()
-                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                    val dx = change.position.x - down.position.x
-                    val dy = change.position.y - down.position.y
-                    if (!change.pressed) {
-                        if (isCursorGesture) event.changes.forEach { it.consume() }
-                        break
-                    }
-                    // 明确横向滑动（横向位移显著大于纵向）
-                    if (abs(dx) > abs(dy) * 3f) {
-                        if (!isCursorGesture && abs(dx) > activationThresholdPx) {
-                            isCursorGesture = true
-                            activationAnchorX = change.position.x
-                        }
-                        if (isCursorGesture) {
-                            event.changes.forEach { it.consume() }
-                            val dxFromAnchor = change.position.x - activationAnchorX
-                            val steps = (dxFromAnchor / stepThresholdPx).toInt()
-                            if (steps != lastSteps) {
-                                val delta = steps - lastSteps
-                                currentOnCursorMove.value?.invoke(delta)
-                                lastSteps = steps
-                            }
-                        }
-                    }
-                } while (true)
-            }
-        }
-    } else Modifier
-
     Column(
         modifier = modifier
             .fillMaxWidth()
             .height(50.dp)
             .background(visuals.backgroundColor)
-            .then(cursorMoveMod)
             .padding(horizontal = horizontalPadding),
         verticalArrangement = Arrangement.Center
     ) {
