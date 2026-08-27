@@ -52,10 +52,7 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // NDK 配置（支持 arm64-v8a + armeabi-v7a）
-        ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
-        }
+        // splits.abi 已负责分架构打包，ndk.abiFilters 与其冲突，不可同时设置
 
         // 构建信息
         buildConfigField("String", "GIT_HASH", "\"${getGitHash()}\"")
