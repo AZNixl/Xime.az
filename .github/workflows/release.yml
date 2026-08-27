@@ -80,9 +80,10 @@ jobs:
       - name: Build Plugin XIPKs (Unsigned)
         run: bash scripts/build-plugins.sh
 
-      - name: Sign Main App APKs
+      - name: Sign Main App APKs (optional)
         uses: r0adkll/sign-android-release@v1
         id: sign_main_app
+        if: ${{ secrets.SIGNING_KEY != '' }}
         with:
           releaseDirectory: app/build/outputs/apk/release
           signingKeyBase64: ${{ secrets.SIGNING_KEY }}
@@ -95,23 +96,29 @@ jobs:
       - name: Find APKs and plugin XIPKs
         id: find_apks
         run: |
+          # 优先取签名后的 APK；若签名未执行或失败，则回退到未签名 APK
           MAIN_APKS=$(find app/build/outputs/apk/release -name "*-signed.apk" -type f | sort | tr '\n' ',' | sed 's/,$//')
-          PLUGIN_XIPKS=$(find build/plugin-release -name "*.xipk" -type f | sort | tr '\n' ',' | sed 's/,$//')
+          if [ -z "$MAIN_APKS" ]; then
+            MAIN_APKS=$(find app/build/outputs/apk/release -name "Xime-*.apk" ! -name "*-aligned.apk" -type f | sort | tr '\n' ',' | sed 's/,$//')
+            echo "::warning::No signed APKs found, falling back to unsigned APKs."
+          fi
+          PLUGIN_XIPKS=$(find build/plugin-release -name "*.xipk" -type f 2>/dev/null | sort | tr '\n' ',' | sed 's/,$//')
 
           echo "main_apks=$MAIN_APKS" >> $GITHUB_OUTPUT
           echo "plugin_xipks=$PLUGIN_XIPKS" >> $GITHUB_OUTPUT
 
           if [ -z "$MAIN_APKS" ]; then
-            echo "::warning::No main app APKs found!"
+            echo "::error::No main app APKs found!"
+            exit 1
           fi
           if [ -z "$PLUGIN_XIPKS" ]; then
             echo "::warning::No plugin XIPKs found!"
           fi
 
-      - name: Upload Signed APKs as Artifact
+      - name: Upload APKs as Artifact
         uses: actions/upload-artifact@v7
         with:
-          name: signed-apks
+          name: release-apks
           path: |
             ${{ steps.find_apks.outputs.main_apks }}
             ${{ steps.find_apks.outputs.plugin_xipks }}
