@@ -46,7 +46,7 @@ android {
         applicationId = "com.kingzcheung.xime.az"
         minSdk = 28
         targetSdk = 35
-        versionCode = 20260819
+        versionCode = 20260827
         versionName = "2.6.2"
 
 
@@ -54,7 +54,7 @@ android {
 
         // NDK 配置
          ndk {
-             abiFilters += listOf("arm64-v8a")
+             abiFilters += listOf("arm64-v8a","armeabi-v7a")
          }
 
         // 构建信息
