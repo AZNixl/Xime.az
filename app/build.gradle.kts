@@ -46,7 +46,7 @@ android {
         applicationId = "com.kingzcheung.xime.az"
         minSdk = 28
         targetSdk = 35
-        versionCode = 20260819
+        versionCode = 20260827
         versionName = "2.6.2"
 
 
