@@ -52,10 +52,10 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // NDK 配置（自用版：仅 arm64-v8a；splits.abi 已做架构过滤）
-        // ndk {
-        //     abiFilters += listOf("arm64-v8a")
-        // }
+        // NDK 配置
+         ndk {
+             abiFilters += listOf("arm64-v8a")
+         }
 
         // 构建信息
         buildConfigField("String", "GIT_HASH", "\"${getGitHash()}\"")
