@@ -71,6 +71,8 @@ internal data class SchemaEntry(
 object SchemaManager {
     private const val TAG = "SchemaManager"
     private const val CUSTOM_YAML = "default.custom.yaml"
+    /** 内联 map 写法里的方案 id：`{schema: tiger}` / `{schema: tiger, name: x}` */
+    private val SCHEMA_ID_IN_FLOW_REGEX = Regex("""schema\s*:\s*([^,}\s]+)""")
     internal val yaml = Yaml(configuration = YamlConfiguration(strictMode = false, anchorsAndAliases = com.charleskorn.kaml.AnchorsAndAliases.Permitted(maxAliasCount = UInt.MAX_VALUE)))
 
     private val downloadClient = OkHttpClient.Builder()
@@ -759,24 +761,7 @@ object SchemaManager {
         }
 
         try {
-            val content = customFile.readText()
-            val schemas = mutableListOf<String>()
-            var inSchemaList = false
-            for (line in content.lines()) {
-                val trimmed = line.trim()
-                if (trimmed == "schema_list:") {
-                    inSchemaList = true
-                    continue
-                }
-                if (inSchemaList) {
-                    if (trimmed.startsWith("- schema:")) {
-                        val id = trimmed.removePrefix("- schema:").trim()
-                        if (id.isNotEmpty()) schemas.add(id)
-                    } else if (!trimmed.startsWith("- ")) {
-                        inSchemaList = false
-                    }
-                }
-            }
+            val schemas = parseSchemaListIds(customFile.readText())
             if (schemas.isNotEmpty()) return schemas
         } catch (e: Exception) {
             Log.e(TAG, "Failed to read custom.yaml", e)
@@ -785,15 +770,94 @@ object SchemaManager {
         return listOf("wubi86")
     }
 
+    /**
+     * 从 YAML 文本解析 `schema_list` 里的方案 id，兼容三种常见写法：
+     *   - schema: tiger          # 块式
+     *   - {schema: tiger}        # 内联 map
+     *   - {schema: tiger, ...}   # 内联 map 带其它键
+     * 行尾注释会先被剥离。
+     *
+     * 早期实现只认块式写法，而用户手工导入的 default.custom.yaml 多为内联写法，
+     * 解析结果为空、回落到 wubi86；后果是部署 hash 不含这些方案，
+     * RimeConfigHelper.ensureDeployment 认为配置未变化而跳过部署，
+     * 表现为「新方案必须手动点一次输入方案才会生效」。
+     */
+    internal fun parseSchemaListIds(content: String): List<String> {
+        val schemas = mutableListOf<String>()
+        var inSchemaList = false
+        for (rawLine in content.lines()) {
+            val trimmed = stripYamlComment(rawLine).trim()
+            if (trimmed.isEmpty()) continue
+            if (trimmed == "schema_list:") {
+                inSchemaList = true
+                continue
+            }
+            if (!inSchemaList) continue
+            if (!trimmed.startsWith("-")) {
+                // 缩进回到与 schema_list 同级，列表结束
+                inSchemaList = false
+                continue
+            }
+            val id = parseSchemaListItem(trimmed)
+            if (id.isNullOrEmpty()) {
+                // 无法识别的列表项：结束本块，避免把其它块的项误收进来
+                inSchemaList = false
+            } else {
+                schemas.add(id)
+            }
+        }
+        return schemas
+    }
+
+    /** 解析单条 schema_list 项，返回方案 id；无法识别时返回 null。 */
+    private fun parseSchemaListItem(item: String): String? {
+        val body = item.removePrefix("-").trim()
+        if (body.startsWith("schema:")) {
+            return cleanSchemaId(body.removePrefix("schema:"))
+        }
+        if (body.startsWith("{")) {
+            val match = SCHEMA_ID_IN_FLOW_REGEX.find(body)
+            if (match != null) return cleanSchemaId(match.groupValues[1])
+        }
+        return null
+    }
+
+    private fun cleanSchemaId(raw: String): String? =
+        raw.trim().trim('"', '\'').takeIf { it.isNotEmpty() }
+
+    /** 剥离 YAML 行尾注释：`#` 位于行首或其前有空白。 */
+    private fun stripYamlComment(line: String): String {
+        for (i in line.indices) {
+            if (line[i] == '#' && (i == 0 || line[i - 1].isWhitespace())) {
+                return line.substring(0, i)
+            }
+        }
+        return line
+    }
+
     fun setEnabledSchemas(context: Context, schemaIds: List<String>) {
-        val sb = StringBuilder()
-        sb.appendLine("patch:")
-        sb.appendLine("  schema_list:")
-        for (id in schemaIds) {
-            sb.appendLine("    - schema: $id")
+        val file = getCustomYamlFile(context)
+        // 只替换 schema_list 块，保留用户在 default.custom.yaml 里的其它 patch
+        // （switcher/hotkeys、ascii_composer 等），避免整文件被覆盖丢配置。
+        val existing = if (file.exists()) {
+            try {
+                file.readText()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to read custom.yaml", e)
+                null
+            }
+        } else null
+        val content = if (existing.isNullOrBlank()) {
+            buildString {
+                appendLine("patch:")
+                appendLine("  schema_list:")
+                schemaIds.forEach { appendLine("    - schema: $it") }
+            }
+        } else {
+            replaceSchemaListBlock(existing, schemaIds)
         }
         try {
-            getCustomYamlFile(context).writeText(sb.toString())
+            file.writeText(content)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to write custom.yaml", e)
         }
