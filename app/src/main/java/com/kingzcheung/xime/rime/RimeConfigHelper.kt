@@ -61,11 +61,28 @@ object RimeConfigHelper {
     fun ensureDeployment(context: Context): Boolean {
         synchronized(deploymentLock) {
             val currentHash = computeDeploymentHash(context)
-            if (currentHash.isNotEmpty() && currentHash == SettingsPreferences.getDeploymentHash(context)) {
+            val appVersion = BuildConfig.VERSION_CODE
+            val lastAppVersion = SettingsPreferences.getDeploymentAppVersion(context)
+            // app 升级后必须重编译一次，即使方案文件没变（deployment hash 一致）。
+            // 部署逻辑本身可能被修复过（如 custom.yaml 补丁合并），若只比对文件
+            // hash，build 里会一直留着旧版编译出的产物，新修复永远落不到设备上
+            // —— 表现为「改了代码但用户侧毫无变化」，只有手动点一次方案
+            // （会改写 default.yaml 使 hash 变化）才临时生效。
+            val appUpgraded = lastAppVersion != 0 && lastAppVersion != appVersion
+            val hashMatches = currentHash.isNotEmpty() &&
+                currentHash == SettingsPreferences.getDeploymentHash(context)
+            if (hashMatches && !appUpgraded) {
                 SettingsPreferences.setDeploymentDone(context, true)
+                if (lastAppVersion == 0) {
+                    SettingsPreferences.setDeploymentAppVersion(context, appVersion)
+                }
                 return true
             }
-            Log.i(TAG, "Deployment hash mismatch or missing")
+            if (appUpgraded) {
+                Log.i(TAG, "App upgraded $lastAppVersion -> $appVersion, forcing schema recompile")
+            } else {
+                Log.i(TAG, "Deployment hash mismatch or missing")
+            }
             val buildDir = File(XimeStorage.rimeDir(context), "build")
             val buildExists = buildDir.exists() && buildDir.listFiles()?.isNotEmpty() == true
             val engine = RimeEngine.getInstance()
@@ -97,6 +114,7 @@ object RimeConfigHelper {
             }
             if (deployed) {
                 storeDeploymentHash(context)
+                SettingsPreferences.setDeploymentAppVersion(context, appVersion)
                 SettingsPreferences.setDeploymentDone(context, true)
                 return true
             }

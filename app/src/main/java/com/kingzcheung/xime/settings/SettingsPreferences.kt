@@ -11,6 +11,7 @@ object SettingsPreferences {
     private const val KEY_CURRENT_SCHEMA_DUAL = "current_schema_dual"
     private const val KEY_DEPLOYMENT_DONE = "deployment_done"
     private const val KEY_DEPLOYMENT_HASH = "deployment_hash"
+    private const val KEY_DEPLOYMENT_APP_VERSION = "deployment_app_version"
     private const val KEY_RIME_ASSETS_VERSION = "rime_assets_version"
     private const val KEY_SETUP_COMPLETED = "setup_completed"
     private const val KEY_DARK_MODE = "dark_mode"
@@ -181,6 +182,21 @@ object SettingsPreferences {
 
     fun setDeploymentHash(context: Context, hash: String) {
         getPrefs(context).edit().putString(KEY_DEPLOYMENT_HASH, hash).apply()
+    }
+
+    /**
+     * 上次完成部署时的 app versionCode（0 = 从未部署）。
+     *
+     * 用途：app 升级后即使方案文件没变（deployment hash 一致）也要重编译一次。
+     * 否则 build 目录里会一直留着旧版编译出的产物，部署逻辑的修复（例如
+     * custom.yaml 补丁合并）永远落不到用户设备上。
+     */
+    fun getDeploymentAppVersion(context: Context): Int {
+        return getPrefs(context).getInt(KEY_DEPLOYMENT_APP_VERSION, 0)
+    }
+
+    fun setDeploymentAppVersion(context: Context, version: Int) {
+        getPrefs(context).edit().putInt(KEY_DEPLOYMENT_APP_VERSION, version).apply()
     }
 
     /** 上次完成 rime assets 同步的 versionCode（0 表示从未同步）。 */
