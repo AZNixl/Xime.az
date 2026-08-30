@@ -305,11 +305,38 @@ internal class ImeSessionController(private val service: XimeInputMethodService)
         }
     }
 
+    /**
+     * 用户「显式改动过」的方案选项集合。
+     *
+     * 为什么需要它：user.yaml 的 `var/option/<name>` 只在用户真的拨过开关后才写入，
+     * 而 getUserConfigBool 对「无记录」同样返回 false，无法与「用户主动设为关」区分。
+     * 若不加区分地恢复，所有未改动过的开关都会被强制 setOption(false)，
+     * 把 schema.yaml 里 switches.reset 的默认值冲掉。
+     *
+     * 实际踩到的坑：虎单整的 tiger_sentence_mix 在 schema 里是 `reset: 1`（默认开），
+     * 但每次 onStartInput 恢复选项时都被写成 false，导致整句混输永远处于关闭状态
+     * —— 表现为「必须手动点一次输入方案才生效，切到别的输入框又失效」。
+     */
+    private fun loadCustomizedOptions(): Set<String> {
+        return service.getSharedPreferences("kime_settings", 0)
+            .getStringSet(PREF_CUSTOMIZED_OPTIONS, null) ?: emptySet()
+    }
+
+    private fun markOptionCustomized(name: String) {
+        val prefs = service.getSharedPreferences("kime_settings", 0)
+        val set = (prefs.getStringSet(PREF_CUSTOMIZED_OPTIONS, null) ?: emptySet()).toMutableSet()
+        if (set.add(name)) {
+            prefs.edit().putStringSet(PREF_CUSTOMIZED_OPTIONS, set).apply()
+        }
+    }
+
     /** 将方案选项状态写入 librime user.yaml（var/option/<name>）。 */
     internal fun persistSchemaOption(name: String, value: Boolean) {
         if (RimeEngine.isInitialized()) {
             service.rimeEngine.setUserConfigBool("var/option/$name", value)
         }
+        // 标记为「用户显式改过」，恢复时才会覆盖 schema 默认值
+        markOptionCustomized(name)
     }
 
     /** 从 librime user.yaml 恢复方案选项（中/西、简/繁等），在切换方案后调用。 */
@@ -317,17 +344,32 @@ internal class ImeSessionController(private val service: XimeInputMethodService)
         if (!RimeEngine.isInitialized()) return
         val schemaId = service.rimeEngine.getCurrentSchema()
         if (schemaId.isEmpty()) return
+        val customized = loadCustomizedOptions()
         val defs = SchemaManager.getSchemaSwitches(service, schemaId)
         for (def in defs) {
             if (def.name.isNotEmpty()) {
-                service.rimeEngine.setOption(def.name, service.rimeEngine.getUserConfigBool("var/option/${def.name}"))
+                // 只恢复用户显式改过的选项，未改过的保留 schema switches.reset 的默认值
+                if (customized.contains(def.name)) {
+                    service.rimeEngine.setOption(
+                        def.name, service.rimeEngine.getUserConfigBool("var/option/${def.name}")
+                    )
+                }
             } else if (def.options.isNotEmpty()) {
-                val activeIndex = def.options.indexOfFirst { service.rimeEngine.getUserConfigBool("var/option/$it") }
-                if (activeIndex >= 0) {
-                    def.options.forEachIndexed { i, opt -> service.rimeEngine.setOption(opt, i == activeIndex) }
+                // options 型（多状态）开关：组内任一被改过才恢复
+                if (def.options.any { customized.contains(it) }) {
+                    val activeIndex = def.options.indexOfFirst {
+                        service.rimeEngine.getUserConfigBool("var/option/$it")
+                    }
+                    if (activeIndex >= 0) {
+                        def.options.forEachIndexed { i, opt -> service.rimeEngine.setOption(opt, i == activeIndex) }
+                    }
                 }
             }
         }
+    }
+
+    private companion object {
+        const val PREF_CUSTOMIZED_OPTIONS = "customized_schema_options"
     }
 
     /**
