@@ -73,6 +73,14 @@ object RimeConfigHelper {
             if (buildExists) {
                 // build 已就位但配置有变化：增量维护，只编译变更的 schema/dict，
                 // 避免 custom.yaml 补丁等小幅改动触发 60MB 词库全量重编译（持锁 30s+）。
+                //
+                // 关键：librime 的增量检测对 `<schema>.custom.yaml` 的变化不可靠，
+                // 实测会出现「custom 里挂的 translator / dependencies 没合并进 build」，
+                // 表现为新方案必须手动点一次输入方案才生效。
+                // 这里主动删掉启用方案在 build 中的 schema 编译产物，强制 librime
+                // 重跑一遍 schema 合并（该过程会应用 custom.yaml 的 patch）。
+                // 只删 schema 产物、保留 *.table.bin，词典仍可复用，不会触发 30s+ 全量编译。
+                invalidateSchemaBuilds(context, buildDir)
                 Log.i(TAG, "Build exists, running incremental maintenance")
                 if (engine.deployIncremental()) {
                     deployed = true
@@ -96,6 +104,32 @@ object RimeConfigHelper {
         }
     }
     
+    /**
+     * 删除启用方案在 build 目录中的 schema 编译产物，强制 librime 重新执行
+     * `<schema>.schema.yaml` + `<schema>.custom.yaml` 的合并。
+     *
+     * 只删 schema/prism 产物，保留词典的 *.table.bin —— 这样 custom 里的
+     * translators / filters / dependencies 一定能进 build，又不会退化成
+     * 全量重编译（60MB 词库 30s+）。
+     */
+    private fun invalidateSchemaBuilds(context: Context, buildDir: File) {
+        val schemas = try {
+            SchemaManager.getEnabledSchemas(context)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to read enabled schemas for invalidation", e)
+            emptyList<String>()
+        }
+        if (schemas.isEmpty()) return
+        var removed = 0
+        for (sid in schemas) {
+            for (name in listOf("$sid.schema.yaml", "$sid.prism.bin")) {
+                val f = File(buildDir, name)
+                if (f.exists() && f.delete()) removed++
+            }
+        }
+        Log.i(TAG, "Invalidated $removed schema build artifact(s) for ${schemas.size} enabled schema(s)")
+    }
+
     fun initializeRimeData(context: Context): Pair<String, String> {
         val rimeDir = XimeStorage.rimeDir(context)
         

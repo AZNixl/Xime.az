@@ -390,6 +390,14 @@ color_schemes:
 #   # 也支持字符串简写：
 #   long_press: { display: "bubble", values: ["q", "Q"] }
 keyboard:
+  # ── 内置默认符号版本号 ──
+  # 每次调整内置按键符号（长按/上滑等）时 +1。
+  # app 启动发现该版本高于已应用版本时，会用内置 xime.yaml 覆盖用户目录的同名文件，
+  # 并清空「设置→键盘符号编辑」的自定义（kime_settings.user_key_overrides）——
+  # 否则「用户目录的旧 xime.yaml」+「自定义覆盖」会联手把新的内置默认挡住，
+  # 表现为改了 assets/xime.yaml 却毫无变化。
+  symbols_version: 2
+
   # ── 键盘颜色配置（可选，不设置则使用内置默认值）──
   # 背景色已由 color_schemes.*.keyboard_background 接管
   # key_bg_color             - 按键底色（亮色）

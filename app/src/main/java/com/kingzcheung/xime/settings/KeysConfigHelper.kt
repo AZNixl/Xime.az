@@ -417,6 +417,10 @@ data class KeysConfig(
 object KeysConfigHelper {
     private const val TAG = "KeysConfigHelper"
     private const val XIME_CONFIG_FILE = "xime.yaml"
+    /** 已应用的「内置默认符号版本」，见 xime.yaml 的 keyboard.symbols_version。 */
+    private const val PREF_APPLIED_SYMBOLS_VERSION = "applied_symbols_version"
+    /** UserKeysOverrides 存放按键自定义的键名（设置→键盘符号编辑）。 */
+    private const val PREF_USER_KEY_OVERRIDES = "user_key_overrides"
     private const val XIME_CUSTOM_CONFIG_FILE = "xime.custom.yaml"
 
     /** 从用户数据目录读取自定义 yaml（预留，兼容旧流程；键盘覆盖已由 UserKeysOverrides 接管）。 */
@@ -842,7 +846,49 @@ object KeysConfigHelper {
      * （已放弃从 /Documents/Xime/rime/ 外置读取，键盘改动统一走设置页 UserKeysOverrides）
      */
     private fun readXimeYamlText(context: Context): String? {
+        syncDefaultSymbolsIfUpgraded(context)
         return readAssetText(context, XIME_CONFIG_FILE)
+    }
+
+    /**
+     * 内置按键符号升级时，让新版 assets/xime.yaml 真正生效。
+     *
+     * 键盘配置有两层会挡住内置默认值：
+     *   1. 用户目录 files/rime/xime.yaml（readCustomYamlText 会合并它）
+     *   2. 「设置→键盘符号编辑」的自定义（SharedPreferences，优先级最高）
+     * 第 2 项一旦存在，改 assets/xime.yaml 就完全看不出变化。
+     * 这里比对 keyboard.symbols_version：内置版本更高时清空自定义覆盖，
+     * 让新的内置默认符号落到用户手上。
+     */
+    private fun syncDefaultSymbolsIfUpgraded(context: Context) {
+        val assetsText = readAssetText(context, XIME_CONFIG_FILE) ?: return
+        val version = parseSymbolsVersion(assetsText)
+        if (version <= 0) return
+        val prefs = context.getSharedPreferences("kime_settings", Context.MODE_PRIVATE)
+        if (prefs.getInt(PREF_APPLIED_SYMBOLS_VERSION, 0) >= version) return
+        prefs.edit()
+            .remove(PREF_USER_KEY_OVERRIDES)
+            .putInt(PREF_APPLIED_SYMBOLS_VERSION, version)
+            .apply()
+        Log.i(TAG, "Applied built-in keyboard symbols v$version, cleared user key overrides")
+    }
+
+    /** 解析 xime.yaml 中 keyboard.symbols_version（只认 keyboard 块内的）。 */
+    private fun parseSymbolsVersion(yamlText: String): Int {
+        var inKeyboard = false
+        for (raw in yamlText.lines()) {
+            val line = raw.trim()
+            if (line.startsWith("keyboard:")) {
+                inKeyboard = true
+                continue
+            }
+            if (!inKeyboard) continue
+            // 回到顶层键（顶格且非空非注释）即结束 keyboard 块
+            if (line.isNotEmpty() && !line.startsWith("#") && !raw.startsWith(" ") && !raw.startsWith("\t")) break
+            val m = Regex("""^symbols_version:\s*(\d+)""").find(line)
+            if (m != null) return m.groupValues[1].toIntOrNull() ?: 0
+        }
+        return 0
     }
 
     fun loadXimeIndexConfig(context: Context): XimeIndexConfig {
